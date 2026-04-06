@@ -1,0 +1,475 @@
+# Hospitality Forecasting System
+
+## Overview
+
+This repository contains an end-to-end forecasting pipeline built around a real hospitality operations use case. The project was designed to investigate whether machine learning and time-series forecasting methods could improve on manual forecasting and provide more operationally useful demand predictions.
+
+The workflow begins with anonymised rota-style operational exports, separates sales and labour records, aggregates them into daily datasets, engineers forecasting features, benchmarks manual forecasts and baseline models, and then trains both classical and machine learning forecasting models. The final system compares manual forecasting, simple baselines, SARIMAX, and XGBoost, while also linking forecast performance to operational considerations such as labour efficiency and overstaffing risk.
+
+This project is presented as a portfolio system rather than a production deployment. The public version uses anonymised local data and a modular project structure to demonstrate methodology, system design, and analytical reasoning without exposing proprietary business information.
+
+---
+
+## Business Context
+
+Hospitality forecasting is operationally important because inaccurate demand expectations can have direct effects on staffing, labour cost, service pressure, and decision-making. In this case, the forecasting problem was approached from two perspectives at once:
+
+1. **Predictive accuracy**  
+   Improving the estimate of daily realised sales relative to the existing manual forecast.
+
+2. **Business relevance**  
+   Understanding the implications of forecast error for labour planning, especially where overforecasting demand can contribute to unnecessary wage expenditure and overstaffing.
+
+This dual perspective is central to the project. The goal was not only to train a model with lower error, but to understand whether forecasting improvements could be translated into more useful operational decisions.
+
+---
+
+## Project Objectives
+
+The main objectives of the project were:
+
+- build a clean, modular forecasting pipeline from anonymised raw operational files
+- benchmark manual forecasts against realised daily sales
+- evaluate simple statistical baselines before training more advanced models
+- engineer domain-relevant features for hospitality demand forecasting
+- compare a classical time-series benchmark (SARIMAX) against a machine learning model (XGBoost)
+- examine forecast quality not only with MAE and RMSE, but also with MAPE, bias, and business-oriented labour metrics
+- investigate model degradation on later unseen data and assess the implications for generalisation and retraining
+
+---
+
+## Repository Structure
+
+```text
+hospitality-forecasting-system/
+├── README.md
+├── main.py
+├── requirements.txt
+├── .gitignore
+├── LICENSE
+├── config/
+│   └── config.yaml
+├── data/
+│   ├── raw/
+│   ├── interim/
+│   ├── processed/
+│   └── features/
+├── data_cache/
+├── notebooks/
+│   └── portfolio_walkthrough.ipynb
+├── reports/
+│   ├── figures/
+│   └── results/
+└── src/
+    ├── ingestion/
+    │   └── load_raw_data.py
+    ├── preprocessing/
+    │   ├── split_sales_labour.py
+    │   ├── build_daily_sales.py
+    │   └── build_daily_labour.py
+    ├── features/
+    │   └── build_features.py
+    ├── baselines/
+    │   └── run_baselines.py
+    ├── models/
+    │   ├── evaluate_human_forecast.py
+    │   ├── train_sarimax.py
+    │   └── train_xgboost.py
+    ├── evaluation/
+    │   ├── metrics.py
+    │   ├── plots.py
+    │   └── error_analysis.py
+    └── utils/
+        └── helpers.py
+Data
+
+The original project used operational exports derived from a private source. For portfolio purposes, the public repository uses anonymised local data files. The structure of the data has been preserved sufficiently to demonstrate the workflow and modelling logic while avoiding disclosure of identifiable business information.
+
+The public dataset includes anonymised daily operational information such as:
+
+realised sales
+manual forecast sales
+realised labour hours
+realised labour wages
+forecast labour hours
+forecast labour wages
+
+The raw files are processed through a staged workflow:
+
+raw rota-style files
+split sales/labour files
+daily aggregated sales and labour datasets
+engineered feature datasets
+final model-ready feature table
+Pipeline Summary
+
+The pipeline is organised into several stages.
+
+1. Raw data ingestion
+
+The portfolio version loads anonymised local raw files from the repository. The original private ingestion method is not reproduced publicly.
+
+2. Splitting sales and labour
+
+Weekly rota-style files are separated into sales and labour portions so they can be processed independently.
+
+3. Daily aggregation
+
+Sales files are aggregated into daily actual and forecast sales totals. Labour files are aggregated into daily actual and forecast labour hours and wages.
+
+4. Feature engineering
+
+A broad feature space is created, including time-based, cyclical, holiday, payday, school holiday, and weather-derived features.
+
+5. Benchmarking
+
+Before training more advanced models, manual forecasts and simple baselines are evaluated to establish a credible reference point.
+
+6. Model training
+
+SARIMAX and XGBoost are trained as representative classical and machine learning approaches.
+
+7. Evaluation and error analysis
+
+Performance is assessed numerically and visually, and the project pays special attention to hard days, spikes, drift, and operational implications of forecast error.
+
+Feature Engineering
+
+Feature engineering was one of the central parts of the project. The final XGBoost model used a selected subset of features, but the broader engineered feature space was intentionally wider.
+
+Final selected model features
+
+The final XGBoost model used the following features:
+
+forecast_sales
+month_sin
+day_of_week
+day_of_year_cos
+day_of_year_sin
+day_of_year
+month_cos
+month
+day_of_week_sin
+is_bank_holiday
+days_to_bank_holiday
+days_since_payday
+is_payday_window_pm3
+is_long_weekend
+is_heavy_rain
+
+These were chosen because they produced the best generalisation among the explored options and captured a mix of:
+
+manual operational signal
+cyclical seasonality
+holiday context
+payday behaviour
+limited weather sensitivity
+Broader engineered feature set
+
+The broader engineered feature space also included features such as:
+
+year
+is_weekend
+forecast_error
+lag_7_sales
+rolling_7_sales
+rolling_14_sales
+lag_1_fe
+lag_7_fe
+rolling_7_fe
+days_to_payday
+is_payday
+days_since_bank_holiday
+is_school_holiday
+is_christmas_break
+is_summer_break
+is_easter_break
+max_temp
+rain_mm
+sun_hours
+is_hot_for_scotland
+is_dry_day
+temp_anomaly_14d
+warm_streak_len
+
+Some of these were useful for exploration and domain reasoning even when they were not retained in the final model.
+
+Candidate future features
+
+A number of additional features were identified as promising areas for future iteration. These include:
+
+expansion of lag structure, especially shorter-lag effects such as lag_1, lag_2, and lag_3
+more systematic lag families for both sales and forecast error
+richer rolling features across multiple windows
+explicit seasonal-period flags such as Christmas period, Easter period, summer period, and New Year period
+evaluating whether broader seasonal/holiday flags should replace or complement school-holiday proxies
+potential labour-derived features such as wage-to-sales ratio or labour intensity
+more event-driven or anomaly-aware features for capturing sudden spikes in demand
+
+These were not fully implemented in the current public portfolio version, but they were discussed as meaningful next-stage development directions.
+
+Baselines
+
+A proper forecasting project should not jump directly to machine learning. For that reason, several simple baseline models were evaluated first.
+
+The baseline suite includes:
+
+Naive baseline
+Predict tomorrow using yesterday’s realised sales.
+Seasonal naive baseline
+Predict a given day using sales from the same weekday one week earlier.
+Rolling 7-day mean
+Predict using the average of the previous 7 days.
+Rolling 14-day mean
+Predict using the average of the previous 14 days.
+Rolling 28-day mean
+Predict using a wider historical smoothing window.
+Weekday average baseline
+Predict using the average historical sales for that weekday in the training data.
+
+The weekday-average baseline is especially useful in hospitality because it checks whether a more advanced model is genuinely learning more than a simple “typical Monday / typical Friday” weekly pattern.
+
+Models
+Manual forecast benchmark
+
+The repository first evaluates the existing human/manual forecast against realised daily sales and labour outcomes. This is an important part of the project because it makes the evaluation operationally meaningful.
+
+SARIMAX
+
+SARIMAX was included as a classical time-series benchmark. It uses autoregressive and seasonal structure with a small exogenous feature set. In this project it serves as a transparent reference model rather than the final deployment choice.
+
+XGBoost
+
+The final machine learning model is an XGBoost regressor trained on the selected feature subset. The model combines calendar structure, cyclical signal, manual forecast input, holiday context, payday features, and weather information.
+
+XGBoost was chosen because:
+
+it performs well on structured tabular data
+it can model nonlinear interactions
+it handles mixed feature families naturally
+it is often stronger than classical methods when the data generating process is operationally messy rather than purely statistical
+Evaluation Metrics
+
+The project uses several metrics to assess forecasting quality.
+
+Standard regression metrics
+MAE — mean absolute error
+RMSE — root mean squared error
+MAPE — mean absolute percentage error
+Bias — average signed forecast error
+Business-oriented labour metrics
+
+For manual forecast evaluation, the project also estimates operational implications, including:
+
+total overforecasted wages
+total underforecasted wages
+total overforecasted sales
+overstaffed days
+understaffed days
+average wasted wages on overstaffed days
+estimated wage waste per £1 of overforecasted sales
+
+This is a key feature of the project because it connects forecasting accuracy to a practical business narrative rather than treating it as a purely technical exercise.
+
+Validation Strategy and Generalisation
+
+A particularly important part of the project was the later validation against 2026 data.
+
+Earlier validation on a historical split suggested solid performance from the final XGBoost model. However, when the validation period was extended into later unseen data, performance degraded rather than improving. This raised several important modelling questions:
+
+whether the model had been tuned too closely to the behaviour of the original training/validation window
+whether the operational system had shifted over time
+whether additional data from a different period was introducing patterns that did not generalise cleanly
+whether the model was relying on feature relationships that were stable in one period but weaker in another
+
+Rather than hiding this degradation, the project treats it as one of its most important findings.
+
+Why this matters
+
+In practical forecasting, more historical data does not always improve performance. If the system changes, older periods can become partially misleading rather than helpful. This is especially true in hospitality, where demand can be affected by:
+
+local events
+changes in customer behaviour
+holidays
+weather
+operational changes
+macroeconomic sentiment
+unexplained spikes or regime shifts
+Portfolio significance
+
+This validation issue is not presented as a failure of the project. It is presented as evidence that:
+
+the forecasting problem is real and dynamic
+static models have limits
+feature design and retraining strategy matter
+production forecasting systems need monitoring and adaptation over time
+
+In other words, one of the strongest aspects of the project is that it moved beyond “model accuracy on one split” and into a more realistic discussion of generalisation and drift.
+
+Error Analysis
+
+One of the most important conclusions of the project is that the hardest days to forecast are where the greatest value lies.
+
+The model generally captures recurring structure and weekly demand shape, but it struggles more on:
+
+spikes
+unusually strong peaks
+difficult transitional periods
+periods where demand appears to shift away from learned patterns
+
+This led to a deliberate emphasis on error analysis.
+
+The repository includes utilities to examine:
+
+top worst forecast days by absolute error
+largest overpredictions
+largest underpredictions
+grouped error summaries by weekday or other categorical variables
+Why spike days matter
+
+The most difficult spike days are likely where the current model misses important signal. They are also operationally the most relevant, because errors on unusually large days can have disproportionate effects on staffing and labour decisions.
+
+This means future development should focus not only on reducing average error, but on understanding:
+
+what makes spike days different
+whether those spikes are linked to holidays, events, weather, or behavioural shifts
+whether feature design should explicitly target these hardest cases
+What the Project Demonstrates
+
+This repository is intended to demonstrate more than just model fitting. It shows:
+
+ability to structure a multi-stage forecasting pipeline
+handling of messy operational data
+aggregation from raw business exports into modelling datasets
+feature engineering informed by real domain behaviour
+benchmarking discipline
+comparison against manual forecasts
+business-aware evaluation
+awareness of drift, limitations, and future modelling needs
+
+This is what makes the project stronger than a standard notebook-style ML exercise on a clean benchmark dataset.
+
+Limitations
+
+This portfolio version has several important limitations, which are acknowledged deliberately.
+
+1. Public data constraints
+
+The public repository uses anonymised local data and does not reproduce the original private ingestion setup.
+
+2. Static feature set
+
+Although a broad feature space was engineered, the current final model still uses a selected static subset. This may limit adaptability under changing conditions.
+
+3. Limited external event signals
+
+The current model includes weather, bank holidays, payday effects, and school-holiday proxies, but it does not yet include richer event calendars or explicit operational anomalies.
+
+4. Drift on later data
+
+Validation on newer unseen periods showed degradation, indicating that a one-off model is not enough for a dynamic forecasting environment.
+
+5. Spike-day handling
+
+The current system still struggles most on the hardest and most volatile days, which are likely where the biggest future gains can be found.
+
+Future Work
+
+Several future directions emerged from the project.
+
+Feature expansion
+test shorter-lag features such as lag_1
+expand the lag family more systematically
+revisit forecast-error lag features
+add richer rolling statistics and trend-sensitive features
+Holiday and seasonality redesign
+build explicit Christmas-period, Easter-period, summer-period, and New-Year-period features
+compare these against school-holiday flags
+evaluate whether broad seasonal markers are more robust than council-specific school break proxies
+Hard-day forecasting
+isolate and investigate spike days
+classify worst forecast days by type
+inspect whether the worst errors cluster around identifiable contexts
+design features specifically for difficult peak periods
+Adaptive modelling
+test shorter rolling training windows
+compare models trained on recent-only vs longer historical periods
+monitor degradation over time
+evaluate retraining frequency
+Operational features
+engineer labour-intensity or wage-efficiency features
+model covers as an alternative or complementary target
+explore whether staffing metrics can be forecast more directly
+Production-style improvements
+centralise config usage more completely
+add experiment tracking
+add tests for each stage of the pipeline
+package the system more cleanly for reuse across venues or clients
+How to Run the Project
+
+Clone the repository and install dependencies first.
+
+git clone <your-repo-url>
+cd hospitality-forecasting-system
+pip install -r requirements.txt
+
+Then run the full pipeline:
+
+python main.py
+
+This will:
+
+split raw files into sales and labour outputs
+build daily sales and labour datasets
+engineer forecasting features
+run baseline benchmarks
+evaluate the manual forecast
+train SARIMAX
+train XGBoost
+save metrics, predictions, and figures into the reports/ directory
+Portfolio Walkthrough Notebook
+
+The repository also includes a notebook:
+
+notebooks/portfolio_walkthrough.ipynb
+
+This notebook is intended as a guided overview of the project rather than the main execution mechanism. It walks through the business problem, processed data, feature engineering, baseline comparisons, model results, and key conclusions in a format suitable for portfolio review or interview discussion.
+
+Key Takeaways
+
+This project shows that forecasting in hospitality is not simply a matter of fitting a model once and reporting an error score. It requires:
+
+careful preprocessing of operational data
+meaningful benchmark comparisons
+domain-aware feature engineering
+attention to drift and changing conditions
+interpretation of performance in operational rather than purely statistical terms
+
+The strongest result of the project is not just that one model outperformed another. It is that the system exposed where forecasting succeeds, where it breaks, and where future modelling effort is most likely to matter.
+
+Disclaimer
+
+This repository uses anonymised and modified operational data for demonstration purposes only. No proprietary credentials or identifiable business information are included.
+
+The public version is intended to showcase pipeline design, forecasting methodology, and analytical reasoning in a portfolio context.
+
+
+---
+
+A couple of quick clarifications to your questions:
+
+The expanded `plots.py` now includes the extra plots I suggested:
+- rolling MAE comparison
+- feature importance
+- residual distribution
+- residuals over time
+- actual vs multiple predictions
+
+And yes, the README now explicitly includes:
+- 2026 validation degradation
+- possible overfitting / limited generalisation
+- future lag expansions such as `lag_1`
+- broader seasonal-holiday flags like Christmas/Easter/summer
+- focused study of spike days and hardest forecast days
+
+The next best thing to do after this is `requirements.txt`, because once that exists, the repo becomes much more complete.
