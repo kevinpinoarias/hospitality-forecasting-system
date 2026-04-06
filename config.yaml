@@ -1,0 +1,115 @@
+# --------------------------------------------------
+# PROJECT CONFIGURATION
+# --------------------------------------------------
+
+project:
+  name: hospitality-forecasting-system
+  timezone: Europe/London
+  council: Glasgow
+  uk_subdivision: SCT
+
+# --------------------------------------------------
+# PATHS
+# --------------------------------------------------
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  features_dir: data/features
+  reports_dir: reports
+  results_dir: reports/results
+  figures_dir: reports/figures
+  cache_dir: data_cache/open_meteo
+
+# --------------------------------------------------
+# DATA FILES
+# --------------------------------------------------
+
+data:
+  sales_folder: data/interim/Sales
+  labour_folder: data/interim/Labour
+
+  daily_sales_master: data/processed/sales/daily_sales_totals_master.csv
+  daily_labour_master: data/processed/labour/daily_labour_totals_master.csv
+
+  engineered_features: data/features/engineered_features.csv
+  model_features: data/features/model_features.csv
+
+# --------------------------------------------------
+# TRAIN / VALIDATION SPLITS
+# --------------------------------------------------
+
+splits:
+  baseline_split_date: "2024-11-01"
+  sarimax_split_date: "2024-11-01"
+  xgboost_split_date: "2024-12-31"
+
+# --------------------------------------------------
+# FEATURES
+# --------------------------------------------------
+
+features:
+  final_model_features:
+    - forecast_sales
+    - month_sin
+    - day_of_week
+    - day_of_year_cos
+    - day_of_year_sin
+    - day_of_year
+    - month_cos
+    - month
+    - day_of_week_sin
+    - is_bank_holiday
+    - days_to_bank_holiday
+    - days_since_payday
+    - is_payday_window_pm3
+    - is_long_weekend
+    - is_heavy_rain
+
+# --------------------------------------------------
+# WEATHER SETTINGS
+# --------------------------------------------------
+
+weather:
+  latitude: 55.860852
+  longitude: -4.252403
+  timezone: Europe/London
+
+  warm_temp_c: 18.0
+  hot_scotland_c: 20.0
+  heavy_rain_mm: 5.0
+  anomaly_window: 14
+
+# --------------------------------------------------
+# SARIMAX CONFIG
+# --------------------------------------------------
+
+sarimax:
+  order: [1, 1, 1]
+  seasonal_order: [0, 1, 1, 7]
+
+  exog_features:
+    - forecast_sales
+    - lag_7_sales
+
+# --------------------------------------------------
+# XGBOOST CONFIG
+# --------------------------------------------------
+
+xgboost:
+  n_estimators: 300
+  learning_rate: 0.05
+  max_depth: 4
+  subsample: 0.8
+  colsample_bytree: 0.8
+  objective: reg:squarederror
+  random_state: 42
+
+# --------------------------------------------------
+# ERROR ANALYSIS / REPORTING
+# --------------------------------------------------
+
+analysis:
+  best_window_days: 56
+  top_n_error_days: 20
