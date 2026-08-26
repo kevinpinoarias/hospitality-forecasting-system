@@ -452,24 +452,3 @@ Disclaimer
 This repository uses anonymised and modified operational data for demonstration purposes only. No proprietary credentials or identifiable business information are included.
 
 The public version is intended to showcase pipeline design, forecasting methodology, and analytical reasoning in a portfolio context.
-
-
----
-
-A couple of quick clarifications to your questions:
-
-The expanded `plots.py` now includes the extra plots I suggested:
-- rolling MAE comparison
-- feature importance
-- residual distribution
-- residuals over time
-- actual vs multiple predictions
-
-And yes, the README now explicitly includes:
-- 2026 validation degradation
-- possible overfitting / limited generalisation
-- future lag expansions such as `lag_1`
-- broader seasonal-holiday flags like Christmas/Easter/summer
-- focused study of spike days and hardest forecast days
-
-The next best thing to do after this is `requirements.txt`, because once that exists, the repo becomes much more complete.
