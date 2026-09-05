@@ -13,10 +13,12 @@ Outputs
 - reports/results/best_8_week_window_metrics.csv
 - reports/figures/xgboost_forecast_vs_actual.png
 - reports/figures/best_8_week_window.png
+- models/xgboost_model.json
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -38,9 +40,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INPUT_PATH = PROJECT_ROOT / "data" / "features" / "model_features.csv"
 RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+MODEL_DIR = PROJECT_ROOT / "models"
+MODEL_PATH = MODEL_DIR / "xgboost_model.json"
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------
@@ -188,6 +193,10 @@ def run_xgboost(split_date: str = DEFAULT_SPLIT_DATE) -> tuple[pd.DataFrame, pd.
         eval_set=[(X_valid, y_valid)],
         verbose=False,
     )
+
+    model.save_model(MODEL_PATH)
+    with open(MODEL_DIR / "xgboost_model_metadata.json", "w", encoding="utf-8") as f:
+        json.dump({"features": FEATURES, "target": TARGET_COL}, f, indent=2)
 
     preds = model.predict(X_valid)
     preds = pd.Series(preds, index=valid.index)

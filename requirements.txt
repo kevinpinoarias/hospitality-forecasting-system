@@ -1,12 +1,8 @@
 pandas>=2.0
 numpy>=1.24
-matplotlib>=3.7
-scikit-learn>=1.3
-statsmodels>=0.14
+scikit-learn>=1.3  # required at runtime by xgboost's XGBRegressor wrapper
 xgboost>=2.0
 holidays>=0.36
 requests>=2.31
-PyYAML>=6.0
-openpyxl>=3.1
-jupyter>=1.0
-notebook>=7.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
