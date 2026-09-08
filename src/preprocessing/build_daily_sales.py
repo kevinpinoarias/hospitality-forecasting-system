@@ -22,6 +22,21 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------
+# Known closure days
+# ---------------------------------------------------------------------
+
+# The venue is confirmed always closed on these dates (month, day) - the raw
+# exports simply have no row at all for them, which is indistinguishable
+# from "unknown" unless handled explicitly. Since we know the true sales
+# figure for a closure day (zero), this fills them in rather than leaving a
+# gap that downstream code would otherwise have to guess about or skip.
+KNOWN_CLOSURE_MONTH_DAYS = {
+    (12, 25),  # Christmas Day
+    (1, 1),    # New Year's Day
+}
+
+
+# ---------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------
 
@@ -114,6 +129,54 @@ def build_daily_from_week(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def fill_known_closure_days(master: pd.DataFrame) -> pd.DataFrame:
+    """
+    Insert an explicit zero-sales/zero-forecast row for each known closure
+    date (Christmas Day, New Year's Day) falling inside the dataset's date
+    range, if it isn't already present. This does not guess a value - it
+    records a fact (the venue was closed, so sales were zero) rather than
+    leaving a silent gap that looks identical to "unknown."
+    """
+    out = master.copy()
+    out["date"] = pd.to_datetime(out["date"])
+
+    existing_dates = set(out["date"].dt.date)
+    min_year, max_year = out["date"].dt.year.min(), out["date"].dt.year.max()
+
+    department = out["department"].mode().iloc[0] if "department" in out.columns and len(out) else None
+
+    new_rows = []
+    for year in range(min_year, max_year + 1):
+        for month, day in KNOWN_CLOSURE_MONTH_DAYS:
+            closure_date = pd.Timestamp(year=year, month=month, day=day)
+            if not (out["date"].min() <= closure_date <= out["date"].max()):
+                continue
+            if closure_date.date() in existing_dates:
+                continue
+
+            row = {
+                "date": closure_date,
+                "total_sales": 0.0,
+                "forecast_sales": 0.0,
+                "source_file": "synthetic_known_closure_day",
+            }
+            if department is not None:
+                row["department"] = department
+            new_rows.append(row)
+
+    if not new_rows:
+        return out
+
+    out = pd.concat([out, pd.DataFrame(new_rows)], ignore_index=True)
+    out = out.sort_values("date").reset_index(drop=True)
+
+    print(f"Filled {len(new_rows)} known closure day(s) with zero sales:")
+    for row in new_rows:
+        print(f"  {row['date'].date()}")
+
+    return out
+
+
 # ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
@@ -167,6 +230,7 @@ def build_daily_sales(input_dir: Path = INPUT_DIR) -> pd.DataFrame:
         raise ValueError("No daily sales datasets were built successfully.")
 
     master = pd.concat(all_days, ignore_index=True)
+    master = fill_known_closure_days(master)
 
     master_out = OUTPUT_DIR / "daily_sales_totals_master.csv"
     master.to_csv(master_out, index=False)

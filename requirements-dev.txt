@@ -7,5 +7,18 @@
 
 matplotlib>=3.7
 statsmodels>=0.14
+tabulate>=0.9
+google-genai>=1.0
+python-dotenv>=1.0
+langchain>=1.4
+langchain-google-genai>=4.4
+gradio>=6.0
 jupyter>=1.0
 notebook>=7.0
+wandb>=0.19
+torch>=2.2
+
+# The line above installs a working CPU-only torch build by default - fine
+# for this project's model sizes. If you have an NVIDIA GPU and want to use
+# it, reinstall with the matching CUDA build instead, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126

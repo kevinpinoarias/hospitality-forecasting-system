@@ -1,0 +1,11 @@
+# Dependencies for the Gradio chat front-end (src/assistant/app.py) only -
+# deliberately separate from requirements.txt (the API) and
+# requirements-dev.txt (the training pipeline), since this app needs
+# neither XGBoost/pandas nor the notebook/plotting stack.
+
+gradio>=6.0
+langchain>=1.4
+langchain-google-genai>=4.4
+google-genai>=1.0
+python-dotenv>=1.0
+requests>=2.31

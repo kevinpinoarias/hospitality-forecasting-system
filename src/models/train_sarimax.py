@@ -23,6 +23,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
+from src.evaluation.experiment_tracking import log_run
+
 
 # ---------------------------------------------------------------------
 # Paths
@@ -253,6 +255,18 @@ def run_sarimax(
 
     figure_path = FIGURES_DIR / "sarimax_forecast_vs_actual.png"
     plot_predictions(y_test, y_pred, figure_path)
+
+    log_run(
+        model_name="sarimax",
+        config={
+            "split_date": split_date,
+            "order": str(SARIMAX_ORDER),
+            "seasonal_order": str(SARIMAX_SEASONAL_ORDER),
+            "exog_features": list(exog_train.columns),
+        },
+        metrics=metrics,
+        figure_path=figure_path,
+    )
 
     print(f"\nSARIMAX MAE:  {metrics['MAE']:.2f}")
     print(f"SARIMAX RMSE: {metrics['RMSE']:.2f}")

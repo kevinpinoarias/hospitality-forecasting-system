@@ -89,3 +89,44 @@ def days_beyond_training_data(df: pd.DataFrame, target_date: dt.date) -> int:
     max_date = df[DATE_COL].max().date()
     delta = (target_date - max_date).days
     return max(0, delta)
+
+
+def equivalent_weekday_last_year(target_date: dt.date) -> dt.date:
+    """
+    The date last year with the same weekday AND the same position within
+    the month (e.g. "the 2nd Saturday of September") - not a naive 365-day
+    offset, which almost always lands on a different weekday (a normal
+    year is 52 weeks + 1 day). Demand at a hospitality venue is driven far
+    more by day-of-week than by the exact calendar date, so this is the
+    meaningful comparison, not "exactly 365 days ago".
+
+    Falls back to the last matching weekday in the month if the same
+    occurrence (e.g. a 5th Saturday) doesn't exist last year.
+    """
+    weekday = target_date.weekday()
+    occurrence = (target_date.day - 1) // 7 + 1
+
+    prev_year = target_date.year - 1
+    first_of_month = dt.date(prev_year, target_date.month, 1)
+    days_until_weekday = (weekday - first_of_month.weekday()) % 7
+    first_occurrence = first_of_month + dt.timedelta(days=days_until_weekday)
+    result = first_occurrence + dt.timedelta(weeks=occurrence - 1)
+
+    if result.month != target_date.month:
+        result -= dt.timedelta(weeks=1)
+
+    return result
+
+
+def actual_sales_on(df: pd.DataFrame, target_date: dt.date) -> float | None:
+    """
+    Real realised sales for an exact past date, if it exists in the
+    historical data. Returns None if that date isn't in the dataset
+    (e.g. it's a future date, or falls in one of the small number of
+    genuine gaps) - never estimated or interpolated, only a real figure
+    or nothing.
+    """
+    match = df[df[DATE_COL].dt.date == target_date]
+    if match.empty:
+        return None
+    return float(match.iloc[0]["total_sales"])

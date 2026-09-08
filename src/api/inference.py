@@ -22,9 +22,21 @@ from src.features.build_features import (
     add_payday_features,
     add_time_features,
 )
-from src.api.history import HistoryCache, days_beyond_training_data, weekday_seasonal_lookup
-from src.api.schemas import PredictResult, ScenarioPredictions
-from src.api.weather import resolve_is_heavy_rain
+from src.api.history import (
+    HistoryCache,
+    actual_sales_on,
+    days_beyond_training_data,
+    equivalent_weekday_last_year,
+    weekday_seasonal_lookup,
+)
+from src.preprocessing.build_daily_sales import KNOWN_CLOSURE_MONTH_DAYS
+from src.api.schemas import (
+    HistoricalComparison,
+    PredictResult,
+    ScenarioPredictions,
+    WeatherDetails,
+)
+from src.api.weather import categorize_rain, resolve_is_heavy_rain
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_PATH = PROJECT_ROOT / "models" / "xgboost_model.json"
@@ -68,7 +80,8 @@ class ModelService:
         forecast_sales_used, forecast_sales_source = self._resolve_forecast_sales(
             target_date, forecast_sales
         )
-        resolved_rain, rain_source = resolve_is_heavy_rain(target_date, self.history.df)
+        rain_info = resolve_is_heavy_rain(target_date, self.history.df)
+        resolved_rain = rain_info["is_heavy_rain"]
 
         feature_row = _build_feature_row(target_date)
         feature_row["forecast_sales"] = forecast_sales_used
@@ -83,15 +96,35 @@ class ModelService:
         rain_pred = float(self.model.predict(rain_row[self.features])[0])
         best_estimate = rain_pred if resolved_rain == 1 else dry_pred
 
+        weather_details = None
+        if rain_info["rain_mm"] is not None:
+            weather_details = WeatherDetails(
+                expected_rain_mm=rain_info["rain_mm"],
+                expected_rain_description=categorize_rain(rain_info["rain_mm"]),
+                expected_max_temp_c=rain_info["max_temp_c"],
+            )
+
+        last_week = actual_sales_on(self.history.df, target_date - dt.timedelta(days=7))
+        last_year = actual_sales_on(self.history.df, equivalent_weekday_last_year(target_date))
+        actual_sales = actual_sales_on(self.history.df, target_date)
+
         return PredictResult(
             date=target_date,
+            day_of_week=target_date.strftime("%A"),
+            is_known_closure_day=(target_date.month, target_date.day) in KNOWN_CLOSURE_MONTH_DAYS,
             forecast_sales_used=forecast_sales_used,
             forecast_sales_source=forecast_sales_source,
-            rain_data_source=rain_source,
+            rain_data_source=rain_info["source"],
             days_beyond_training_data=days_beyond_training_data(self.history.df, target_date),
             predictions=ScenarioPredictions(
                 dry_scenario=dry_pred,
                 heavy_rain_scenario=rain_pred,
                 best_estimate=best_estimate,
             ),
+            weather=weather_details,
+            historical_comparison=HistoricalComparison(
+                same_day_last_week=last_week,
+                same_day_last_year=last_year,
+            ),
+            actual_sales=actual_sales,
         )

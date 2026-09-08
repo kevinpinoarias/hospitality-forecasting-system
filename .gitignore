@@ -193,3 +193,7 @@ reports/
 # Not committed: the API is meant to be run against a freshly trained model
 # (or the live deployment), not a stale checked-in one.
 models/
+
+# Local W&B run cache - the actual experiment records live on wandb.ai,
+# this is just local metadata/logs from each run.
+wandb/

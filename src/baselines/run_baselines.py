@@ -24,6 +24,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.evaluation.experiment_tracking import log_run
+
 
 # ---------------------------------------------------------------------
 # Paths
@@ -210,6 +212,25 @@ def run_baselines(split_date: str = DEFAULT_SPLIT_DATE) -> tuple[pd.DataFrame, p
 
     metrics_path = OUTPUT_DIR / "baseline_metrics.csv"
     metrics_df.to_csv(metrics_path, index=False)
+
+    # Each baseline gets logged as its own run, so it's directly comparable
+    # to SARIMAX/XGBoost runs in the same W&B project rather than bundled
+    # into one row.
+    baseline_configs = {
+        "naive": {"lag_days": 1},
+        "seasonal_naive": {"lag_days": 7},
+        "roll7": {"window_days": 7},
+        "roll14": {"window_days": 14},
+        "roll28": {"window_days": 28},
+        "weekday_average": {},
+    }
+    for model_name, model_metrics in metrics.items():
+        log_run(
+            model_name=model_name,
+            config={"split_date": str(split_date.date()), **baseline_configs[model_name]},
+            metrics={k: v for k, v in model_metrics.items() if k != "n"},
+            job_type="baseline",
+        )
 
     prediction_cols = [
         DATE_COL,

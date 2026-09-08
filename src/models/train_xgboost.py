@@ -30,6 +30,7 @@ from xgboost import XGBRegressor
 
 from src.evaluation.metrics import regression_metrics
 from src.evaluation.plots import plot_forecast_vs_actual, plot_best_window_comparison
+from src.evaluation.experiment_tracking import log_run
 
 
 # ---------------------------------------------------------------------
@@ -243,6 +244,17 @@ def run_xgboost(split_date: str = DEFAULT_SPLIT_DATE) -> tuple[pd.DataFrame, pd.
         ai_col="ai_prediction",
         title="Selected 8-week period: AI forecast tracked actual demand more closely than the manual forecast",
         output_path=FIGURES_DIR / "best_8_week_window.png",
+    )
+
+    log_run(
+        model_name="xgboost",
+        config={
+            "split_date": split_date,
+            "n_features": len(FEATURES),
+            **model.get_params(),
+        },
+        metrics=metrics,
+        figure_path=FIGURES_DIR / "xgboost_forecast_vs_actual.png",
     )
 
     print(f"AI Model MAPE: {metrics['MAPE']:.2f}%")
