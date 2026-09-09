@@ -17,6 +17,7 @@ jupyter>=1.0
 notebook>=7.0
 wandb>=0.19
 torch>=2.2
+pytest>=8.0
 
 # The line above installs a working CPU-only torch build by default - fine
 # for this project's model sizes. If you have an NVIDIA GPU and want to use

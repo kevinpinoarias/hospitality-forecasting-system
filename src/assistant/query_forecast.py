@@ -34,7 +34,11 @@ from src.assistant.sales_patterns_data import get_sales_and_forecast_patterns
 
 load_dotenv()
 
-API_BASE_URL = "https://hospitality-forecasting-api-56220375160.us-central1.run.app"
+# Defaults to a local API instance rather than the public portfolio's live
+# deployment, so product-side work never silently depends on (or calls out
+# to) that separate, public service. Override with a real product API URL
+# once one is deployed.
+API_BASE_URL = os.environ.get("FORECAST_API_BASE_URL") or "http://localhost:8000"
 MODEL = "gemini-3.1-flash-lite"
 
 SYSTEM_INSTRUCTION = f"""

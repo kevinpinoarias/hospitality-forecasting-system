@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# Refuses a commit that stages anything under data/raw_private/ - the
+# landing directory for real, unanonymised business exports (see
+# src/ingestion/anonymize_raw.py). data/raw_private/ is already gitignored,
+# so this only fires on a forced add (e.g. `git add -f`, or `git add -A`
+# after someone edits .gitignore) - a second, independent check rather than
+# relying on .gitignore alone.
+#
+# Install with:
+#   git config core.hooksPath scripts/git-hooks
+
+blocked=$(git diff --cached --name-only | grep -E '^data/raw_private/' || true)
+
+if [ -n "$blocked" ]; then
+    echo "COMMIT BLOCKED: staged file(s) under data/raw_private/ contain unanonymised raw data:" >&2
+    echo "$blocked" >&2
+    echo "" >&2
+    echo "This directory must never be committed - see src/ingestion/anonymize_raw.py." >&2
+    exit 1
+fi
+
+exit 0

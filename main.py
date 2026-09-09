@@ -2,18 +2,20 @@
 Main entry point for the hospitality forecasting portfolio project.
 
 Runs the full pipeline:
-1. Split raw files into sales and labour
-2. Build daily sales dataset
-3. Build daily labour dataset
-4. Build engineered and model-ready features
-5. Run baseline models
-6. Evaluate human forecast
-7. Train SARIMAX
-8. Train XGBoost
+1. Anonymise fresh raw exports
+2. Split raw files into sales and labour
+3. Build daily sales dataset
+4. Build daily labour dataset
+5. Build engineered and model-ready features
+6. Run baseline models
+7. Evaluate human forecast
+8. Train SARIMAX
+9. Train XGBoost
 """
 
 from __future__ import annotations
 
+from src.ingestion.anonymize_raw import anonymize_raw
 from src.preprocessing.split_sales_labour import split_sales_and_labour
 from src.preprocessing.build_daily_sales import build_daily_sales
 from src.preprocessing.build_daily_labour import build_daily_labour
@@ -25,28 +27,31 @@ from src.models.train_xgboost import run_xgboost
 
 
 def main() -> None:
-    print("\n[1/8] Splitting raw sales and labour files...")
+    print("\n[1/9] Anonymising fresh raw exports...")
+    anonymize_raw()
+
+    print("\n[2/9] Splitting raw sales and labour files...")
     split_sales_and_labour()
 
-    print("\n[2/8] Building daily sales dataset...")
+    print("\n[3/9] Building daily sales dataset...")
     build_daily_sales()
 
-    print("\n[3/8] Building daily labour dataset...")
+    print("\n[4/9] Building daily labour dataset...")
     build_daily_labour()
 
-    print("\n[4/8] Building feature datasets...")
+    print("\n[5/9] Building feature datasets...")
     build_feature_dataset()
 
-    print("\n[5/8] Running baseline models...")
+    print("\n[6/9] Running baseline models...")
     run_baselines()
 
-    print("\n[6/8] Evaluating human forecast...")
+    print("\n[7/9] Evaluating human forecast...")
     evaluate_human_forecast()
 
-    print("\n[7/8] Training SARIMAX...")
+    print("\n[8/9] Training SARIMAX...")
     run_sarimax()
 
-    print("\n[8/8] Training XGBoost...")
+    print("\n[9/9] Training XGBoost...")
     run_xgboost()
 
     print("\nPipeline completed successfully.")

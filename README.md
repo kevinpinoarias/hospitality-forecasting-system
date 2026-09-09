@@ -125,13 +125,13 @@ The raw files are processed through a staged workflow:
 
 The pipeline is organised into several stages.
 
-**1. Raw data ingestion**
+**1. Anonymisation**
 
-The portfolio version loads anonymised local raw files from the repository. The original private ingestion method is not reproduced publicly.
+Fresh raw exports land in `data/raw_private/` (gitignored, never committed) and are run through `src/ingestion/anonymize_raw.py` before anything else. This strips real business-identifying information - a `Site` column naming the venue, and a venue-specific brand-code prefix on `Department` values - using an allow-list of permitted output columns rather than a list of known-bad ones, so an unexpected new column in a future export is dropped by default rather than silently let through. Processing is incremental: a manifest tracks which source files (by content hash) have already been anonymised, so re-running after a new export lands only processes what's new. Only the anonymised output in `data/raw/` is ever tracked in git.
 
 **2. Splitting sales and labour**
 
-Weekly rota-style files are separated into sales and labour portions so they can be processed independently.
+Weekly rota-style files (now read from `data/raw/`) are separated into sales and labour portions so they can be processed independently.
 
 **3. Daily aggregation**
 
@@ -541,7 +541,13 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
-Then run the full pipeline:
+Install the pre-commit safety hook once, so a raw export can never be accidentally committed (see [Anonymisation](#pipeline-summary)):
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+Place fresh raw exports in `data/raw_private/` (gitignored - never committed), then run the full pipeline:
 
 ```bash
 python main.py
@@ -549,6 +555,7 @@ python main.py
 
 This will:
 
+- anonymise any not-yet-processed files in `data/raw_private/` into `data/raw/`
 - split raw files into sales and labour outputs
 - build daily sales and labour datasets
 - engineer forecasting features
