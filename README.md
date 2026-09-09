@@ -265,6 +265,14 @@ XGBoost was chosen because:
 - it handles mixed feature families naturally
 - it is often stronger than classical methods when the data generating process is operationally messy rather than purely statistical
 
+### Neural forecasters and experiment tracking
+
+Beyond SARIMAX and XGBoost, the project also trained an LSTM and a small Transformer (PyTorch) on the same feature set, for a fair comparison against a modern deep-learning approach - full results (including a multi-model leaderboard, spike-day accuracy, and business-impact comparison) are in the [portfolio walkthrough notebook](notebooks/portofolio_walkthrough.ipynb) below.
+
+Every model trained in this project - the six baselines, SARIMAX, XGBoost, the LSTM, and the Transformer - is logged as a run to a public [Weights & Biases](https://wandb.ai/) project:
+
+**[wandb.ai/kevin-pino-arias-three-body/hospitality-forecasting](https://wandb.ai/kevin-pino-arias-three-body/hospitality-forecasting)**
+
 ## Evaluation Metrics
 
 The project uses several metrics to assess forecasting quality.
