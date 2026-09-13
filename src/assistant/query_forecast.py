@@ -21,6 +21,7 @@ hallucination risk this step avoids by design.
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 from pathlib import Path
 
@@ -53,13 +54,17 @@ manager understand their sales forecasts. Speak naturally and
 conversationally, the way a helpful colleague would explain something -
 never use internal system field names or technical jargon in your answers
 (e.g. never say "historical weekday seasonal average", "days beyond
-training data", "observed" vs "forecast" weather data, or similar). These
-are implementation details the manager doesn't need to see - translate
+training data", "observed" vs "forecast" weather data, "backtest",
+"out-of-sample", "in-sample", "training data", or similar). These are
+implementation details the manager doesn't need to see - translate
 everything into plain language.
 
-You have three tools. get_forecast answers questions about one specific
-date's forecast - never invent a sales figure yourself, and never state a
-specific number that didn't come from a tool call. get_model_comparison
+You have four tools. get_forecast answers questions about one specific
+date's forecast; get_forecast_range does the same for every day in a
+period of up to 31 days (a weekend, a week, the run-up to Christmas) in
+one call - use it whenever a question covers more than one or two dates.
+Never invent a sales figure yourself, and never state a specific number
+that didn't come from a tool call. get_model_comparison
 returns the project's real evaluation results: the final model against the
 venue's manual forecast and the original XGBoost, how its accuracy holds up
 for dates further ahead, the business-impact simulation, and the earlier
@@ -75,8 +80,8 @@ accuracy, and the average pattern by day-of-week and by calendar month.
 Use it for anything like "which day earns the most", "what was our best
 week", "is December strong", or "which weekday do we forecast worst" -
 never try to answer these by mentally combining several get_forecast
-calls yourself. Same rule applies to all three tools: only state figures
-that came from a real tool call, or the one fixed figure given below.
+calls yourself. Same rule applies to every tool: only state figures that
+came from a real tool call, or the fixed figures given below.
 
 How to use the tool's response:
 
@@ -144,12 +149,48 @@ How to use the tool's response:
   - never substitute, estimate, or invent one, and never present a made-up
   number as if it were a real result.
 
-- Fair accuracy checks: if `prediction_source` is "in_sample", the model
-  had already learned from that day's real result, so its figure is not a
-  fair test of how accurate the forecast was - say so plainly instead of
-  presenting the comparison as a result. If it is "out_of_sample_backtest",
-  the figure is what the model predicted before seeing that day, so the
-  comparison is fair. Never mention these labels themselves.
+- Fair accuracy checks: if `prediction_source` is "model_had_seen_the_day",
+  the model had already learned from that day's real result, so its figure
+  is not a fair test of how accurate the forecast was - say so plainly
+  instead of presenting the comparison as a result. If it is
+  "made_before_the_day", the figure is what the model predicted before
+  seeing that day, so the comparison is fair - if that's worth saying, put
+  it as "the forecast was made without knowing how the day turned out".
+  Never use technical terms for this such as "backtest", "out-of-sample",
+  "in-sample" or "training data".
+
+- Day context: `day_context` lists the facts about the date that the model
+  took into account. When giving or explaining a forecast, mention the ones
+  that matter for that day, briefly and naturally - e.g. "it's the Saturday
+  right after payday", "it's a bank holiday weekend", "it's the day before
+  Christmas Day", "it falls in the school Christmas holidays", "it's a
+  midweek day, a couple of days before payday". Don't recite every field.
+  - `payday`: payday is the last working day of the month. Use the real
+    day counts and dates given; never work them out yourself.
+  - `part_of_weekend_trading` is true for Friday, Saturday and Sunday.
+  - `bank_holidays`: name holidays using the names given. A long weekend
+    is the weekend next to a Monday or Friday bank holiday.
+  - `school_holiday`: only mention it when it names a break. Only the
+    Christmas, Easter and summer breaks are tracked, so never say a date
+    is NOT in the school holidays.
+  - `recent_sales` (only present for past dates): the real average daily
+    sales over the previous week and fortnight.
+  - With `weather` present you can also mention sunshine
+    (`expected_sunshine_hours`), a warm spell (`warm_streak_days`), a day
+    that's `hot_for_scotland`, or one noticeably warmer or colder than the
+    previous fortnight (`temperature_vs_previous_fortnight_c`).
+  These are what the model considered, not measured effects: never claim
+  one of them caused a particular figure or a gap between forecast and
+  actual sales. Context is extra - it never replaces the weather rules
+  above, so a date with no weather outlook still gets both the dry and the
+  heavy-rain figure.
+
+- Several days: for a period, summarise rather than listing every field
+  for every day - give the daily figures (or a total if asked) and point
+  out the days that stand out and why. For days with a weather outlook,
+  give `predictions.best_estimate`; for days without one, give
+  `predictions.dry_scenario` and say once that heavy rain could change
+  those figures, quoting `heavy_rain_scenario` only if asked.
 
 If a question can't be answered from what the tool returns, say so
 plainly and naturally, rather than guessing or making something up.
@@ -195,7 +236,8 @@ MODEL_INTRO_MESSAGE = (
     "comparisons, experiments and neural-network results are written up in "
     "the project's README, experiment log and notebook, if you'd like the "
     "fuller picture.\n\n"
-    "Ask me for a forecast for any date, \"what if it rains\", how a "
+    "Ask me for a forecast for any date or week, what's special about a "
+    "day (payday, holidays, the weather), \"what if it rains\", how a "
     "forecast was worked out, how a past forecast compared to what actually "
     "happened, or how the different models tested here compared - I'll "
     "always ground my answers in the real system, never invent a figure."
@@ -228,8 +270,37 @@ def get_forecast(date: str, forecast_sales: float | None = None) -> dict:
     return response.json()["results"][0]
 
 
+MAX_RANGE_DAYS = 31
+
+
+def get_forecast_range(start_date: str, end_date: str) -> dict:
+    """Get the hospitality sales forecast for every day in a period, in one
+    call - use this instead of repeated get_forecast calls when a question
+    covers several dates (a weekend, a week, a holiday period).
+
+    Args:
+        start_date: the first date, in YYYY-MM-DD format.
+        end_date: the last date (inclusive), in YYYY-MM-DD format, at most
+            31 days after start_date.
+    """
+    start, end = dt.date.fromisoformat(start_date), dt.date.fromisoformat(end_date)
+    days = (end - start).days + 1
+    if days < 1 or days > MAX_RANGE_DAYS:
+        return {"error": f"The range must cover 1 to {MAX_RANGE_DAYS} days; this one covers {days}."}
+
+    dates = [(start + dt.timedelta(days=i)).isoformat() for i in range(days)]
+    response = requests.post(
+        f"{API_BASE_URL}/predict",
+        json={"requests": [{"date": d} for d in dates]},
+        timeout=90,  # same cold-start allowance as get_forecast, for a larger batch
+    )
+    response.raise_for_status()
+    return {"results": response.json()["results"]}
+
+
 TOOLS = {
     "get_forecast": get_forecast,
+    "get_forecast_range": get_forecast_range,
     "get_model_comparison": get_model_comparison,
     "get_sales_and_forecast_patterns": get_sales_and_forecast_patterns,
 }
@@ -246,7 +317,7 @@ def ask(question: str) -> str:
         model=MODEL,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
-            tools=[get_forecast, get_model_comparison, get_sales_and_forecast_patterns],
+            tools=[get_forecast, get_forecast_range, get_model_comparison, get_sales_and_forecast_patterns],
             # Executed manually below instead - see module docstring.
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         ),

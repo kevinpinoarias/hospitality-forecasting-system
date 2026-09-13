@@ -32,7 +32,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import InMemorySaver
 
 from src.assistant.model_comparison_data import get_model_comparison
-from src.assistant.query_forecast import MODEL, SYSTEM_INSTRUCTION, get_forecast
+from src.assistant.query_forecast import MODEL, SYSTEM_INSTRUCTION, get_forecast, get_forecast_range
 from src.assistant.sales_patterns_data import get_sales_and_forecast_patterns
 
 
@@ -66,9 +66,11 @@ wrong.
 Otherwise: only when a past date's tool result includes `actual_sales`
 that is NOT null, compare it to `predictions.best_estimate` and describe
 the gap in plain terms (e.g. "that was about £X higher/lower than
-actually came in") - unless `prediction_source` is "in_sample", in which
-case the model had already learned from that day's result: give both
-figures if asked, but say plainly it isn't a fair test of accuracy. If
+actually came in") - unless `prediction_source` is
+"model_had_seen_the_day", in which case the model had already learned from
+that day's result: give both figures if asked, but say plainly it isn't a
+fair test of accuracy. Never describe this with technical terms such as
+"backtest", "out-of-sample" or "in-sample". If
 `actual_sales` is null for that date, say plainly that no real sales
 figure is on record for it, and stop there - do not go on to estimate,
 guess, or otherwise imply a comparison happened. Only ever
@@ -90,7 +92,7 @@ def build_agent():
 
     return create_agent(
         model=llm,
-        tools=[get_forecast, get_model_comparison, get_sales_and_forecast_patterns],
+        tools=[get_forecast, get_forecast_range, get_model_comparison, get_sales_and_forecast_patterns],
         system_prompt=SYSTEM_INSTRUCTION + ACCURACY_CHECK_INSTRUCTION,
         checkpointer=InMemorySaver(),
     )

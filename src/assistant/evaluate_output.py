@@ -43,9 +43,19 @@ JARGON_TERMS = [
     "forecast_sales_source",
     "user_provided",
     "prediction_source",
-    "out_of_sample_backtest",
-    "in_sample",
+    "made_before_the_day",
+    "model_had_seen_the_day",
     "manager_forecast_on_record",
+    "backtest",
+    "out-of-sample",
+    "out of sample",
+    "in-sample",
+    "day_context",
+    "part_of_weekend_trading",
+    "within_3_days_of_payday",
+    "temperature_vs_previous_fortnight",
+    "warm_streak_days",
+    "hot_for_scotland",
 ]
 
 UNCERTAINTY_PHRASES = [
@@ -76,14 +86,21 @@ KNOWN_MODEL_FIGURES = [FINAL_MODEL_MAPE_PCT, FINAL_MODEL_PCT_BETTER_THAN_MANUAL,
 
 def extract_tool_data(messages) -> list[dict]:
     """Every real tool result seen so far in this conversation, decoded
-    from the raw JSON LangChain stores in each ToolMessage."""
+    from the raw JSON LangChain stores in each ToolMessage. A
+    get_forecast_range result is unpacked into one entry per day, so every
+    per-date check sees each day exactly as it would a get_forecast
+    result."""
     data = []
     for m in messages:
         if isinstance(m, ToolMessage):
             try:
-                data.append(json.loads(m.content))
+                decoded = json.loads(m.content)
             except (json.JSONDecodeError, TypeError):
                 continue
+            if isinstance(decoded, dict) and isinstance(decoded.get("results"), list):
+                data.extend(r for r in decoded["results"] if isinstance(r, dict))
+            else:
+                data.append(decoded)
     return data
 
 
@@ -206,6 +223,7 @@ NO_ACTUAL_SALES_NEGATION_WORDS = [
     "don't have", "do not have", "doesn't have", "does not have",
     "no record", "not on record", "no data", "not available",
     "can't calculate", "cannot calculate", "unable to", "isn't a", "isn't any",
+    "no real", "there's no", "there is no", "can't say", "can't tell",
 ]
 
 
@@ -263,6 +281,10 @@ def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict])
 
     issues = []
     claimed = extract_numeric_claims(answer_text)
+    # A summary of a whole period legitimately gives one figure per day
+    # without a weather outlook (the dry-weather one) and mentions rain once,
+    # so "present both alternatives" is only required for a few dates.
+    few_dates = len({td.get("date") for td in tool_data if "predictions" in td}) <= 3
 
     for td in tool_data:
         preds = td.get("predictions") or {}
@@ -284,7 +306,7 @@ def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict])
                 f"Weather was known for {td['date']}, but response presents both the dry "
                 f"({dry:.2f}) and heavy-rain ({rain:.2f}) figures - should resolve to one number."
             )
-        if not weather_known and not (dry_mentioned and rain_mentioned):
+        if few_dates and not weather_known and not (dry_mentioned and rain_mentioned):
             issues.append(
                 f"Weather was unknown for {td['date']}, but response doesn't clearly present "
                 f"both the dry ({dry:.2f}) and heavy-rain ({rain:.2f}) alternatives."
@@ -305,6 +327,17 @@ TEST_CASES = [
         ],
     },
     {"name": "far future - both scenarios", "turns": ["What's the forecast for 2027-06-01?"]},
+    {
+        "name": "day context - payday and holidays",
+        # The day after an early (Friday) payday, which the model's own
+        # payday feature counts from the previous month - the context must
+        # give the real "1 day after payday".
+        "turns": ["What's the forecast for 2026-10-31, and is there anything special about that day?"],
+    },
+    {
+        "name": "several days - Christmas week",
+        "turns": ["Give me the forecast for 21 to 27 December 2026 and point out anything unusual about those days."],
+    },
     {
         "name": "accuracy check with no actual_sales on record",
         # A real, live bug found by manual testing (2026-09-08): the

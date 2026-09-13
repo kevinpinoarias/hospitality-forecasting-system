@@ -476,8 +476,9 @@ curl -X POST https://hospitality-forecasting-api-56220375160.us-central1.run.app
   - `forecast_sales` (the manual/operational forecast for that day) is optional. If omitted, a past date uses the manager's forecast on record, and a future date a weekday + seasonal-window historical average rather than a blank, since a real prediction still needs *some* value for it.
   - For a date beyond the historical data, the model's recent-sales inputs are filled from the same kind of historical average, and its weather inputs (temperature, rain, sunshine, and the previous fortnight's temperatures) from a live Open-Meteo forecast or observation where one exists, historical averages otherwise - with automatic retry and fallback if the live weather call fails. This is the approach [Series 18](docs/EXPERIMENT_LOG.md#series-18--serving-the-final-model-beyond-the-end-of-the-data) validated, built by the same code (`src/features/serving_features.py`), which reuses the training pipeline's own feature functions.
   - Each result includes a **dry-day scenario**, a **heavy-rain scenario**, and a resolved **best estimate**, plus metadata on where each input came from (`forecast_sales_source`, `rain_data_source`) and how far the requested date sits beyond the training data (`days_beyond_training_data`), so a caller can judge how much to trust it.
-  - `prediction_source` says where the best estimate comes from. For a past date covered by the pipeline's backtest it is `out_of_sample_backtest`: what the model predicted *before* it saw that day, so comparing it with `actual_sales` is a fair test. A past date the served model was trained on is `in_sample`, and a future date `forecast`.
-  - When a real weather outlook is available (not the historical-average fallback), the response also includes the actual `weather` figures used (`expected_rain_mm`, `expected_max_temp_c`) - `null` otherwise, since there's no single real figure to report that far out.
+  - `prediction_source` says where the best estimate comes from. For a past date covered by the pipeline's backtest it is `made_before_the_day`: the out-of-sample prediction the model made *before* it saw that day, so comparing it with `actual_sales` is a fair test. A past date the served model was trained on is `model_had_seen_the_day`, and a future date `forecast`.
+  - When a real weather outlook is available (not the historical-average fallback), the response also includes the actual `weather` figures used - rain, maximum temperature, sunshine, whether it counts as hot for Scotland, how it compares with the previous fortnight, and any warm spell - `null` otherwise, since there's no single real figure to report that far out.
+  - `day_context` spells out, as plain facts, what the model took into account about the date: the last and next payday and how many days away they are, the previous and next Scottish bank holiday by name and whether it's a long weekend, any Glasgow school break, whether it's a Friday-to-Sunday weekend trading day, and - for past dates only - the real average daily sales over the week and fortnight before. It is built from the same feature row the prediction used (`src/api/day_context.py`).
   - `historical_comparison` returns the real realised sales for the same day the previous week and the same day the previous year, when those exact dates exist in the historical data - `null` for whichever isn't available, never estimated.
 
 ### Running the API locally
@@ -507,9 +508,9 @@ https://hospitality-forecasting-assistant-56220375160.us-central1.run.app
 
 > Same cold-start note as the API above: this also scales to zero when idle, so the first message can take 20-45 seconds.
 
-It has three tools, all grounded in real, already-computed data - it never invents a figure:
+It has four tools, all grounded in real, already-computed data - it never invents a figure:
 
-- **`get_forecast`** - the same `/predict` API above, in plain language: a forecast for any date, "what if it rains", how a forecast compares to what actually happened (and it knows the venue is closed on Christmas Day and New Year's Day, so it won't present those as real forecasting misses).
+- **`get_forecast`** and **`get_forecast_range`** - the same `/predict` API above, in plain language, for one date or a period of up to 31 days: a forecast, what's special about the day (payday, bank and school holidays, weekend trading, the weather), "what if it rains", and how a forecast compares to what actually happened (it knows the venue is closed on Christmas Day and New Year's Day, so it won't present those as real forecasting misses).
 - **`get_model_comparison`** - the real evaluation results: the final model against the manual forecast and the original XGBoost, how its accuracy holds up further ahead, the business-impact simulation, and the earlier comparison of every model tested (XGBoost, an LSTM, a Transformer, SARIMAX, and baselines), including spike days.
 - **`get_sales_and_forecast_patterns`** - which single day/week/weekend had the highest sales or the best/worst forecast accuracy, and the average pattern by day-of-week and by month.
 
@@ -580,6 +581,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 - compare these against school-holiday flags
 - evaluate whether broad seasonal markers are more robust than council-specific school break proxies
 - re-test a December correction once a third December of data exists
+- revisit the payday feature: `days_since_payday` always counts from the previous month's payday, so on the few days between an early payday (a Friday, say) and the end of the month it reads about 30 rather than 1-2, and those days miss the payday window flag (fixing it changes every backtest figure; the API's `day_context` already reports the real day counts)
 - extend the school-holiday table back to January 2024: the 2024 Easter and summer breaks are missing, so the model learns those breaks from 2025-26 only (a fix changes every backtest figure, so it means re-running the experiment log)
 
 **Hard-day forecasting**

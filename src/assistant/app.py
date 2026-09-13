@@ -40,11 +40,12 @@ demo = gr.ChatInterface(
     title="Hospitality Forecasting Assistant",
     description=(
         "Ask about the sales forecast in plain language - e.g. \"what's the forecast for next Saturday?\", "
-        "\"what if it rains?\", or \"how accurate was last week's forecast?\". Answers are grounded in a real, "
-        "live forecasting API - never invented."
+        "\"is anything special about this weekend?\", \"what if it rains?\", or \"how accurate was last "
+        "week's forecast?\". Answers are grounded in a real, live forecasting API - never invented."
     ),
     examples=[
         ["What's the forecast for next Saturday?"],
+        ["What's the forecast for next week, and is anything special about those days?"],
         ["What if it rains this weekend?"],
         ["How accurate was our forecast for last month?"],
     ],
