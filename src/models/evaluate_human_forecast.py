@@ -138,7 +138,21 @@ def calculate_sales_error_metrics(df: pd.DataFrame) -> dict:
 
 
 def calculate_labour_business_metrics(df: pd.DataFrame) -> dict:
-    """Calculate labour-related business impact metrics."""
+    """
+    Calculate labour-related business impact metrics, net of whatever
+    operational correction happened after the rota was set (e.g. sending
+    staff home mid-shift once it's clear demand is softer than forecast).
+
+    This compares the wage FORECAST directly to ACTUAL realised wages, so
+    it answers "how much more/less did we end up paying than the rota
+    budgeted for" - a real cash-flow number, but not a clean read on
+    forecast quality by itself: the better a venue is at correcting in
+    real time, the further actual wages drop below the original budget,
+    which makes this "overforecast" figure larger even though real money
+    was saved. See calculate_implied_labour_metrics for a version that
+    isolates the forecast's own planning error from that operational
+    correction.
+    """
     results = df.copy()
 
     results["sales_error"] = results["forecast_sales"] - results["total_sales"]
@@ -171,10 +185,10 @@ def calculate_labour_business_metrics(df: pd.DataFrame) -> dict:
     )
 
     return {
-        "Total overforecasted wages (£)": round(total_overforecasted_wages, 2),
+        "Total overforecasted wages, net of correction (£)": round(total_overforecasted_wages, 2),
         "Total underforecasted wages (£)": round(total_underforecasted_wages, 2),
         "Total overforecasted sales (£)": round(total_overforecasted_sales, 2),
-        "£ wasted per £1 overforecasted sales": round(pounds_wasted_per_pound_overforecast_sales, 4),
+        "£ wasted per £1 overforecasted sales, net of correction": round(pounds_wasted_per_pound_overforecast_sales, 4),
         "Overstaffed days": overstaffed_days,
         "Understaffed days": understaffed_days,
         "Average wasted wages on overstaffed days (£)": round(avg_wasted_wages_overstaffed_days, 2),
@@ -182,12 +196,65 @@ def calculate_labour_business_metrics(df: pd.DataFrame) -> dict:
     }
 
 
+def calculate_implied_labour_metrics(df: pd.DataFrame) -> dict:
+    """
+    Estimate the labour cost and hours the human forecast originally
+    intended to allocate to demand that never materialised, using only
+    forecast-side figures - never actual wages or hours.
+
+    Why not just compare forecast to actual (see
+    calculate_labour_business_metrics above): actual wages/hours already
+    reflect real-time operational correction, so a forecast-vs-actual
+    comparison conflates two different things - the sales forecast's own
+    error, and how well the venue corrected for it afterwards - and can
+    make "waste" look smaller precisely when correction is more
+    aggressive, which is backwards from what the number should mean.
+
+    Instead: derive a £-per-sale and hours-per-sale ratio purely from
+    forecast data (what the human planning process itself believes it
+    needs per £1 of sales), then apply that ratio to the sales
+    overforecast - a clean, uncorrectable figure, since a customer who
+    never shows up can't later be sent home. This estimates what the
+    forecast's own logic would have allocated to serve demand that never
+    happened, independent of any mitigation that happened afterwards.
+
+    Also reports how often (and by how much) actual hours exceeded the
+    planned rota, not just fell short of it - a rising rate here signals
+    a labour budget being cut past what's operationally sustainable,
+    rather than a genuine efficiency gain.
+    """
+    valid = df[df["forecast_sales"] > 0]
+
+    wage_ratio = valid["forecast_wages"].sum() / valid["forecast_sales"].sum()
+    hours_ratio = valid["forecast_hours"].sum() / valid["forecast_sales"].sum()
+
+    overforecast_sales = (df["forecast_sales"] - df["total_sales"]).clip(lower=0).sum()
+
+    implied_overforecast_wages = overforecast_sales * wage_ratio
+    implied_overforecast_hours = overforecast_sales * hours_ratio
+
+    hours_over_plan = (df["total_hours"] - df["forecast_hours"]).clip(lower=0)
+    days_over_plan = int((df["total_hours"] > df["forecast_hours"]).sum())
+    pct_days_over_plan = (days_over_plan / len(df) * 100) if len(df) else 0.0
+
+    return {
+        "Forecast wage £ needed per £1 sale": round(wage_ratio, 4),
+        "Forecast hours needed per £1 sale": round(hours_ratio, 5),
+        "Implied wages allocated to over-forecasted sales (£)": round(implied_overforecast_wages, 2),
+        "Implied hours allocated to over-forecasted sales": round(implied_overforecast_hours, 2),
+        "Days actual hours exceeded the planned rota": days_over_plan,
+        "% of days actual hours exceeded the planned rota": round(pct_days_over_plan, 2),
+        "Total hours worked beyond the planned rota": round(hours_over_plan.sum(), 2),
+    }
+
+
 def build_metrics_table(df: pd.DataFrame, label: str) -> pd.DataFrame:
-    """Create one metrics table combining sales and labour metrics."""
+    """Create one metrics table combining sales, labour, and implied labour metrics."""
     sales_metrics = calculate_sales_error_metrics(df)
     labour_metrics = calculate_labour_business_metrics(df)
+    implied_metrics = calculate_implied_labour_metrics(df)
 
-    combined = {"dataset": label, **sales_metrics, **labour_metrics}
+    combined = {"dataset": label, **sales_metrics, **labour_metrics, **implied_metrics}
     return pd.DataFrame([combined])
 
 
@@ -202,9 +269,14 @@ def print_metrics_block(df: pd.DataFrame, label: str = "DATASET") -> None:
     for key, value in sales_metrics.items():
         print(f"{key}: {value}")
 
-    print("\n--- LABOUR / BUSINESS METRICS ---")
+    print("\n--- LABOUR / BUSINESS METRICS (net of operational correction) ---")
     labour_metrics = calculate_labour_business_metrics(df)
     for key, value in labour_metrics.items():
+        print(f"{key}: {value}")
+
+    print("\n--- IMPLIED LABOUR METRICS (forecast-side planning ratio, uncorrected) ---")
+    implied_metrics = calculate_implied_labour_metrics(df)
+    for key, value in implied_metrics.items():
         print(f"{key}: {value}")
 
     print(f"\nRows: {len(df)}")
