@@ -34,11 +34,13 @@ from src.assistant.sales_patterns_data import get_sales_and_forecast_patterns
 
 load_dotenv()
 
-# Defaults to a local API instance rather than the public portfolio's live
-# deployment, so product-side work never silently depends on (or calls out
-# to) that separate, public service. Override with a real product API URL
-# once one is deployed.
-API_BASE_URL = os.environ.get("FORECAST_API_BASE_URL") or "http://localhost:8000"
+# Defaults to the live API on Cloud Run. Set FORECAST_API_BASE_URL to use
+# another instance, e.g. http://localhost:8000 for a local
+# `uvicorn src.api.main:app`.
+API_BASE_URL = (
+    os.environ.get("FORECAST_API_BASE_URL")
+    or "https://hospitality-forecasting-api-56220375160.us-central1.run.app"
+)
 MODEL = "gemini-3.1-flash-lite"
 
 SYSTEM_INSTRUCTION = f"""

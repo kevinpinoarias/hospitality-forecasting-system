@@ -10,7 +10,7 @@ from pathlib import Path
 
 import wandb
 
-PROJECT_NAME = "hospitality-forecasting-product"
+PROJECT_NAME = "hospitality-forecasting"
 
 
 def log_run(
