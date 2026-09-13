@@ -9,6 +9,9 @@ predictions:
                               manual-forecast comparison)
     17 -> business impact
 
+Series 18 (serving the final model beyond the end of the data) needs no
+earlier output.
+
 Series 1-4 are skipped unless --include-1-4 is passed: Series 1's full
 algorithm sweep fits every model family including SARIMAX and Prophet and
 takes far longer than everything else combined. Their results are not
@@ -44,6 +47,7 @@ LATER_SERIES = [
     ("16", "run_series16_seed_bagging"),
     ("17", "run_series17_manual_forecast_comparison"),
     ("business", "run_business_impact"),
+    ("18", "run_series18_serving_horizon"),
 ]
 
 # Series 1-4 were built with their own CLIs; run them as subprocesses with

@@ -37,7 +37,7 @@ memory or scattered CSVs.
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
-python -m src.experiments.run_all_series     # Series 5-17 and business impact, in dependency order
+python -m src.experiments.run_all_series     # Series 5-18 and business impact, in dependency order
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
 ```
 
@@ -1654,16 +1654,125 @@ over-forecasting far less often (283 days rather than 362).
 - The figures are a simulation over historical days, not a measured
   outcome of deploying the model.
 
+## Series 18 — Serving the Final Model Beyond the End of the Data
+
+**Run**: 2026-09-13 · **Script**: `src/experiments/run_series18_serving_horizon.py`
+· **Raw data**: `series18_serving_horizon_predictions.csv`, `series18_summary.csv`
+
+### Context
+
+Promoting the final model to the live API raised a question no earlier
+series answers. Series 1-17 score every day with its real recent history
+available: the lag and rolling features read the actual sales of the days
+before it, and the weather features read the weather that actually
+happened. A live forecast for a date weeks ahead has neither - and the
+public API's data stops at a fixed date (2026-09-06), so almost every
+request it receives is for a date beyond it. The original 15-feature
+XGBoost never had this problem: it needs only the date, the manager's
+forecast and a rain flag.
+
+Series 3 tested feeding a model's own predictions back as lag inputs, for
+single-seed CatBoost out to 30 days. This series tests the final model as
+the API actually serves it, out to 180 days, using the serving code itself
+(`src/features/serving_features.py`), so the figures describe what is
+deployed rather than a re-implementation of it.
+
+### Method
+
+For each rolling-origin fold whose origin has 180 days of data after it -
+8 origins, 2025-01-15 to 2026-03-11:
+
+1. Train the final model (25-seed log1p CatBoost, 38 features) and the
+   original XGBoost on every day before the origin.
+2. Lay out the 180 days after the origin as the API would see them on the
+   origin date. Weather for the first 16 days is the weather that
+   actually happened, standing in for a live forecast; after that, each
+   weather value is the weekday/season median of the training history.
+   Where no manager's forecast is supplied, `forecast_sales` is the same
+   kind of median (the API's existing fallback).
+3. Fill the lag and rolling features for days after the origin in two
+   ways:
+   - **recursive**: each day's sales is the model's own prediction, fed
+     forward day by day (Series 3's approach);
+   - **seasonal**: each day's sales is its weekday/season median.
+4. Score every day twice: with the manager's real forecast supplied as
+   `forecast_sales`, and without it. The final model with every real
+   input available (Series 16's conditions) is included as the ceiling.
+
+Scored days are the days in each window that belong to the experiment
+dataset, as in every other series: 1,425 day-scores in total. Windows
+from different origins overlap, so figures are pooled over day-scores
+rather than averaged per fold.
+
+### Results
+
+**MAE (£) by days ahead of the last day with real data**
+
+| | 1-7 | 8-16 | 17-30 | 31-60 | 61-90 | 91-180 | All 180 |
+|---|---|---|---|---|---|---|---|
+| Day-scores | 56 | 65 | 104 | 240 | 240 | 720 | 1,425 |
+| Manual forecast | 1,104 | 949 | 1,038 | 1,118 | 1,022 | 1,108 | 1,082 |
+| Final model, every real input (ceiling) | 830 | 916 | 910 | 982 | 871 | 950 | 933 |
+| **With the manager's forecast supplied** | | | | | | | |
+| Final model, seasonal history | 863 | 973 | 1,031 | 1,015 | 911 | 989 | **978** |
+| Final model, recursive history | 876 | 991 | 1,005 | 1,038 | 876 | 984 | 972 |
+| Original XGBoost | 953 | 979 | 1,119 | 1,078 | 1,078 | 1,091 | 1,078 |
+| **Without it (historical median in its place)** | | | | | | | |
+| Final model, seasonal history | 885 | 1,041 | 1,083 | 1,199 | 953 | 1,097 | **1,078** |
+| Final model, recursive history | 892 | 1,102 | 1,080 | 1,225 | 934 | 1,097 | 1,082 |
+| Original XGBoost | 912 | 1,031 | 1,132 | 1,169 | 1,094 | 1,159 | 1,132 |
+
+Over all 180 days, bias (mean of prediction − actual) is +£476 for the
+manual forecast, +£6 for the seasonal-history final model with the
+manager's forecast, and −£106 without it.
+
+### Conclusion
+
+1. **Forecasting beyond the data costs accuracy, but the final model
+   keeps a real lead when the manager's forecast is supplied**: £978
+   against the manual forecast's £1,082 (about 10% better) and the
+   original XGBoost's £1,078 served the same way. The 15% figure from
+   Series 17 applies to forecasts made with recent sales available - for
+   example next week's rota, with data up to yesterday.
+2. **Without the manager's forecast, the final model is level with the
+   manual forecast** (£1,078 vs £1,082) - while never seeing it - and
+   about 5% better than the original XGBoost without it (£1,132). That
+   lead is not uniform: XGBoost is slightly better at 8-16 and 31-60 days
+   ahead.
+3. **Recursive and seasonal history filling perform the same** - within
+   £6 overall in both conditions, with neither better in every range.
+   The API uses the seasonal fill: it was the better of the two at the
+   short ranges most requests fall in, it doesn't build each input on a
+   chain of the model's own earlier outputs, it has no horizon limit, and
+   it needs no day-by-day prediction loop at request time.
+4. **Caveats.** The 16 days of actual weather stand in for a weather
+   forecast, so the first buckets are slightly optimistic. The shortest
+   ranges rest on only 56-65 day-scores, and overlapping windows mean the
+   buckets are not independent. Beyond 180 days is untested.
+
+### Promotion to production
+
+`src/models/train_final_model.py` is now step 10 of `python main.py`. It
+re-runs the rolling-origin backtest - reproducing Series 16's 25-seed
+predictions exactly (fold-mean MAE £910.78; pooled over all 585 test days,
+£909.57 against the manual forecast's £1,074.46 and the original
+XGBoost's £1,026.64) - then refits the model on every day and saves it
+with its out-of-sample backtest predictions. For a past date, the API
+returns that out-of-sample prediction, so comparing it with the actual
+sales is a fair test; for a future date it builds features exactly as
+this series did (checked by `tests/test_api.py`).
+
 ## Appendix: full candidate pool reference
 
-**In the current production model (15):** `forecast_sales`, `month_sin`,
-`day_of_week`, `day_of_year_cos`, `day_of_year_sin`, `day_of_year`,
-`month_cos`, `month`, `day_of_week_sin`, `is_bank_holiday`,
-`days_to_bank_holiday`, `days_since_payday`, `is_payday_window_pm3`,
-`is_long_weekend`, `is_heavy_rain`.
+**In the original XGBoost production model, and the first 15 of the final
+model's 38 (15):** `forecast_sales`, `month_sin`, `day_of_week`,
+`day_of_year_cos`, `day_of_year_sin`, `day_of_year`, `month_cos`, `month`,
+`day_of_week_sin`, `is_bank_holiday`, `days_to_bank_holiday`,
+`days_since_payday`, `is_payday_window_pm3`, `is_long_weekend`,
+`is_heavy_rain`.
 
-**Engineered but not yet tested in the model, tested in Series 2 (23):**
-see the group table above.
+**Engineered but unused until Series 2 tested them, and all in the final
+model since Series 16 (23):** see the group table above.
 
 **Engineered 2026-09-10, tested, DEPRECATED (15):**
 - `lag_1_sales`, `lag_2_sales`, `lag_3_sales`, `lag_2_fe`, `lag_3_fe`,
