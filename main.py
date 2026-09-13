@@ -11,6 +11,7 @@ Runs the full pipeline:
 7. Evaluate human forecast
 8. Train SARIMAX
 9. Train XGBoost
+10. Train the final model (the one the API serves)
 """
 
 from __future__ import annotations
@@ -24,38 +25,42 @@ from src.baselines.run_baselines import run_baselines
 from src.models.evaluate_human_forecast import evaluate_human_forecast
 from src.models.train_sarimax import run_sarimax
 from src.models.train_xgboost import run_xgboost
+from src.models.train_final_model import run_final_model
 
 
 def main() -> None:
-    print("\n[1/9] Anonymising fresh raw exports...")
+    print("\n[1/10] Anonymising fresh raw exports...")
     if has_raw_exports():
         anonymize_raw()
     else:
         print(f"No raw exports in {RAW_PRIVATE_DIR} - skipping; the tracked data in data/raw/ is already anonymised.")
 
-    print("\n[2/9] Splitting raw sales and labour files...")
+    print("\n[2/10] Splitting raw sales and labour files...")
     split_sales_and_labour()
 
-    print("\n[3/9] Building daily sales dataset...")
+    print("\n[3/10] Building daily sales dataset...")
     build_daily_sales()
 
-    print("\n[4/9] Building daily labour dataset...")
+    print("\n[4/10] Building daily labour dataset...")
     build_daily_labour()
 
-    print("\n[5/9] Building feature datasets...")
+    print("\n[5/10] Building feature datasets...")
     build_feature_dataset()
 
-    print("\n[6/9] Running baseline models...")
+    print("\n[6/10] Running baseline models...")
     run_baselines()
 
-    print("\n[7/9] Evaluating human forecast...")
+    print("\n[7/10] Evaluating human forecast...")
     evaluate_human_forecast()
 
-    print("\n[8/9] Training SARIMAX...")
+    print("\n[8/10] Training SARIMAX...")
     run_sarimax()
 
-    print("\n[9/9] Training XGBoost...")
+    print("\n[9/10] Training XGBoost...")
     run_xgboost()
+
+    print("\n[10/10] Training the final model...")
+    run_final_model()
 
     print("\nPipeline completed successfully.")
 
