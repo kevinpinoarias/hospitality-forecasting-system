@@ -136,6 +136,17 @@ def build_file_list(input_dir: Path) -> list[Path]:
     )
 
 
+def has_raw_exports(input_dir: Path = INPUT_DIR) -> bool:
+    """Whether the private landing directory holds any exports to process.
+
+    The directory is gitignored, so it is absent on every fresh clone -
+    where the already-anonymised data in data/raw/ is all the pipeline
+    needs. anonymize_raw() itself still raises on a missing or empty
+    directory, so calling it directly never silently processes nothing.
+    """
+    return input_dir.exists() and bool(build_file_list(input_dir))
+
+
 def normalise_department(series: pd.Series) -> pd.Series:
     """Strip the venue-specific brand-code prefix from Department values.
 

@@ -20,6 +20,7 @@ from src.ingestion.anonymize_raw import (
     OUTPUT_COLUMNS,
     anonymise_dataframe,
     anonymize_raw,
+    has_raw_exports,
     normalise_department,
 )
 
@@ -179,3 +180,22 @@ def test_missing_input_dir_raises(tmp_path):
             output_dir=tmp_path / "raw",
             manifest_path=tmp_path / "manifest.json",
         )
+
+
+def test_has_raw_exports_false_on_a_fresh_clone(tmp_path):
+    assert has_raw_exports(tmp_path / "raw_private") is False
+
+
+def test_has_raw_exports_ignores_the_manifest_and_temp_files(private_and_output_dirs):
+    input_dir, _, manifest_path = private_and_output_dirs
+    manifest_path.write_text("{}")
+    (input_dir / "~$week01.xlsx").write_text("")
+
+    assert has_raw_exports(input_dir) is False
+
+
+def test_has_raw_exports_true_once_an_export_lands(private_and_output_dirs):
+    input_dir, _, _ = private_and_output_dirs
+    write_raw_csv(input_dir / "week01.csv")
+
+    assert has_raw_exports(input_dir) is True

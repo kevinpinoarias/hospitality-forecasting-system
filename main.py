@@ -15,7 +15,7 @@ Runs the full pipeline:
 
 from __future__ import annotations
 
-from src.ingestion.anonymize_raw import anonymize_raw
+from src.ingestion.anonymize_raw import INPUT_DIR as RAW_PRIVATE_DIR, anonymize_raw, has_raw_exports
 from src.preprocessing.split_sales_labour import split_sales_and_labour
 from src.preprocessing.build_daily_sales import build_daily_sales
 from src.preprocessing.build_daily_labour import build_daily_labour
@@ -28,7 +28,10 @@ from src.models.train_xgboost import run_xgboost
 
 def main() -> None:
     print("\n[1/9] Anonymising fresh raw exports...")
-    anonymize_raw()
+    if has_raw_exports():
+        anonymize_raw()
+    else:
+        print(f"No raw exports in {RAW_PRIVATE_DIR} - skipping; the tracked data in data/raw/ is already anonymised.")
 
     print("\n[2/9] Splitting raw sales and labour files...")
     split_sales_and_labour()
