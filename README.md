@@ -312,10 +312,12 @@ On that footing, 17 hypothesis-driven experiment series tested algorithms and hy
 | Forecast | MAE | MAPE | vs. manual |
 |---|---|---|---|
 | Manual forecast (the venue's existing process) | £1,086 | 14.9% | — |
-| Original portfolio XGBoost, scored the same way | £1,035 | 13.9% | 4.7% better |
+| Original portfolio XGBoost, scored the same way | £1,035* | 13.9% | 4.7% better |
 | **Final model** | **£919** | **12.0%** | **15.4% better** |
 
-The 15% improvement holds over the wider 583-day window (15.35%), so it is not an artefact of the matched days. Scored under one protocol, the experimentation programme roughly tripled the model's advantage over the manual process.
+<sub>\* With the pinned library versions. A newer XGBoost release gives £1,022 (5.9% better); the final model's figures don't change.</sub>
+
+The 15% improvement holds over the wider 583-day window (15.35%), so it is not an artefact of the matched days. Scored under one protocol, the experimentation programme lifted the model's advantage over the manual process from roughly 5% to 15%.
 
 Three findings worth highlighting:
 
@@ -638,7 +640,13 @@ See [Serving the Model via API](#serving-the-model-via-api) above for running th
 
 ### Reproducing the experiment log
 
-With the dev extras installed and `python main.py` already run, every result in [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md) can be regenerated in dependency order:
+Install with the pinned library versions the log was produced with - gradient-boosting libraries can shift results between releases:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
+```
+
+Then, with `python main.py` already run, every result in [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md) can be regenerated in dependency order:
 
 ```bash
 python -m src.experiments.run_all_series                 # Series 5-17 and business impact

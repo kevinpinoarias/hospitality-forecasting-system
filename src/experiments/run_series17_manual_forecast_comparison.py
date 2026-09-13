@@ -37,7 +37,9 @@ Section C - like-for-like model history (new measurement): the original
 portfolio XGBoost (15 features, its production hyperparameters) retrained
 on the same rolling-origin folds and scored on the same 569 days, so the
 portfolio model can be compared with the final model under one protocol
-rather than a single-split score against a backtested one.
+rather than a single-split score against a backtested one. This is the
+one figure in the log that moves with the library version: xgboost 3.2.0
+(pinned in constraints-experiments.txt) gives £1,035, 3.4.1 gives £1,022.
 
 Requires: series16_bagging_raw_predictions.csv (Series 16)
 Outputs (reports/experiments/):

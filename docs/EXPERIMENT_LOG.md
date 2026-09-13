@@ -35,7 +35,7 @@ memory or scattered CSVs.
 **Reproducing every result**
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
 python -m src.experiments.run_all_series     # Series 5-17 and business impact, in dependency order
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
@@ -46,10 +46,20 @@ interactively during the same working session, and their scripts were
 reconstructed afterwards from the exact code that produced each logged
 result. Every reconstructed script was then re-run and checked against
 this log: **all twelve reproduce their logged figures exactly**, as do
-Series 17's headline comparison and the business-impact simulation. Every
-fit uses a fixed seed, so re-runs on the same machine match exactly; on
-different hardware or thread counts, gradient-boosting libraries can
-produce small floating-point differences in the last decimal places.
+Series 17's headline comparison and the business-impact simulation. The
+whole chain was then re-run from a fresh clone of the repository, with a
+new environment installed from the requirements files: every figure
+matched again except one.
+
+**Library versions matter.** The requirements files set only minimum
+versions, and gradient-boosting libraries do not guarantee identical
+results across releases. In the fresh-clone check, a newer XGBoost
+(3.4.1 rather than 3.2.0) moved Series 17's portfolio-XGBoost figure from
+£1,034.82 to £1,022.17; every CatBoost result, including all headline
+figures, was unaffected. `constraints-experiments.txt` pins the exact
+versions this log was produced with - install with it to reproduce the
+figures exactly. Every fit also uses a fixed seed, but different hardware
+or thread counts can still introduce tiny floating-point differences.
 
 ---
 
@@ -1524,6 +1534,10 @@ with a backtested figure.
 | B | Final bagged log1p CatBoost | 583 | 912.63 | 11.89% | 15.35% better |
 | C | Portfolio XGBoost, same folds | 569 | 1,034.82 | 13.94% | 4.71% better |
 
+Section C is the one figure here sensitive to library version: with
+XGBoost 3.4.1 instead of 3.2.0 it reads £1,022.17 (13.78% MAPE, 5.87%
+better than manual). The table uses the pinned version.
+
 ### Conclusion
 
 **The final model is about 15% more accurate than the venue's manual
@@ -1532,13 +1546,14 @@ forecast, and that figure is robust**: widening the comparison from the
 15.35%.
 
 Section C puts the whole project on one protocol. Scored the same way, the
-original portfolio XGBoost is only **4.7%** better than the manual
-forecast, the Series 1 CatBoost winner 10.9%, and the final model 15.4% -
-so the rolling-origin experimentation programme roughly tripled the
-model's real-world advantage over the process it would replace. Stated
-like-for-like, the model improved from **£1,035 to £919 MAE** (11.2%);
-the £1,050 single-split figure should not be set against £919, since
-the two were measured differently.
+original portfolio XGBoost is only **about 5-6%** better than the manual
+forecast (4.7% or 5.9%, depending on XGBoost version), the Series 1
+CatBoost winner 10.9%, and the final model 15.4% - so the rolling-origin
+experimentation programme lifted the model's real-world advantage over
+the process it would replace from roughly 5% to 15%. Stated like-for-like,
+the model improved from **about £1,020-1,035 to £919 MAE**; the £1,050
+single-split figure should not be set against £919, since the two were
+measured differently.
 
 ## Business Impact — What Forecast Error Costs in Labour
 
