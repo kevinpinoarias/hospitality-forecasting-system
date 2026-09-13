@@ -28,6 +28,7 @@ import threading
 import numpy as np
 import pandas as pd
 
+from src.api.day_context import build_day_context
 from src.api.history import (
     HistoryCache,
     actual_sales_on,
@@ -138,9 +139,9 @@ class ModelService:
 
     def _future_row(
         self, target_date: dt.date, today: dt.date,
-    ) -> tuple[pd.DataFrame, dict | None, str]:
-        """Feature row for a date beyond the data, the live weather used for
-        it (if any), and the weather source label."""
+    ) -> tuple[pd.DataFrame, bool, str]:
+        """Feature row for a date beyond the data, whether its weather is a
+        real live figure, and the weather source label."""
         live, errored = self._live_weather(target_date, today)
 
         idx = self._first_future + (target_date - self.history.max_date).days - 1
@@ -162,14 +163,28 @@ class ModelService:
 
         target_ts = pd.Timestamp(target_date)
         if not live.empty and target_ts in live.index:
-            real = live.loc[target_ts]
-            details = {"rain_mm": float(real["rain_mm"]), "max_temp_c": float(real["max_temp"])}
-            source = "observed" if target_date <= today else "forecast"
-        else:
-            details = None
-            within_live_range = target_date <= live_weather_end(today)
-            source = "historical_average_api_error" if (errored and within_live_range) else "historical_average"
-        return row, details, source
+            return row, True, "observed" if target_date <= today else "forecast"
+        within_live_range = target_date <= live_weather_end(today)
+        return row, False, "historical_average_api_error" if (errored and within_live_range) else "historical_average"
+
+    @staticmethod
+    def _weather_details(features: pd.Series) -> WeatherDetails:
+        """The real weather behind a forecast, and the weather features the
+        model derived from it."""
+        def number(col: str) -> float | None:
+            value = float(features[col])
+            return None if np.isnan(value) else round(value, 2)
+
+        anomaly = number("temp_anomaly_14d")
+        return WeatherDetails(
+            expected_rain_mm=number("rain_mm"),
+            expected_rain_description=categorize_rain(float(features["rain_mm"])),
+            expected_max_temp_c=number("max_temp"),
+            expected_sunshine_hours=number("sun_hours"),
+            hot_for_scotland=bool(features["is_hot_for_scotland"]),
+            temperature_vs_previous_fortnight_c=anomaly,
+            warm_streak_days=int(features["warm_streak_len"]),
+        )
 
     def predict_one(
         self,
@@ -186,15 +201,14 @@ class ModelService:
 
         if in_history:
             row = history[history[DATE_COL].dt.date == target_date].copy()
-            weather_details = {"rain_mm": float(row["rain_mm"].iloc[0]), "max_temp_c": float(row["max_temp"].iloc[0])}
-            rain_source = "observed"
+            weather_is_real, rain_source = True, "observed"
             if forecast_sales is None:
                 forecast_sales_used, forecast_sales_source = float(row["forecast_sales"].iloc[0]), "manager_forecast_on_record"
             else:
                 forecast_sales_used, forecast_sales_source = forecast_sales, "user_provided"
         else:
             self._ensure_frame(target_date)
-            row, weather_details, rain_source = self._future_row(target_date, today)
+            row, weather_is_real, rain_source = self._future_row(target_date, today)
             if forecast_sales is None:
                 forecast_sales_used = float(row["forecast_sales"].iloc[0])
                 forecast_sales_source = "historical_weekday_seasonal_average"
@@ -202,6 +216,11 @@ class ModelService:
                 forecast_sales_used, forecast_sales_source = forecast_sales, "user_provided"
 
         row["forecast_sales"] = forecast_sales_used
+        features = row.iloc[0]
+        day_context = build_day_context(
+            features, target_date,
+            sales_history_is_real=target_date <= self.history.max_date + dt.timedelta(days=1),
+        )
         best_rain = float(row["rain_mm"].iloc[0])
         heavy_rain = best_rain if best_rain > HEAVY_RAIN_MM else typical_heavy_rain_mm(history)
 
@@ -215,18 +234,12 @@ class ModelService:
             # alternative scenarios to offer - and the served model's own
             # figures for this date would be in-sample, so they are not
             # mixed in with the out-of-sample prediction.
-            prediction_source = "out_of_sample_backtest"
+            prediction_source = "made_before_the_day"
             best_pred = dry_pred = rain_pred = float(self.backtest_predictions[target_date])
         else:
-            prediction_source = "in_sample"
+            prediction_source = "model_had_seen_the_day"
 
-        weather = None
-        if weather_details is not None:
-            weather = WeatherDetails(
-                expected_rain_mm=weather_details["rain_mm"],
-                expected_rain_description=categorize_rain(weather_details["rain_mm"]),
-                expected_max_temp_c=weather_details["max_temp_c"],
-            )
+        weather = self._weather_details(features) if weather_is_real else None
 
         last_week = actual_sales_on(history, target_date - dt.timedelta(days=7))
         last_year = actual_sales_on(history, equivalent_weekday_last_year(target_date))
@@ -246,6 +259,7 @@ class ModelService:
                 heavy_rain_scenario=rain_pred,
                 best_estimate=best_pred,
             ),
+            day_context=day_context,
             weather=weather,
             historical_comparison=HistoricalComparison(
                 same_day_last_week=last_week,

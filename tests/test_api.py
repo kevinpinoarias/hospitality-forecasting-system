@@ -53,17 +53,17 @@ def test_backtest_date_returns_the_out_of_sample_prediction(client):
     row = backtest.iloc[100]
     result = predict(client, date=row["date"].date().isoformat())
 
-    assert result["prediction_source"] == "out_of_sample_backtest"
+    assert result["prediction_source"] == "made_before_the_day"
     assert result["forecast_sales_source"] == "manager_forecast_on_record"
     assert result["predictions"]["best_estimate"] == pytest.approx(row["final_model_prediction"])
     assert result["predictions"]["dry_scenario"] == result["predictions"]["best_estimate"]
     assert result["actual_sales"] is not None
 
 
-def test_caller_forecast_on_a_past_date_is_labelled_in_sample(client):
+def test_caller_forecast_on_a_past_date_is_labelled_as_seen(client):
     backtest_day = pd.read_csv(MODEL_DIR / "backtest_predictions.csv")["date"].iloc[100]
     result = predict(client, date=backtest_day, forecast_sales=9000)
-    assert result["prediction_source"] == "in_sample"
+    assert result["prediction_source"] == "model_had_seen_the_day"
     assert result["forecast_sales_used"] == 9000
 
 
@@ -74,6 +74,17 @@ def test_far_future_date_uses_historical_weather_and_both_scenarios(client):
     assert result["weather"] is None
     assert result["days_beyond_training_data"] > 0
     assert result["predictions"]["dry_scenario"] != result["predictions"]["heavy_rain_scenario"]
+
+
+def test_day_context_is_returned(client):
+    past = predict(client, date="2025-06-28")
+    assert past["day_context"]["recent_sales"] is not None
+    assert past["weather"]["expected_sunshine_hours"] is not None
+
+    future = predict(client, date="2030-12-24")
+    assert future["day_context"]["school_holiday"] is None  # beyond the council dates on file
+    assert future["day_context"]["bank_holidays"]["next_bank_holiday_name"] == "Christmas Day"
+    assert future["day_context"]["recent_sales"] is None  # never estimated sales presented as real
 
 
 def test_date_before_the_data_is_rejected(client):

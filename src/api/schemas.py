@@ -39,6 +39,13 @@ class WeatherDetails(BaseModel):
     expected_rain_mm: float
     expected_rain_description: str
     expected_max_temp_c: float | None = None
+    expected_sunshine_hours: float | None = None
+    # Above 20C, the model's own "hot for Scotland" threshold.
+    hot_for_scotland: bool | None = None
+    # Maximum temperature minus the average of the previous 14 days' maximums.
+    temperature_vs_previous_fortnight_c: float | None = None
+    # Consecutive days up to and including this one with a maximum of 18C or more.
+    warm_streak_days: int | None = None
 
 
 class HistoricalComparison(BaseModel):
@@ -47,6 +54,50 @@ class HistoricalComparison(BaseModel):
     estimated."""
     same_day_last_week: float | None = None
     same_day_last_year: float | None = None
+
+
+class PaydayContext(BaseModel):
+    """Payday is the last working day of the month."""
+    is_payday: bool
+    last_payday: date_type
+    days_since_last_payday: int
+    next_payday: date_type
+    days_until_next_payday: int
+    within_3_days_of_payday: bool
+
+
+class BankHolidayContext(BaseModel):
+    """Scottish bank holidays."""
+    is_bank_holiday: bool
+    bank_holiday_name: str | None = None
+    next_bank_holiday: date_type
+    next_bank_holiday_name: str
+    days_until_next_bank_holiday: int
+    previous_bank_holiday: date_type
+    previous_bank_holiday_name: str
+    # The weekend next to a Monday or Friday bank holiday, including the holiday.
+    is_long_weekend: bool
+
+
+class RecentSalesContext(BaseModel):
+    """Real average daily sales before the date. Only present when those days
+    are in the historical data - never estimated."""
+    average_daily_sales_previous_7_days: float
+    average_daily_sales_previous_14_days: float
+
+
+class DayContext(BaseModel):
+    """What the model took into account about the date, as plain facts - see
+    src/api/day_context.py."""
+    # Friday, Saturday or Sunday - the days the model treats as the weekend.
+    part_of_weekend_trading: bool
+    payday: PaydayContext
+    bank_holidays: BankHolidayContext
+    # "Christmas holidays", "Easter holidays" or "summer holidays" for a
+    # Glasgow school break, else null. Only those three breaks are tracked,
+    # so null does not rule out another school break (e.g. October week).
+    school_holiday: str | None = None
+    recent_sales: RecentSalesContext | None = None
 
 
 class PredictResult(BaseModel):
@@ -69,16 +120,20 @@ class PredictResult(BaseModel):
     forecast_sales_source: str
     rain_data_source: str
     days_beyond_training_data: int
-    # Where best_estimate comes from:
+    # Where best_estimate comes from. Plain-English values on purpose: the
+    # chat assistant reads them, and technical labels leaked into its answers.
     # - "forecast": a date beyond the historical data.
-    # - "out_of_sample_backtest": a past date, predicted by the pipeline's
-    #   rolling-origin backtest before the model saw that day, so comparing
-    #   it with actual_sales is a fair test of accuracy. The weather is
-    #   already known, so both scenarios equal best_estimate.
-    # - "in_sample": a past date the served model was trained on (or a past
-    #   date with a caller-supplied forecast_sales) - not a fair accuracy test.
+    # - "made_before_the_day": a past date, predicted by the pipeline's
+    #   rolling-origin backtest before the model saw that day (out of
+    #   sample), so comparing it with actual_sales is a fair test of
+    #   accuracy. The weather is already known, so both scenarios equal
+    #   best_estimate.
+    # - "model_had_seen_the_day": a past date the served model was trained
+    #   on (in sample), or a past date with a caller-supplied forecast_sales -
+    #   not a fair accuracy test.
     prediction_source: str
     predictions: ScenarioPredictions
+    day_context: DayContext
     weather: WeatherDetails | None = None
     historical_comparison: HistoricalComparison
     # Real realised sales for this exact date - only populated when the
