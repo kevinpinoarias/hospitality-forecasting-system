@@ -130,7 +130,7 @@ def add_time_features(df: pd.DataFrame, date_col: str = DATE_COL) -> pd.DataFram
     #
     # DEPRECATED - DO NOT USE AS MODEL FEATURES: lag_1_sales, lag_2_sales,
     # lag_3_sales, rolling_28_sales (and, below, lag_2_fe/lag_3_fe).
-    # Tested in Series 4 (see EXPERIMENT_LOG.md) added individually and
+    # Tested in Series 4 (see docs/EXPERIMENT_LOG.md) added individually and
     # all together on top of the add_all_candidates winning configuration -
     # every one made MAE worse (£907.77 -> £914-927), most likely because
     # the short-term/weekly signal they'd add is already captured by
@@ -329,11 +329,11 @@ def add_christmas_period_feature(df: pd.DataFrame, date_col: str = DATE_COL) -> 
     25th.
 
     DEPRECATED - DO NOT USE AS A MODEL FEATURE: tested in Series 5 (see
-    EXPERIMENT_LOG.md), added to the add_all_candidates winning
+    docs/EXPERIMENT_LOG.md), added to the add_all_candidates winning
     configuration - made MAE worse (£907.77 -> £919.33), most likely
     because is_christmas_break/is_school_holiday/is_long_weekend/the
     month cyclical encodings already capture most of this signal. Left
-    computed here for reference; see EXPERIMENT_LOG.md's discussion of a
+    computed here for reference; see docs/EXPERIMENT_LOG.md's discussion of a
     graded (non-binary) alternative, which has not yet been tried.
     """
     out = df.copy()
@@ -343,7 +343,7 @@ def add_christmas_period_feature(df: pd.DataFrame, date_col: str = DATE_COL) -> 
 
 
 # Named December sub-periods, directly from the real 2-year pattern (see
-# EXPERIMENT_LOG.md's Series 5/6 discussion): a "party season" build-up,
+# docs/EXPERIMENT_LOG.md's Series 5/6 discussion): a "party season" build-up,
 # a pre-Christmas peak, a dip on Christmas Eve itself, a Boxing Day lull
 # (25th is already covered by is_bank_holiday - no separate flag needed),
 # a short recovery, a second and larger Hogmanay peak, then New Year's
@@ -368,7 +368,7 @@ def add_december_phase_features(df: pd.DataFrame, date_col: str = DATE_COL) -> p
     """
     Binary flags for named December sub-periods, directly encoding the
     real empirical pattern found in the 2 years of history (see
-    DECEMBER_PHASES above and EXPERIMENT_LOG.md's Series 7) rather than
+    DECEMBER_PHASES above and docs/EXPERIMENT_LOG.md's Series 7) rather than
     asking a model to infer it from a single continuous index.
 
     Tested as a direct alternative to the deprecated is_christmas_period
@@ -381,7 +381,7 @@ def add_december_phase_features(df: pd.DataFrame, date_col: str = DATE_COL) -> p
     observations per day.
 
     DEPRECATED - DO NOT USE AS MODEL FEATURES: tested in Series 7 (see
-    EXPERIMENT_LOG.md), added to add_all_candidates individually and all
+    docs/EXPERIMENT_LOG.md), added to add_all_candidates individually and all
     together - every one made MAE worse (£907.77 -> £916-923), the same
     direction as Series 4/5/6. This is now the fourth independent
     December/Christmas encoding to fail; see Series 7's conclusions for
@@ -412,7 +412,7 @@ def add_december_intensity_feature(
     succeed where the deprecated binary is_christmas_period did not.
 
     DEPRECATED - DO NOT USE AS A MODEL FEATURE: tested in Series 6 (see
-    EXPERIMENT_LOG.md), added to add_all_candidates - still made MAE
+    docs/EXPERIMENT_LOG.md), added to add_all_candidates - still made MAE
     worse on the expanding window (£907.77 -> £916.20), though more
     narrowly than the binary flag or Series 4's short-lag features; near
     -neutral on the sliding-365d window (+£0.52). Most likely the same
@@ -426,7 +426,7 @@ def add_december_intensity_feature(
     by day-of-December, computed separately for each year using only
     PRIOR years' December data.
 
-    Real shape found (see EXPERIMENT_LOG.md's Series 5 discussion): NOT a
+    Real shape found (see docs/EXPERIMENT_LOG.md's Series 5 discussion): NOT a
     single peak centred on the 25th. There are two peaks - one around the
     22nd-23rd (pre-Christmas), a real trough on the 25th-26th (closure +
     Boxing Day lull), then a SECOND, LARGER peak around the 29th-30th

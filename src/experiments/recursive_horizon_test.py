@@ -5,7 +5,7 @@ Series 2 (src/experiments/run_feature_sweep.py) found that short-lag
 sales/forecast-error history features are the strongest lever found in
 this project so far. Those features are not target leakage - every one
 of them only ever references strictly historical, already-observed days
-(see EXPERIMENT_LOG.md's Series 2 write-up for the verification). But
+(see docs/EXPERIMENT_LOG.md's Series 2 write-up for the verification). But
 Series 2's rolling-origin evaluation always had access to the TRUE
 actuals for the days immediately preceding whatever date it was scoring
 - an assumption that only holds for a forecast generated shortly before

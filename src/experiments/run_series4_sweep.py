@@ -5,7 +5,7 @@ production baseline.
 
 Tests the 6 features engineered on 2026-09-10 (`lag_1_sales`,
 `lag_2_sales`, `lag_3_sales`, `lag_2_fe`, `lag_3_fe`, `rolling_28_sales` -
-see EXPERIMENT_LOG.md's appendix), which fill a gap Series 2's own
+see docs/EXPERIMENT_LOG.md's appendix), which fill a gap Series 2's own
 conclusions identified: plain "yesterday's sales" wasn't in the engineered
 pool at all, despite `lag_7_sales` and `lag_1_fe` being the two strongest
 individual features found in that series.
