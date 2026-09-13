@@ -154,15 +154,41 @@ def prepare_datasets(
     split_date: str = DEFAULT_SPLIT_DATE,
     window: int = DEFAULT_WINDOW,
     features: list[str] = FEATURES,
+    df: pd.DataFrame | None = None,
+    train_window_days: int | None = None,
+    valid_end_date: str | None = None,
 ) -> dict:
     """Load data, build gap-aware windows, split by date, and scale using
-    statistics fit on the training split only (no leakage from validation)."""
-    df = load_model_data()
+    statistics fit on the training split only (no leakage from validation).
+
+    `df` lets a caller (e.g. the rolling-origin sweep in
+    src/experiments/) supply an already-loaded/truncated dataframe instead
+    of reading the full model_features.csv from disk - truncating to a
+    fold's own cutoff so later folds' data can never leak into an earlier
+    one's training or validation.
+
+    `train_window_days`, if given, restricts training to a sliding window
+    of only the most recent N days before split_date, instead of every
+    prior day (expanding window, the default / original behaviour).
+
+    `valid_end_date`, if given, caps validation to
+    [split_date, valid_end_date) instead of everything from split_date
+    onward - needed to score one rolling-origin fold's test period in
+    isolation rather than "the rest of history"."""
+    if df is None:
+        df = load_model_data()
     X, y, target_dates = build_windows(df, features, window)
 
     split_ts = pd.to_datetime(split_date)
     train_mask = (target_dates < split_ts).to_numpy()
-    valid_mask = ~train_mask
+
+    if train_window_days is not None:
+        train_start_ts = split_ts - pd.Timedelta(days=train_window_days)
+        train_mask = train_mask & (target_dates >= train_start_ts).to_numpy()
+
+    valid_mask = (target_dates >= split_ts).to_numpy()
+    if valid_end_date is not None:
+        valid_mask = valid_mask & (target_dates < pd.to_datetime(valid_end_date)).to_numpy()
 
     if train_mask.sum() == 0 or valid_mask.sum() == 0:
         raise ValueError("Train/validation split produced an empty set.")

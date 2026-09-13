@@ -19,6 +19,12 @@ wandb>=0.19
 torch>=2.2
 pytest>=8.0
 
+# Additional model families for the systematic experimentation sweep
+# (src/experiments/) - not needed for the core pipeline or API.
+lightgbm>=4.3
+catboost>=1.2
+prophet>=1.1
+
 # The line above installs a working CPU-only torch build by default - fine
 # for this project's model sizes. If you have an NVIDIA GPU and want to use
 # it, reinstall with the matching CUDA build instead, e.g.:
