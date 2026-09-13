@@ -32,7 +32,7 @@ import re
 from langchain_core.messages import ToolMessage
 
 from src.assistant.agent_forecast import _extract_text, build_agent
-from src.assistant.query_forecast import XGBOOST_MAPE_PCT
+from src.assistant.model_comparison_data import FINAL_MODEL_MAPE_PCT, FINAL_MODEL_PCT_BETTER_THAN_MANUAL
 
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -42,6 +42,10 @@ JARGON_TERMS = [
     "rain_data_source",
     "forecast_sales_source",
     "user_provided",
+    "prediction_source",
+    "out_of_sample_backtest",
+    "in_sample",
+    "manager_forecast_on_record",
 ]
 
 UNCERTAINTY_PHRASES = [
@@ -61,13 +65,13 @@ UNCERTAINTY_PHRASES = [
 NUMBER_PATTERN = re.compile(r"£?\s?(\d[\d,]*\.?\d*)")
 NUMBER_TOLERANCE = 1.0  # absolute tolerance, covers the model's own rounding
 
-# The one real figure the assistant is allowed to state that never comes
-# from a tool call in the current turn - the model's own overall evaluated
-# accuracy, as a percentage (see MODEL_INTRO_MESSAGE / XGBOOST_MAPE_PCT in
-# query_forecast.py). Real and sourced from
-# reports/results/model_comparison_summary.md, just baked into the system
-# prompt rather than requiring a get_model_comparison call every time.
-KNOWN_MODEL_MAPE_PCT = XGBOOST_MAPE_PCT
+# The real figures the assistant is allowed to state that never come from a
+# tool call in the current turn - the model's overall evaluated accuracy and
+# its lead over the manual forecast, as percentages (see MODEL_INTRO_MESSAGE
+# in query_forecast.py). Real and sourced from docs/EXPERIMENT_LOG.md's
+# Series 17, just baked into the system prompt rather than requiring a
+# get_model_comparison call every time.
+KNOWN_MODEL_FIGURES = [FINAL_MODEL_MAPE_PCT, FINAL_MODEL_PCT_BETTER_THAN_MANUAL, 569]
 
 
 def extract_tool_data(messages) -> list[dict]:
@@ -144,7 +148,7 @@ def check_numeric_grounding(answer_text: str, tool_data: list[dict]) -> list[str
     # (predicted vs actual), not invented, even though it isn't a direct
     # match to any single value the tool returned.
     derived = {abs(a - b) for a in ground_truth for b in ground_truth if a != b}
-    allowed = ground_truth + list(derived) + [KNOWN_MODEL_MAPE_PCT]
+    allowed = ground_truth + list(derived) + KNOWN_MODEL_FIGURES
 
     issues = []
     for claimed in extract_numeric_claims(answer_text):
@@ -306,11 +310,11 @@ TEST_CASES = [
         # A real, live bug found by manual testing (2026-09-08): the
         # assistant invented a specific "actual sales" figure for a date
         # this deployment has no real actual_sales for (any date past the
-        # historical dataset's cutoff, ~2026-01-04). 2026-08-01 is
-        # confirmed (via a direct API call) to return actual_sales: null,
-        # so this case exists specifically to catch that failure mode from
-        # ever regressing silently.
-        "turns": ["How accurate was our forecast for 2026-08-01?"],
+        # historical dataset's cutoff, 2026-09-06 since the 2026-09-13
+        # retrain). 2026-09-10 returns actual_sales: null, so this case
+        # exists specifically to catch that failure mode from ever
+        # regressing silently.
+        "turns": ["How accurate was our forecast for 2026-09-10?"],
     },
     {
         "name": "model comparison - neural network results",

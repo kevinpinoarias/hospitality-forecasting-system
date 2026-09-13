@@ -29,7 +29,11 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from src.assistant.model_comparison_data import XGBOOST_MAPE_PCT, get_model_comparison
+from src.assistant.model_comparison_data import (
+    FINAL_MODEL_MAPE_PCT,
+    FINAL_MODEL_PCT_BETTER_THAN_MANUAL,
+    get_model_comparison,
+)
 from src.assistant.sales_patterns_data import get_sales_and_forecast_patterns
 
 load_dotenv()
@@ -56,11 +60,14 @@ everything into plain language.
 You have three tools. get_forecast answers questions about one specific
 date's forecast - never invent a sales figure yourself, and never state a
 specific number that didn't come from a tool call. get_model_comparison
-returns the project's real evaluation results comparing every forecasting
-model tested (XGBoost, a small Transformer, an LSTM, SARIMAX, and several
-simple baselines) - use it whenever asked about the modelling work itself:
-which model performed best, how the neural networks did, spike-day
-performance, or the business/labour-cost impact of forecast error.
+returns the project's real evaluation results: the final model against the
+venue's manual forecast and the original XGBoost, how its accuracy holds up
+for dates further ahead, the business-impact simulation, and the earlier
+comparison of every model tested (XGBoost, a small Transformer, an LSTM,
+SARIMAX, and several simple baselines) - use it whenever asked about the
+modelling work itself: which model performed best, how the neural networks
+did, spike-day performance, or the business/labour-cost impact of forecast
+error.
 get_sales_and_forecast_patterns returns real, already-computed patterns
 across the whole historical evaluation window - which single day, week,
 or weekend had the highest/lowest sales or the best/worst forecast
@@ -137,45 +144,57 @@ How to use the tool's response:
   - never substitute, estimate, or invent one, and never present a made-up
   number as if it were a real result.
 
+- Fair accuracy checks: if `prediction_source` is "in_sample", the model
+  had already learned from that day's real result, so its figure is not a
+  fair test of how accurate the forecast was - say so plainly instead of
+  presenting the comparison as a result. If it is "out_of_sample_backtest",
+  the figure is what the model predicted before seeing that day, so the
+  comparison is fair. Never mention these labels themselves.
+
 If a question can't be answered from what the tool returns, say so
 plainly and naturally, rather than guessing or making something up.
 
 How accurate is the model overall (a different question from "how did we
 do on one specific date" - see the actual_sales rule above): this
-assistant is built on an XGBoost sales-forecasting model that was formally
-evaluated against 339 days of real historical data (31 Dec 2024 - 4 Jan
-2026), where it achieved a mean absolute percentage error of about
-{XGBOOST_MAPE_PCT:.0f}% - the lowest (best) of every model tested,
-including two neural network models and several simpler baselines. This is
-a real, fixed, already-computed figure, not something you calculate live -
-you can state it directly and confidently if asked how accurate or
-reliable you are in general, and a plain percentage like this is usually
-the most intuitive way to say it. Do not use this figure to answer a
-question about one specific date's forecast, and do not use a specific
-date's actual_sales rule to answer a question about your overall accuracy
-- they are different questions with different real sources. For anything
-more detailed than this one headline figure (how the neural networks
-compared, spike-day performance, business impact), call
+assistant is built on a CatBoost sales-forecasting model (an average of 25
+models) chosen after 18 rounds of backtesting experiments. Tested on 569
+past days it had a mean absolute percentage error of about
+{FINAL_MODEL_MAPE_PCT:.0f}%, and was about
+{FINAL_MODEL_PCT_BETTER_THAN_MANUAL:.0f}% more accurate than the venue's own
+manual forecast. These are real, fixed, already-computed figures, not
+something you calculate live - you can state them directly and confidently
+if asked how accurate or reliable you are in general, and a plain
+percentage like this is usually the most intuitive way to say it. They
+describe forecasts made with recent sales figures available; for dates
+further ahead, especially without the manager's own estimate, errors are
+larger - get_model_comparison has those figures if asked. Do not use
+these figures to answer a question about one specific date's forecast, and
+do not use a specific date's actual_sales rule to answer a question about
+your overall accuracy - they are different questions with different real
+sources. For anything more detailed than these headline figures (how the
+neural networks compared, spike-day performance, business impact), call
 get_model_comparison rather than guessing further detail.
 """
 
-# Real, sourced figures (reports/results/model_comparison_summary.md) - kept
-# as an f-string built from the same XGBOOST_MAPE_PCT constant SYSTEM_INSTRUCTION
-# uses, so the chat UI's opening greeting and the LLM's own spoken answer about
-# overall accuracy always agree with each other and with the real evaluation,
+# Real, sourced figures (docs/EXPERIMENT_LOG.md, Series 17) - kept as an
+# f-string built from the same constants SYSTEM_INSTRUCTION uses, so the chat
+# UI's opening greeting and the LLM's own spoken answer about overall
+# accuracy always agree with each other and with the real evaluation,
 # never drift into two different claims. A plain percentage (not raw £ MAE) is
-# used deliberately - "13% average error" needs no context to be understood,
-# unlike a bare "£1,050" figure.
+# used deliberately - "12% average error" needs no context to be understood,
+# unlike a bare "£919" figure.
 MODEL_INTRO_MESSAGE = (
-    "Hi, I'm the forecasting assistant for this venue. I'm built on an "
-    "XGBoost sales-forecasting model, evaluated against 339 days of real "
-    f"historical data (31 Dec 2024 - 4 Jan 2026) with an average error of "
-    f"about {XGBOOST_MAPE_PCT:.0f}% - the best of every model tested here, "
-    "including two neural network models and several simpler baselines.\n\n"
+    "Hi, I'm the forecasting assistant for this venue. I'm built on a "
+    "CatBoost sales-forecasting model, chosen after 18 rounds of backtesting "
+    "experiments. Tested on 569 days of real historical data, its average "
+    f"error was about {FINAL_MODEL_MAPE_PCT:.0f}% - about "
+    f"{FINAL_MODEL_PCT_BETTER_THAN_MANUAL:.0f}% more accurate than the venue's "
+    "own manual forecast.\n\n"
     "This chat is a small conversational layer on top of a larger ML "
     "engineering project - the full pipeline, feature engineering, baseline "
-    "comparisons, and neural-network results are written up in the "
-    "project's notebook and README, if you'd like the fuller picture.\n\n"
+    "comparisons, experiments and neural-network results are written up in "
+    "the project's README, experiment log and notebook, if you'd like the "
+    "fuller picture.\n\n"
     "Ask me for a forecast for any date, \"what if it rains\", how a "
     "forecast was worked out, how a past forecast compared to what actually "
     "happened, or how the different models tested here compared - I'll "

@@ -66,9 +66,12 @@ wrong.
 Otherwise: only when a past date's tool result includes `actual_sales`
 that is NOT null, compare it to `predictions.best_estimate` and describe
 the gap in plain terms (e.g. "that was about £X higher/lower than
-actually came in"). If `actual_sales` is null for that date, say plainly
-that no real sales figure is on record for it, and stop there - do not go
-on to estimate, guess, or otherwise imply a comparison happened. Only ever
+actually came in") - unless `prediction_source` is "in_sample", in which
+case the model had already learned from that day's result: give both
+figures if asked, but say plainly it isn't a fair test of accuracy. If
+`actual_sales` is null for that date, say plainly that no real sales
+figure is on record for it, and stop there - do not go on to estimate,
+guess, or otherwise imply a comparison happened. Only ever
 describe the size and direction of a REAL gap using these real numbers -
 never guess or invent a real-world reason for why the gap happened
 (weather, events, etc.) unless the tool itself told you that reason. If

@@ -1,24 +1,115 @@
 """
-Real, already-computed Track A model-comparison results, exposed as a
-grounded tool so the assistant can answer questions about how the models
-this project tested actually performed - not just serve /predict
-forecasts. Without this, the chat layer only ever talks about forecasting
-individual dates, and the substantial ML engineering work behind it (five
-baselines, SARIMAX, XGBoost, an LSTM, and a small Transformer, evaluated
-and compared properly) never surfaces unless a visitor happens to read the
-notebook or README themselves.
+Real, already-computed model results, exposed as a grounded tool so the
+assistant can answer questions about how the models this project tested
+actually performed - not just serve /predict forecasts. Without this, the
+chat layer only ever talks about forecasting individual dates, and the
+substantial ML engineering work behind it never surfaces unless a visitor
+happens to read the README or notebook themselves.
 
-Hardcoded rather than read from reports/results/*.csv at runtime: these
-are finalized, one-off evaluation results from completed work (Track A
-step 3), not something that changes per request, and hardcoding avoids
-needing to ship the reports/ directory into the assistant's own
-deliberately lean Docker image. Every figure below was copied directly
-from reports/results/model_comparison_*.csv on 2026-09-08 - re-run
-src/evaluation/model_comparison.py and update this file if the models are
-ever retrained.
+Two groups of results:
+
+- The final model - the one the live API serves (25-seed log1p CatBoost,
+  chosen by the rolling-origin experimentation programme in
+  docs/EXPERIMENT_LOG.md): its comparison with the venue's manual forecast
+  and the original XGBoost (Series 17), the pipeline's own backtest, how
+  accuracy holds up further ahead (Series 18), and the business-impact
+  simulation.
+- The earlier single-split comparison of every model family (Track A step
+  3: five baselines, SARIMAX, XGBoost, an LSTM and a small Transformer),
+  which picked XGBoost as the starting point.
+
+Hardcoded rather than read from reports/ at runtime: these are finalized
+results, not something that changes per request, and hardcoding avoids
+shipping reports/ into the assistant's deliberately lean Docker image. The
+final-model figures come from `python -m src.evaluation.assistant_grounding`
+(tests/test_assistant_grounding.py fails if they drift from it); the
+single-split figures were copied from reports/results/model_comparison_*.csv
+on 2026-09-08.
 """
 
 from __future__ import annotations
+
+# Headline figures quoted in the assistant's greeting and system prompt
+# (query_forecast.py) - kept here, not duplicated, so both always agree.
+# From Series 17, on 569 matched days.
+FINAL_MODEL_MAPE_PCT = 11.97
+FINAL_MODEL_PCT_BETTER_THAN_MANUAL = 15.36
+
+FINAL_MODEL = {
+    "description": "CatBoost on 38 features, trained on log-transformed sales, averaged over 25 random seeds",
+    "chosen_by": "18 series of rolling-origin backtesting experiments (10 folds of 60-day test windows)",
+    "trained_on": "every day from 2024-01-16 to 2026-09-06",
+}
+
+VS_MANUAL_FORECAST = {
+    "days": 569,
+    "start_date": "2025-01-15",
+    "end_date": "2026-08-23",
+    "manual_forecast": {"mae": 1085.97, "mape_pct": 14.86},
+    "final_model": {"mae": 919.17, "mape_pct": 11.97},
+    "original_xgboost_same_backtest": {"mae": 1034.82, "mape_pct": 13.94},
+    "final_model_pct_better_than_manual": 15.36,
+    "original_xgboost_pct_better_than_manual": 4.71,
+}
+
+PIPELINE_BACKTEST = {
+    "days": 585,
+    "start_date": "2025-01-15",
+    "end_date": "2026-09-06",
+    "final_model_mae": 909.57,
+    "final_model_mape_pct": 11.89,
+    "original_xgboost_mae": 1026.64,
+    "manual_forecast_mae": 1074.46,
+}
+
+# MAE (GBP) by how many days past the last day of real sales data the
+# forecast date is - Series 18, 8 forecast origins. "With manager forecast"
+# means the manager's own sales estimate was supplied as an input.
+ACCURACY_BY_DAYS_AHEAD = [
+    {"days_ahead": "1-7", "manual_forecast": 1103.59, "final_model_with_manager_forecast": 862.52,
+     "original_xgboost_with_manager_forecast": 952.94, "final_model_without_manager_forecast": 884.52,
+     "original_xgboost_without_manager_forecast": 912.46},
+    {"days_ahead": "8-16", "manual_forecast": 948.75, "final_model_with_manager_forecast": 972.66,
+     "original_xgboost_with_manager_forecast": 979.24, "final_model_without_manager_forecast": 1041.39,
+     "original_xgboost_without_manager_forecast": 1030.68},
+    {"days_ahead": "17-30", "manual_forecast": 1037.85, "final_model_with_manager_forecast": 1031.37,
+     "original_xgboost_with_manager_forecast": 1118.68, "final_model_without_manager_forecast": 1083.29,
+     "original_xgboost_without_manager_forecast": 1132.42},
+    {"days_ahead": "31-60", "manual_forecast": 1117.61, "final_model_with_manager_forecast": 1014.94,
+     "original_xgboost_with_manager_forecast": 1077.87, "final_model_without_manager_forecast": 1198.69,
+     "original_xgboost_without_manager_forecast": 1169.34},
+    {"days_ahead": "61-90", "manual_forecast": 1021.67, "final_model_with_manager_forecast": 910.68,
+     "original_xgboost_with_manager_forecast": 1078.38, "final_model_without_manager_forecast": 952.98,
+     "original_xgboost_without_manager_forecast": 1093.59},
+    {"days_ahead": "91-180", "manual_forecast": 1107.88, "final_model_with_manager_forecast": 989.41,
+     "original_xgboost_with_manager_forecast": 1090.51, "final_model_without_manager_forecast": 1097.27,
+     "original_xgboost_without_manager_forecast": 1159.36},
+    {"days_ahead": "1-180", "manual_forecast": 1082.46, "final_model_with_manager_forecast": 977.76,
+     "original_xgboost_with_manager_forecast": 1077.91, "final_model_without_manager_forecast": 1078.12,
+     "original_xgboost_without_manager_forecast": 1132.42},
+]
+
+BUSINESS_IMPACT_SIMULATION = {
+    "days": 569,
+    "planned_wages_lower_than_manual_gbp": 96651.77,
+    "simulated_saving_vs_actual_wages_gbp": 90194.29,
+    "annualised_saving_gbp": 57857.5,
+    "annualised_saving_pct_of_2025_wage_bill": 5.55,
+}
+
+FINAL_MODEL_NOTES = [
+    "The 15% lead over the manual forecast is for forecasts made with recent sales available. "
+    "The live demo's data ends on 2026-09-06, so its forecasts run further ahead - see accuracy_by_days_ahead.",
+    "Seed selection bias: a log-transformed target first looked £15.39 better than the previous best. "
+    "Re-running across 25 random seeds showed the seed used until then was an unusually lucky draw; "
+    "the real gain was £3.35, and that is the figure reported.",
+    "The business-impact figure is a simulation over historical days that counts wage savings only: "
+    "it does not cost understaffing on days the model under-forecasts, and is not a measured outcome.",
+]
+
+# ---------------------------------------------------------------------------
+# Earlier single-split comparison (Track A step 3)
+# ---------------------------------------------------------------------------
 
 EVALUATION_WINDOW = {
     "start_date": "2024-12-31",
@@ -27,10 +118,6 @@ EVALUATION_WINDOW = {
     "spike_days": 34,
     "spike_day_definition": "top 9% of days by actual sales",
 }
-
-# The single figure quoted in the assistant's own greeting/system prompt
-# (query_forecast.py) - kept here, not duplicated, so both always agree.
-XGBOOST_MAPE_PCT = 13.24
 
 OVERALL_ACCURACY = [
     {"model": "xgboost", "mae": 1049.94, "rmse": 1373.08, "mape_pct": 13.24, "bias": 43.89},
@@ -93,19 +180,34 @@ BUSINESS_IMPACT_NOTE = (
 
 
 def get_model_comparison() -> dict:
-    """Real, already-computed results comparing every forecasting model this
-    project tested - XGBoost, a small Transformer, an LSTM, SARIMAX, and
-    five simple baselines - against 339 days of real held-out historical
-    data. Use this whenever asked about the project's model comparison,
-    the neural network results, which model performed best, spike-day
-    performance, or the business/labour-cost impact of forecast error -
-    these figures only come from here, never invent or estimate them.
+    """Real, already-computed results for the forecasting models this
+    project tested. `final_model` is the model the forecasts come from: how
+    it compares with the venue's manual forecast and the original XGBoost,
+    how its accuracy holds up for dates further ahead, and the simulated
+    labour-cost impact. `earlier_model_comparison` is the first,
+    single-split comparison of every model family - XGBoost, a small
+    Transformer, an LSTM, SARIMAX and five simple baselines - including
+    spike-day accuracy. Use this whenever asked about the project's model
+    comparison, the neural network results, which model performed best,
+    how accurate the forecasts are further ahead, spike-day performance, or
+    the business/labour-cost impact of forecast error - these figures only
+    come from here, never invent or estimate them.
     """
     return {
-        "evaluation_window": EVALUATION_WINDOW,
-        "overall_accuracy": OVERALL_ACCURACY,
-        "wins_by_individual_day": WINS_BY_INDIVIDUAL_DAY,
-        "spike_day_accuracy": SPIKE_DAY_ACCURACY,
-        "business_impact_implied_wages": BUSINESS_IMPACT_IMPLIED_WAGES,
-        "business_impact_note": BUSINESS_IMPACT_NOTE,
+        "final_model": {
+            **FINAL_MODEL,
+            "vs_manual_forecast": VS_MANUAL_FORECAST,
+            "pipeline_backtest": PIPELINE_BACKTEST,
+            "accuracy_by_days_ahead": ACCURACY_BY_DAYS_AHEAD,
+            "business_impact_simulation": BUSINESS_IMPACT_SIMULATION,
+            "notes": FINAL_MODEL_NOTES,
+        },
+        "earlier_model_comparison": {
+            "evaluation_window": EVALUATION_WINDOW,
+            "overall_accuracy": OVERALL_ACCURACY,
+            "wins_by_individual_day": WINS_BY_INDIVIDUAL_DAY,
+            "spike_day_accuracy": SPIKE_DAY_ACCURACY,
+            "business_impact_implied_wages": BUSINESS_IMPACT_IMPLIED_WAGES,
+            "business_impact_note": BUSINESS_IMPACT_NOTE,
+        },
     }
