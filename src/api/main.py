@@ -27,8 +27,8 @@ model_service: ModelService | None = None
 
 
 async def _refresh_loop() -> None:
-    """Reloads the historical dataset once a day so the forecast_sales/rain
-    fallback lookups stay current if the pipeline is re-run with new data."""
+    """Reloads the historical dataset once a day so the history-based inputs
+    and fallback lookups stay current if the pipeline is re-run with new data."""
     while True:
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
         try:
@@ -64,6 +64,8 @@ def health() -> HealthResponse:
 
     return HealthResponse(
         status="ok",
+        model=model_service.model_name,
+        model_trained_through=model_service.trained_through,
         historical_rows=len(history_cache.df),
         history_last_refreshed=history_cache.last_refreshed.isoformat(),
     )
@@ -74,8 +76,11 @@ def predict(payload: PredictRequest) -> PredictResponse:
     if model_service is None:
         raise HTTPException(status_code=503, detail="Model not yet loaded")
 
-    results = [
-        model_service.predict_one(item.date, item.forecast_sales)
-        for item in payload.requests
-    ]
+    try:
+        results = [
+            model_service.predict_one(item.date, item.forecast_sales)
+            for item in payload.requests
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PredictResponse(results=results)

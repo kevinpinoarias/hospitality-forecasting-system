@@ -1,112 +1,236 @@
 """
-Builds features for a single requested date and produces the dry/heavy-rain
-scenario predictions from the trained XGBoost model.
+Builds features for a requested date and produces the forecast and the
+dry/heavy-rain scenarios from the final model (25-seed log1p CatBoost, see
+src/models/final_model.py).
 
-Feature construction deliberately reuses the exact functions from
-src/features/build_features.py that the training pipeline uses, so serving
-and training can't silently drift apart (the same calendar/holiday/payday
-logic runs in both places).
+How a date is handled depends on where it falls:
+
+- Inside the historical data: every feature is real. If the date was one of
+  the pipeline's backtest days and the caller didn't supply their own
+  forecast_sales, the forecast returned is the backtest's out-of-sample
+  prediction - what the model predicted before it saw that day - so a
+  comparison with actual_sales is a fair test. Otherwise the served model,
+  which was trained on data covering that date, makes the prediction.
+- Beyond the historical data: the date's recent sales history is filled
+  with historical weekday/season medians, and its weather with the live
+  Open-Meteo figures where they exist and medians elsewhere - the approach
+  Series 18 of docs/EXPERIMENT_LOG.md validated out to 180 days. The shared
+  code lives in src/features/serving_features.py, which reuses the training
+  pipeline's own feature functions so serving and training can't silently
+  drift apart.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import json
-from pathlib import Path
+import threading
 
+import numpy as np
 import pandas as pd
-from xgboost import XGBRegressor
 
-from src.features.build_features import (
-    add_bank_holiday_features,
-    add_payday_features,
-    add_time_features,
-)
 from src.api.history import (
     HistoryCache,
     actual_sales_on,
     days_beyond_training_data,
     equivalent_weekday_last_year,
-    weekday_seasonal_lookup,
 )
-from src.preprocessing.build_daily_sales import KNOWN_CLOSURE_MONTH_DAYS
 from src.api.schemas import (
     HistoricalComparison,
     PredictResult,
     ScenarioPredictions,
     WeatherDetails,
 )
-from src.api.weather import categorize_rain, resolve_is_heavy_rain
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_PATH = PROJECT_ROOT / "models" / "xgboost_model.json"
-MODEL_METADATA_PATH = PROJECT_ROOT / "models" / "xgboost_model_metadata.json"
+from src.api.weather import (
+    DRY_MM,
+    HEAVY_RAIN_MM,
+    categorize_rain,
+    fetch_live_weather,
+    live_weather_end,
+)
+from src.features.build_features import add_weather_features
+from src.features.serving_features import (
+    WEATHER_COLS,
+    build_feature_frame,
+    extend_daily_frame,
+    fill_future_sales_seasonally,
+    history_features_at,
+    typical_heavy_rain_mm,
+)
+from src.models.final_model import BACKTEST_PREDICTIONS_FILENAME, MODEL_DIR, BaggedCatBoost
+from src.preprocessing.build_daily_sales import KNOWN_CLOSURE_MONTH_DAYS
 
 DATE_COL = "date"
+# How far past the end of the data the precomputed frame reaches; a request
+# beyond it extends the frame by another EXTENSION_DAYS.
+EXTENSION_DAYS = 730
+WEATHER_DERIVED_COLS = ["is_hot_for_scotland", "is_heavy_rain", "is_dry_day", "temp_anomaly_14d", "warm_streak_len"]
 
 
-def _build_feature_row(target_date: dt.date) -> pd.DataFrame:
-    """Compute every date-derived feature for a single target date."""
-    row = pd.DataFrame({DATE_COL: [pd.Timestamp(target_date)]})
-    row = add_time_features(row, date_col=DATE_COL)
-    row = add_payday_features(row, date_col=DATE_COL)
-    row = add_bank_holiday_features(row, date_col=DATE_COL)
-    return row
+def _with_rain(rows: pd.DataFrame, rain_mm: float) -> pd.DataFrame:
+    """The same feature rows with a different amount of rain - only the
+    rain-derived flags depend on it."""
+    out = rows.copy()
+    out["rain_mm"] = rain_mm
+    out["is_heavy_rain"] = int(rain_mm > HEAVY_RAIN_MM)
+    out["is_dry_day"] = int(rain_mm < DRY_MM)
+    return out
 
 
 class ModelService:
     """Loads the trained model once and serves predictions from it."""
 
-    def __init__(self, history: HistoryCache) -> None:
+    def __init__(self, history: HistoryCache, model_dir=MODEL_DIR) -> None:
         self.history = history
-
-        with open(MODEL_METADATA_PATH, "r", encoding="utf-8") as f:
-            metadata = json.load(f)
-        self.features: list[str] = metadata["features"]
-
-        self.model = XGBRegressor()
-        self.model.load_model(MODEL_PATH)
-
-    def _resolve_forecast_sales(
-        self, target_date: dt.date, user_value: float | None
-    ) -> tuple[float, str]:
-        if user_value is not None:
-            return user_value, "user_provided"
-
-        value = weekday_seasonal_lookup(self.history.df, target_date, "forecast_sales")
-        return value, "historical_weekday_seasonal_average"
-
-    def predict_one(self, target_date: dt.date, forecast_sales: float | None) -> PredictResult:
-        forecast_sales_used, forecast_sales_source = self._resolve_forecast_sales(
-            target_date, forecast_sales
+        self.model, self.metadata = BaggedCatBoost.load(model_dir)
+        backtest = pd.read_csv(model_dir / BACKTEST_PREDICTIONS_FILENAME, parse_dates=[DATE_COL])
+        self.backtest_predictions: dict[dt.date, float] = dict(
+            zip(backtest[DATE_COL].dt.date, backtest["final_model_prediction"])
         )
-        rain_info = resolve_is_heavy_rain(target_date, self.history.df)
-        resolved_rain = rain_info["is_heavy_rain"]
+        self._lock = threading.Lock()
+        self._frame_built_for: tuple | None = None
+        self._frame = pd.DataFrame()
+        self._sales = np.array([])
+        self._first_future = 0
 
-        feature_row = _build_feature_row(target_date)
-        feature_row["forecast_sales"] = forecast_sales_used
+    @property
+    def model_name(self) -> str:
+        return self.metadata["model"]
 
-        dry_row = feature_row.copy()
-        dry_row["is_heavy_rain"] = 0
+    @property
+    def trained_through(self) -> str:
+        return self.metadata["trained_on"]["end_date"]
 
-        rain_row = feature_row.copy()
-        rain_row["is_heavy_rain"] = 1
+    # -----------------------------------------------------------------
+    # Precomputed frame: history plus seasonal-median future days
+    # -----------------------------------------------------------------
 
-        dry_pred = float(self.model.predict(dry_row[self.features])[0])
-        rain_pred = float(self.model.predict(rain_row[self.features])[0])
-        best_estimate = rain_pred if resolved_rain == 1 else dry_pred
+    def _ensure_frame(self, end_date: dt.date) -> None:
+        with self._lock:
+            key = (self.history.last_refreshed,)
+            covered = self._frame_built_for == key and self._frame[DATE_COL].iloc[-1].date() >= end_date
+            if covered:
+                return
 
-        weather_details = None
-        if rain_info["rain_mm"] is not None:
-            weather_details = WeatherDetails(
-                expected_rain_mm=rain_info["rain_mm"],
-                expected_rain_description=categorize_rain(rain_info["rain_mm"]),
-                expected_max_temp_c=rain_info["max_temp_c"],
+            history = self.history.df
+            reach = max(end_date, self.history.max_date) + dt.timedelta(days=EXTENSION_DAYS)
+            daily = extend_daily_frame(history, reach)
+            frame = build_feature_frame(daily)
+            first_future = len(history)
+
+            self._frame = frame
+            self._first_future = first_future
+            self._sales = fill_future_sales_seasonally(frame, first_future, history)
+            self._frame_built_for = key
+
+    # -----------------------------------------------------------------
+    # Prediction
+    # -----------------------------------------------------------------
+
+    def _live_weather(self, target_date: dt.date, today: dt.date) -> tuple[pd.DataFrame, bool]:
+        """Live weather for every day after the data that Open-Meteo covers,
+        when any of those days feed the target date's features (the date
+        itself or the 14 days before it)."""
+        start = self.history.max_date + dt.timedelta(days=1)
+        end = live_weather_end(today)
+        if target_date - dt.timedelta(days=14) > end:
+            return pd.DataFrame(columns=[DATE_COL] + WEATHER_COLS), False
+        return fetch_live_weather(start, end)
+
+    def _future_row(
+        self, target_date: dt.date, today: dt.date,
+    ) -> tuple[pd.DataFrame, dict | None, str]:
+        """Feature row for a date beyond the data, the live weather used for
+        it (if any), and the weather source label."""
+        live, errored = self._live_weather(target_date, today)
+
+        idx = self._first_future + (target_date - self.history.max_date).days - 1
+        window = self._frame.iloc[: idx + 1]
+        weather = window[[DATE_COL] + WEATHER_COLS].copy()
+
+        if not live.empty:
+            live = live.assign(**{DATE_COL: pd.to_datetime(live[DATE_COL]).dt.normalize()}).set_index(DATE_COL)
+            overlap = weather[DATE_COL].isin(live.index)
+            weather.loc[overlap, WEATHER_COLS] = live.loc[weather.loc[overlap, DATE_COL], WEATHER_COLS].to_numpy()
+
+        derived = add_weather_features(weather[[DATE_COL]], weather)
+        row = window.iloc[[-1]].copy()
+        for col in WEATHER_COLS + WEATHER_DERIVED_COLS:
+            row[col] = derived[col].iloc[-1]
+        sales_hist = history_features_at(self._sales, self._frame["forecast_sales"].to_numpy(dtype=float), idx)
+        for name, value in sales_hist.items():
+            row[name] = value
+
+        target_ts = pd.Timestamp(target_date)
+        if not live.empty and target_ts in live.index:
+            real = live.loc[target_ts]
+            details = {"rain_mm": float(real["rain_mm"]), "max_temp_c": float(real["max_temp"])}
+            source = "observed" if target_date <= today else "forecast"
+        else:
+            details = None
+            within_live_range = target_date <= live_weather_end(today)
+            source = "historical_average_api_error" if (errored and within_live_range) else "historical_average"
+        return row, details, source
+
+    def predict_one(
+        self,
+        target_date: dt.date,
+        forecast_sales: float | None,
+        today: dt.date | None = None,
+    ) -> PredictResult:
+        today = today or dt.datetime.now(dt.timezone.utc).date()
+        history = self.history.df
+        first_date = history[DATE_COL].min().date()
+        if target_date < first_date:
+            raise ValueError(f"{target_date} is before the start of the historical data ({first_date}).")
+        in_history = target_date <= self.history.max_date
+
+        if in_history:
+            row = history[history[DATE_COL].dt.date == target_date].copy()
+            weather_details = {"rain_mm": float(row["rain_mm"].iloc[0]), "max_temp_c": float(row["max_temp"].iloc[0])}
+            rain_source = "observed"
+            if forecast_sales is None:
+                forecast_sales_used, forecast_sales_source = float(row["forecast_sales"].iloc[0]), "manager_forecast_on_record"
+            else:
+                forecast_sales_used, forecast_sales_source = forecast_sales, "user_provided"
+        else:
+            self._ensure_frame(target_date)
+            row, weather_details, rain_source = self._future_row(target_date, today)
+            if forecast_sales is None:
+                forecast_sales_used = float(row["forecast_sales"].iloc[0])
+                forecast_sales_source = "historical_weekday_seasonal_average"
+            else:
+                forecast_sales_used, forecast_sales_source = forecast_sales, "user_provided"
+
+        row["forecast_sales"] = forecast_sales_used
+        best_rain = float(row["rain_mm"].iloc[0])
+        heavy_rain = best_rain if best_rain > HEAVY_RAIN_MM else typical_heavy_rain_mm(history)
+
+        scenario_rows = pd.concat([row, _with_rain(row, 0.0), _with_rain(row, heavy_rain)], ignore_index=True)
+        best_pred, dry_pred, rain_pred = (float(p) for p in self.model.predict(scenario_rows))
+
+        if not in_history:
+            prediction_source = "forecast"
+        elif forecast_sales is None and target_date in self.backtest_predictions:
+            # The weather on a past date is already known, so there are no
+            # alternative scenarios to offer - and the served model's own
+            # figures for this date would be in-sample, so they are not
+            # mixed in with the out-of-sample prediction.
+            prediction_source = "out_of_sample_backtest"
+            best_pred = dry_pred = rain_pred = float(self.backtest_predictions[target_date])
+        else:
+            prediction_source = "in_sample"
+
+        weather = None
+        if weather_details is not None:
+            weather = WeatherDetails(
+                expected_rain_mm=weather_details["rain_mm"],
+                expected_rain_description=categorize_rain(weather_details["rain_mm"]),
+                expected_max_temp_c=weather_details["max_temp_c"],
             )
 
-        last_week = actual_sales_on(self.history.df, target_date - dt.timedelta(days=7))
-        last_year = actual_sales_on(self.history.df, equivalent_weekday_last_year(target_date))
-        actual_sales = actual_sales_on(self.history.df, target_date)
+        last_week = actual_sales_on(history, target_date - dt.timedelta(days=7))
+        last_year = actual_sales_on(history, equivalent_weekday_last_year(target_date))
+        actual_sales = actual_sales_on(history, target_date)
 
         return PredictResult(
             date=target_date,
@@ -114,14 +238,15 @@ class ModelService:
             is_known_closure_day=(target_date.month, target_date.day) in KNOWN_CLOSURE_MONTH_DAYS,
             forecast_sales_used=forecast_sales_used,
             forecast_sales_source=forecast_sales_source,
-            rain_data_source=rain_info["source"],
-            days_beyond_training_data=days_beyond_training_data(self.history.df, target_date),
+            rain_data_source=rain_source,
+            days_beyond_training_data=days_beyond_training_data(history, target_date),
+            prediction_source=prediction_source,
             predictions=ScenarioPredictions(
                 dry_scenario=dry_pred,
                 heavy_rain_scenario=rain_pred,
-                best_estimate=best_estimate,
+                best_estimate=best_pred,
             ),
-            weather=weather_details,
+            weather=weather,
             historical_comparison=HistoricalComparison(
                 same_day_last_week=last_week,
                 same_day_last_year=last_year,

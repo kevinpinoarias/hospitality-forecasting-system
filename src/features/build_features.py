@@ -265,6 +265,14 @@ SCHOOL_BREAKS = pd.DataFrame([
     {"council": "Glasgow", "break_type": "christmas", "start": "2025-12-22", "end": "2026-01-05"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2026-03-30", "end": "2026-04-10"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2026-06-29", "end": "2026-08-14"},
+    # 2026-27, from Glasgow City Council's published term dates. These fall
+    # after the end of the current data, so they change no training row -
+    # they exist so the API flags school holidays on the dates it forecasts.
+    # Dates after the last break here get no school-holiday flag; add each
+    # year's dates as the council publishes them.
+    {"council": "Glasgow", "break_type": "christmas", "start": "2026-12-21", "end": "2027-01-04"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2027-04-05", "end": "2027-04-16"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2027-06-28", "end": "2027-08-10"},
 ])
 
 
@@ -600,8 +608,12 @@ def fetch_open_meteo_daily(
     if not frames:
         return pd.DataFrame(columns=["date", "max_temp", "rain_mm", "sun_hours"])
 
+    # Today appears in both the archive and the forecast response, and the
+    # archive usually has no figure for it yet - drop empty rows before
+    # de-duplicating so the forecast's real value is the one kept.
     out = (
         pd.concat(frames, ignore_index=True)
+        .dropna(subset=["max_temp", "rain_mm", "sun_hours"], how="all")
         .drop_duplicates(subset=["date"])
         .sort_values("date")
         .reset_index(drop=True)

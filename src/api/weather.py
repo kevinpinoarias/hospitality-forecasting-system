@@ -1,16 +1,15 @@
 """
-Resolves the `is_heavy_rain` feature for a single target date.
+Live weather for the dates around a forecast.
 
-Three possible sources, in order of preference:
-1. "forecast"           - live Open-Meteo forecast, for dates within its
-                           ~16-day forecast horizon.
-2. "historical_average" - the date is beyond the forecast horizon, so we use
-                           the historical probability of heavy rain for that
-                           weekday/season instead.
-3. "historical_average_api_unavailable" - a live forecast should have been
-                           available, but the API call failed after retries;
-                           we fall back to the same historical estimate
-                           rather than maintaining a second, rain-blind model.
+The final model reads the weather on the forecast date (maximum
+temperature, rain, sunshine) and on the 14 days before it. Where Open-Meteo
+has a real figure - observed for past days, forecast for roughly the next
+16 days - that figure is used; every other day keeps its historical
+weekday/season median (see src/features/serving_features.py).
+
+A failed call is retried, then reported through an `errored` flag so the
+response can honestly say the live source was unavailable rather than
+calling a normal gap in the provider's data an API failure.
 """
 
 from __future__ import annotations
@@ -28,13 +27,14 @@ from src.features.build_features import (
     TIMEZONE,
     fetch_open_meteo_daily,
 )
-from src.api.history import weekday_seasonal_lookup
 
 logger = logging.getLogger("hospitality_api")
 
+# Open-Meteo forecasts 16 days including today, so the last forecastable
+# date is today + 15 (asking for more makes the whole request fail).
 FORECAST_HORIZON_DAYS = 16
-HEAVY_RAIN_MM = 5.0
-DRY_MM = 1.0  # matches is_dry_day's threshold in src/features/build_features.py
+HEAVY_RAIN_MM = 5.0  # matches is_heavy_rain in src/features/build_features.py
+DRY_MM = 1.0  # matches is_dry_day in src/features/build_features.py
 MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = (1, 2, 4)
 
@@ -51,81 +51,43 @@ def categorize_rain(rain_mm: float) -> str:
     return "light rain"
 
 
-def _fetch_weather(target_date: dt.date) -> tuple[float | None, float | None, bool]:
-    """
-    Attempt a live weather fetch with retries.
+def live_weather_end(today: dt.date) -> dt.date:
+    """The last date Open-Meteo can give a real forecast for. Uses the
+    earlier of the caller's date and the venue's local date, since the
+    provider counts days in the venue's timezone."""
+    local_today = pd.Timestamp.now(tz=TIMEZONE).date()
+    return min(today, local_today) + dt.timedelta(days=FORECAST_HORIZON_DAYS - 1)
 
-    Returns (rain_mm, max_temp_c, errored). Both values are None either when
-    the call succeeded but the provider has no data yet for that date
-    (normal, for dates near the edge of its real forecast range), or when
-    every retry raised an error - `errored` distinguishes the two so the
-    caller can report an honest source label instead of calling a null
-    response an "API failure".
+
+def fetch_live_weather(start_date: dt.date, end_date: dt.date) -> tuple[pd.DataFrame, bool]:
     """
-    date_str = target_date.isoformat()
+    Daily max_temp, rain_mm and sun_hours from Open-Meteo for a date range,
+    with retries.
+
+    Returns (weather, errored). Rows the provider has no figure for yet are
+    dropped. `errored` is True only when every retry raised.
+    """
+    empty = pd.DataFrame(columns=["date", "max_temp", "rain_mm", "sun_hours"])
+    if start_date > end_date:
+        return empty, False
 
     for attempt in range(MAX_RETRIES):
         try:
-            weather_df = fetch_open_meteo_daily(
+            weather = fetch_open_meteo_daily(
                 lat=LAT,
                 lon=LON,
-                start_date=date_str,
-                end_date=date_str,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
                 timezone=TIMEZONE,
                 cache_dir=CACHE_DIR,
             )
-            if not weather_df.empty and pd.notna(weather_df.loc[0, "rain_mm"]):
-                rain_mm = float(weather_df.loc[0, "rain_mm"])
-                max_temp_val = weather_df.loc[0, "max_temp"]
-                max_temp = float(max_temp_val) if pd.notna(max_temp_val) else None
-                return rain_mm, max_temp, False
-            return None, None, False
+            return weather.dropna(subset=["max_temp", "rain_mm", "sun_hours"]), False
         except Exception as exc:  # network error, timeout, bad response
             logger.warning(
-                "Open-Meteo fetch failed for %s (attempt %d/%d): %s",
-                date_str, attempt + 1, MAX_RETRIES, exc,
+                "Open-Meteo fetch failed for %s to %s (attempt %d/%d): %s",
+                start_date, end_date, attempt + 1, MAX_RETRIES, exc,
             )
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_BACKOFF_SECONDS[attempt])
 
-    return None, None, True
-
-
-def resolve_is_heavy_rain(
-    target_date: dt.date,
-    history_df: pd.DataFrame,
-    today: dt.date | None = None,
-) -> dict:
-    """
-    Returns a dict:
-        is_heavy_rain: int
-        source: str
-        rain_mm / max_temp_c: float | None - the actual weather figures
-            behind the decision, only populated when a live forecast or
-            observed value was used (not for the historical-average
-            fallback, where there's no single real figure to report).
-    """
-    today = today or dt.datetime.now(dt.timezone.utc).date()
-    within_horizon = target_date <= today + dt.timedelta(days=FORECAST_HORIZON_DAYS)
-
-    if within_horizon:
-        rain_mm, max_temp_c, errored = _fetch_weather(target_date)
-        if rain_mm is not None:
-            live_source = "observed" if target_date <= today else "forecast"
-            return {
-                "is_heavy_rain": int(rain_mm > HEAVY_RAIN_MM),
-                "source": live_source,
-                "rain_mm": rain_mm,
-                "max_temp_c": max_temp_c,
-            }
-        source = "historical_average_api_error" if errored else "historical_average"
-    else:
-        source = "historical_average"
-
-    rain_probability = weekday_seasonal_lookup(history_df, target_date, "is_heavy_rain")
-    return {
-        "is_heavy_rain": int(rain_probability >= 0.5),
-        "source": source,
-        "rain_mm": None,
-        "max_temp_c": None,
-    }
+    return empty, True

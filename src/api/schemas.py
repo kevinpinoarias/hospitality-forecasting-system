@@ -69,6 +69,15 @@ class PredictResult(BaseModel):
     forecast_sales_source: str
     rain_data_source: str
     days_beyond_training_data: int
+    # Where best_estimate comes from:
+    # - "forecast": a date beyond the historical data.
+    # - "out_of_sample_backtest": a past date, predicted by the pipeline's
+    #   rolling-origin backtest before the model saw that day, so comparing
+    #   it with actual_sales is a fair test of accuracy. The weather is
+    #   already known, so both scenarios equal best_estimate.
+    # - "in_sample": a past date the served model was trained on (or a past
+    #   date with a caller-supplied forecast_sales) - not a fair accuracy test.
+    prediction_source: str
     predictions: ScenarioPredictions
     weather: WeatherDetails | None = None
     historical_comparison: HistoricalComparison
@@ -85,5 +94,7 @@ class PredictResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    model: str
+    model_trained_through: str
     historical_rows: int
     history_last_refreshed: str
