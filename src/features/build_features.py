@@ -127,14 +127,37 @@ def add_time_features(df: pd.DataFrame, date_col: str = DATE_COL) -> pd.DataFram
         out["forecast_error"] = out["total_sales"] - out["forecast_sales"]
 
     # Sales lag / rolling
+    #
+    # DEPRECATED - DO NOT USE AS MODEL FEATURES: lag_1_sales, lag_2_sales,
+    # lag_3_sales, rolling_28_sales (and, below, lag_2_fe/lag_3_fe).
+    # Tested in Series 4 (see EXPERIMENT_LOG.md) added individually and
+    # all together on top of the add_all_candidates winning configuration -
+    # every one made MAE worse (£907.77 -> £914-927), most likely because
+    # the short-term/weekly signal they'd add is already captured by
+    # lag_7_sales / rolling_7_sales / rolling_14_sales / lag_1_fe /
+    # rolling_7_fe, which are already in that configuration. Left computed
+    # here for reference/reproducibility and in case a future feature set
+    # that excludes those five ever needs re-testing them, but they must
+    # not be added to any production or recommended feature list on
+    # current evidence.
     if "total_sales" in out.columns:
+        out["lag_1_sales"] = out["total_sales"].shift(1)
+        out["lag_2_sales"] = out["total_sales"].shift(2)
+        out["lag_3_sales"] = out["total_sales"].shift(3)
         out["lag_7_sales"] = out["total_sales"].shift(7)
         out["rolling_7_sales"] = out["total_sales"].shift(1).rolling(window=7).mean()
         out["rolling_14_sales"] = out["total_sales"].shift(1).rolling(window=14).mean()
+        out["rolling_28_sales"] = out["total_sales"].shift(1).rolling(window=28).mean()  # DEPRECATED - see above
 
-    # Forecast error lag / rolling
+    # Forecast error lag / rolling. Note: forecast_error itself
+    # (= total_sales - forecast_sales) is never a candidate model feature -
+    # it directly encodes the target and would be leakage. Only its lagged
+    # values (yesterday's, or earlier, forecast-vs-actual gap - already
+    # known history by the time a new day is being predicted) are safe.
     if "forecast_error" in out.columns:
         out["lag_1_fe"] = out["forecast_error"].shift(1)
+        out["lag_2_fe"] = out["forecast_error"].shift(2)  # DEPRECATED - see note above
+        out["lag_3_fe"] = out["forecast_error"].shift(3)  # DEPRECATED - see note above
         out["lag_7_fe"] = out["forecast_error"].shift(7)
         out["rolling_7_fe"] = out["forecast_error"].shift(1).rolling(7).mean()
 
@@ -286,6 +309,192 @@ def add_school_holiday_features(
         any_break |= mask
 
     out["is_school_holiday"] = any_break.astype(int)
+    return out
+
+
+# ---------------------------------------------------------------------
+# Fixed-calendar Christmas period
+# ---------------------------------------------------------------------
+
+def add_christmas_period_feature(df: pd.DataFrame, date_col: str = DATE_COL) -> pd.DataFrame:
+    """
+    Binary flag for the fixed calendar month of December (1st-31st).
+
+    Deliberately calendar-fixed (not council-specific school-break dates,
+    see SCHOOL_BREAKS/is_christmas_break above) and deliberately whole-
+    month rather than a narrower window around Christmas Day itself - the
+    working assumption tested here is that once December starts, it is
+    already "Christmas" from a hospitality-demand perspective (works
+    parties, festive bookings), not just the days immediately around the
+    25th.
+
+    DEPRECATED - DO NOT USE AS A MODEL FEATURE: tested in Series 5 (see
+    EXPERIMENT_LOG.md), added to the add_all_candidates winning
+    configuration - made MAE worse (£907.77 -> £919.33), most likely
+    because is_christmas_break/is_school_holiday/is_long_weekend/the
+    month cyclical encodings already capture most of this signal. Left
+    computed here for reference; see EXPERIMENT_LOG.md's discussion of a
+    graded (non-binary) alternative, which has not yet been tried.
+    """
+    out = df.copy()
+    out[date_col] = pd.to_datetime(out[date_col])
+    out["is_christmas_period"] = (out[date_col].dt.month == 12).astype(int)  # DEPRECATED - see docstring
+    return out
+
+
+# Named December sub-periods, directly from the real 2-year pattern (see
+# EXPERIMENT_LOG.md's Series 5/6 discussion): a "party season" build-up,
+# a pre-Christmas peak, a dip on Christmas Eve itself, a Boxing Day lull
+# (25th is already covered by is_bank_holiday - no separate flag needed),
+# a short recovery, a second and larger Hogmanay peak, then New Year's
+# Eve itself easing off slightly from that peak. Fixed calendar rules,
+# not derived from historical outcomes - unlike december_intensity_index,
+# this needs no walk-forward machinery: CatBoost learns the appropriate
+# level for each phase from whatever training data is available at fit
+# time, exactly as it already does for month/day_of_week, so there is no
+# risk of a phase's own future value leaking into itself.
+DECEMBER_PHASES: dict[str, tuple[int, int]] = {
+    "is_party_season": (1, 21),
+    "is_pre_christmas_peak": (22, 23),
+    "is_christmas_eve_dip": (24, 24),
+    "is_boxing_day_lull": (26, 26),
+    "is_post_christmas_recovery": (27, 28),
+    "is_hogmanay_peak": (29, 30),
+    "is_new_years_eve": (31, 31),
+}
+
+
+def add_december_phase_features(df: pd.DataFrame, date_col: str = DATE_COL) -> pd.DataFrame:
+    """
+    Binary flags for named December sub-periods, directly encoding the
+    real empirical pattern found in the 2 years of history (see
+    DECEMBER_PHASES above and EXPERIMENT_LOG.md's Series 7) rather than
+    asking a model to infer it from a single continuous index.
+
+    Tested as a direct alternative to the deprecated is_christmas_period
+    (Series 5) and december_intensity_index (Series 6): both prior
+    attempts made add_all_candidates worse. The hypothesis here was that
+    grouping days into a handful of named phases - each backed by more
+    training rows than a single day-of-month ever could be with only two
+    Decembers of data - would be more robust than either a single flat
+    window or a 31-point empirical curve estimated from just two
+    observations per day.
+
+    DEPRECATED - DO NOT USE AS MODEL FEATURES: tested in Series 7 (see
+    EXPERIMENT_LOG.md), added to add_all_candidates individually and all
+    together - every one made MAE worse (£907.77 -> £916-923), the same
+    direction as Series 4/5/6. This is now the fourth independent
+    December/Christmas encoding to fail; see Series 7's conclusions for
+    an important open question this raises about whether CatBoost's
+    fixed hyperparameters (tuned for a smaller feature space) are
+    penalising any added feature, not specifically these ones. Left
+    computed here for reference.
+    """
+    out = df.copy()
+    out[date_col] = pd.to_datetime(out[date_col])
+    month = out[date_col].dt.month
+    day = out[date_col].dt.day
+
+    for name, (start_day, end_day) in DECEMBER_PHASES.items():
+        out[name] = ((month == 12) & (day >= start_day) & (day <= end_day)).astype(int)  # DEPRECATED - see docstring
+
+    return out
+
+
+def add_december_intensity_feature(
+    df: pd.DataFrame,
+    date_col: str = DATE_COL,
+    target_col: str = TARGET_COL,
+) -> pd.DataFrame:
+    """
+    Empirically-derived, graded December demand signal - built to test
+    whether getting the real (twin-peak) December shape right would
+    succeed where the deprecated binary is_christmas_period did not.
+
+    DEPRECATED - DO NOT USE AS A MODEL FEATURE: tested in Series 6 (see
+    EXPERIMENT_LOG.md), added to add_all_candidates - still made MAE
+    worse on the expanding window (£907.77 -> £916.20), though more
+    narrowly than the binary flag or Series 4's short-lag features; near
+    -neutral on the sliding-365d window (+£0.52). Most likely the same
+    story as Series 4/5: is_christmas_break/is_school_holiday/
+    is_long_weekend/the month cyclical encodings already capture most of
+    what's extractable from this signal family with the current data.
+    Left computed here for reference.
+
+    Continuous index built from the real 2-year pattern: weekday-adjusted
+    relative sales intensity (actual / typical-for-that-weekday) averaged
+    by day-of-December, computed separately for each year using only
+    PRIOR years' December data.
+
+    Real shape found (see EXPERIMENT_LOG.md's Series 5 discussion): NOT a
+    single peak centred on the 25th. There are two peaks - one around the
+    22nd-23rd (pre-Christmas), a real trough on the 25th-26th (closure +
+    Boxing Day lull), then a SECOND, LARGER peak around the 29th-30th
+    (New Year/Hogmanay run-up, consistent with this being a Glasgow
+    venue) - before easing off on the 31st itself. A flat binary flag or
+    an assumed single-peak decay curve would both mis-model this.
+
+    Walk-forward safety is the reason this needs its own function rather
+    than a simple lookup: naively pooling both Decembers together to
+    build one shared per-day table would let a later year's own actual
+    December outcomes leak into that same year's feature value (the
+    per-day pattern is computed from data that would include the row
+    being predicted). Instead, for each December in the dataset, only
+    data strictly before that December 1st is used - both for the
+    weekday baseline and for the prior-December pattern itself. With only
+    two Decembers currently in the data, this means the first one
+    (2024) has no prior December to learn from and is left NaN (the same
+    edge behaviour as this project's lag features at the start of the
+    series) - only the second (2025) gets a real, non-leaked value.
+    Non-December rows get the neutral value 1.0 (an "ordinary day" has no
+    December effect by construction, not an estimate).
+
+    The weekday baseline itself is a plain historical mean (not further
+    smoothed/expanding day-by-day) computed once per December's cutoff -
+    a documented simplification: it is a slowly-changing, stable quantity
+    compared to the December-specific pattern (which does vary
+    meaningfully year to year, exactly the leakage this function exists
+    to avoid), so computing it once per cutoff rather than expanding
+    row-by-row is a much lower-risk simplification than pooling the
+    December pattern itself would have been.
+    """
+    out = df.copy()
+    out[date_col] = pd.to_datetime(out[date_col])
+    out = out.sort_values(date_col).reset_index(drop=True)
+
+    day_of_week = out[date_col].dt.dayofweek
+    day_of_month = out[date_col].dt.day
+    year = out[date_col].dt.year
+    is_december = out[date_col].dt.month == 12
+
+    index_values = pd.Series(1.0, index=out.index)
+    index_values.loc[is_december] = np.nan
+
+    for y in sorted(year[is_december].unique()):
+        cutoff = pd.Timestamp(year=int(y), month=12, day=1)
+        prior_mask = out[date_col] < cutoff  # boolean Series, same index as out
+        if not prior_mask.any():
+            continue
+
+        # Every slice below is taken with .loc against prior_mask's own
+        # index, so it stays label-aligned with prior_relative_intensity
+        # rather than a full-length mask being applied to a
+        # already-reduced-length Series (the original bug here).
+        prior_dow = day_of_week.loc[prior_mask]
+        prior_weekday_avg = out.loc[prior_mask].groupby(prior_dow)[target_col].mean()
+        prior_relative_intensity = out.loc[prior_mask, target_col] / prior_dow.map(prior_weekday_avg)
+
+        prior_is_dec = is_december.loc[prior_mask]
+        if not prior_is_dec.any():
+            continue  # no PRIOR December exists yet - stays NaN for this year
+
+        prior_dom = day_of_month.loc[prior_mask]
+        prior_dec_by_day = prior_relative_intensity[prior_is_dec].groupby(prior_dom[prior_is_dec]).mean()
+
+        this_year_dec_mask = is_december & (year == y)
+        index_values.loc[this_year_dec_mask] = day_of_month.loc[this_year_dec_mask].map(prior_dec_by_day)
+
+    out["december_intensity_index"] = index_values  # DEPRECATED - see docstring
     return out
 
 
@@ -462,6 +671,9 @@ def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
         council="Glasgow",
         break_types=("christmas", "summer", "easter"),
     )
+    df = add_christmas_period_feature(df, date_col=DATE_COL)  # is_christmas_period: DEPRECATED, see function docstring
+    df = add_december_intensity_feature(df, date_col=DATE_COL, target_col=TARGET_COL)  # december_intensity_index: DEPRECATED, see function docstring
+    df = add_december_phase_features(df, date_col=DATE_COL)  # DECEMBER_PHASES flags: DEPRECATED, see function docstring
 
     start_date = str(df[DATE_COL].min().date())
     end_date = str(df[DATE_COL].max().date())
