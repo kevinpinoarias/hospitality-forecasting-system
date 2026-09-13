@@ -4,7 +4,7 @@
 
 This repository contains an end-to-end forecasting pipeline built around a real hospitality operations use case. The project was designed to investigate whether machine learning and time-series forecasting methods could improve on manual forecasting and provide more operationally useful demand predictions.
 
-The workflow begins with anonymised rota-style operational exports, separates sales and labour records, aggregates them into daily datasets, engineers forecasting features, benchmarks manual forecasts and baseline models, and then trains both classical and machine learning forecasting models. The final system compares manual forecasting, simple baselines, SARIMAX, and XGBoost, while also linking forecast performance to operational considerations such as labour efficiency and overstaffing risk.
+The workflow begins with anonymised rota-style operational exports, separates sales and labour records, aggregates them into daily datasets, engineers forecasting features, benchmarks manual forecasts and baseline models, and then trains both classical and machine learning forecasting models. The system compares manual forecasting, simple baselines, SARIMAX, XGBoost and neural models, then selects its final model - a CatBoost ensemble - through 18 series of rolling-origin backtesting experiments, while also linking forecast performance to operational considerations such as labour efficiency and overstaffing risk.
 
 Beyond the modelling pipeline, the trained model is also served through a small API, containerised with Docker, and deployed to a live public endpoint — turning the notebook-style analysis into a running piece of software.
 
@@ -56,7 +56,8 @@ hospitality-forecasting-system/
 ├── README.md
 ├── main.py
 ├── requirements.txt              # runtime deps for the pipeline + API
-├── requirements-dev.txt          # notebook, plots, neural models, experiment sweep (CatBoost, LightGBM, Prophet)
+├── requirements-dev.txt          # notebook, plots, neural models, experiment sweep (LightGBM, Prophet)
+├── constraints-experiments.txt   # exact library versions the experiment log was produced with
 ├── requirements-assistant.txt    # deps for the chat assistant only
 ├── Dockerfile                    # forecast API image
 ├── Dockerfile.assistant          # chat assistant image
@@ -73,7 +74,7 @@ hospitality-forecasting-system/
 ├── data_cache/                   # weather API cache, gitignored
 ├── docs/
 │   └── EXPERIMENT_LOG.md         # every experiment series: hypothesis, method, results, conclusion
-├── models/                       # trained model artifact, gitignored (see "Serving the Model")
+├── models/                       # trained models, gitignored (see "Serving the Model")
 ├── notebooks/
 │   └── portofolio_walkthrough.ipynb
 ├── reports/                      # generated metrics/figures, gitignored
@@ -91,13 +92,16 @@ hospitality-forecasting-system/
     │   ├── build_daily_sales.py
     │   └── build_daily_labour.py
     ├── features/
-    │   └── build_features.py
+    │   ├── build_features.py
+    │   └── serving_features.py   # builds the final model's inputs for dates beyond the data
     ├── baselines/
     │   └── run_baselines.py
     ├── models/
     │   ├── evaluate_human_forecast.py
     │   ├── train_sarimax.py
     │   ├── train_xgboost.py
+    │   ├── final_model.py        # the served model: 25-seed log1p CatBoost
+    │   ├── train_final_model.py  # backtest, refit and save the served model
     │   ├── neural_common.py      # shared windowing/scaling for the neural models
     │   ├── train_lstm.py
     │   └── train_transformer.py
@@ -106,7 +110,8 @@ hospitality-forecasting-system/
     │   ├── plots.py
     │   ├── error_analysis.py
     │   ├── experiment_tracking.py  # Weights & Biases logging
-    │   └── model_comparison.py     # single-split comparison across all models
+    │   ├── model_comparison.py     # single-split comparison across all models
+    │   └── assistant_grounding.py  # computes the figures the chat assistant quotes
     ├── experiments/              # rolling-origin backtesting framework and experiment series
     │   ├── splits.py             # walk-forward fold generation
     │   ├── adapters.py           # one fit/predict interface per model family
@@ -114,14 +119,14 @@ hospitality-forecasting-system/
     │   ├── run_sweep.py          # Series 1
     │   ├── run_feature_sweep.py  # Series 2
     │   ├── recursive_horizon_test.py  # Series 3
-    │   ├── run_series4_sweep.py … run_series17_manual_forecast_comparison.py
+    │   ├── run_series4_sweep.py … run_series18_serving_horizon.py
     │   ├── run_business_impact.py
     │   └── run_all_series.py     # regenerates every result in docs/EXPERIMENT_LOG.md
     ├── api/
     │   ├── main.py               # FastAPI app: /health, /predict
     │   ├── schemas.py            # Pydantic request/response models
-    │   ├── history.py            # historical-data cache + fallback lookups
-    │   ├── weather.py            # live/historical rain resolution
+    │   ├── history.py            # historical-data cache + lookups
+    │   ├── weather.py            # live Open-Meteo weather
     │   └── inference.py          # feature construction + model inference
     └── assistant/                # LangChain + Gemini chat assistant (see "Live chat assistant")
 ```
@@ -173,7 +178,7 @@ Before training more advanced models, manual forecasts and simple baselines are 
 
 **6. Model training**
 
-SARIMAX and XGBoost are trained as representative classical and machine learning approaches.
+SARIMAX and XGBoost are trained as representative classical and machine learning approaches. The final model - the one the API serves - is then backtested, refit on every available day and saved (`src/models/train_final_model.py`).
 
 **7. Evaluation and error analysis**
 
@@ -181,11 +186,11 @@ Performance is assessed numerically and visually, and the project pays special a
 
 ## Feature Engineering
 
-Feature engineering was one of the central parts of the project. The final XGBoost model used a selected subset of features, but the broader engineered feature space was intentionally wider.
+Feature engineering was one of the central parts of the project. The original XGBoost model used a selected subset of features, but the broader engineered feature space was intentionally wider - and the final model, chosen by the later experimentation programme, uses all of it.
 
-### Final selected model features
+### Original XGBoost features
 
-The final XGBoost model used the following features:
+The original XGBoost model used the following features:
 
 - forecast_sales
 - month_sin
@@ -239,7 +244,7 @@ The broader engineered feature space also included features such as:
 - temp_anomaly_14d
 - warm_streak_len
 
-Some of these were useful for exploration and domain reasoning even when they were not retained in the final model.
+The original XGBoost left these out. Rolling-origin backtesting later showed that adding all of them, except `forecast_error` (which directly encodes the target), improves accuracy - so the final model uses those 23 plus the 15 above, 38 in total.
 
 ### Candidate future features
 
@@ -253,7 +258,7 @@ A number of additional features were identified as promising areas for future it
 - potential labour-derived features such as wage-to-sales ratio or labour intensity
 - more event-driven or anomaly-aware features for capturing sudden spikes in demand
 
-These were not fully implemented in the current public portfolio version, but they were discussed as meaningful next-stage development directions.
+Several of these have since been tested - short lags and Christmas-period flags both made accuracy worse. See [Future Work](#future-work) for what was tested and what remains open.
 
 ## Baselines
 
@@ -282,7 +287,7 @@ SARIMAX was included as a classical time-series benchmark. It uses autoregressiv
 
 ### XGBoost
 
-The final machine learning model is an XGBoost regressor trained on the selected feature subset. The model combines calendar structure, cyclical signal, manual forecast input, holiday context, payday features, and weather information.
+The first production model was an XGBoost regressor trained on the selected feature subset. The model combines calendar structure, cyclical signal, manual forecast input, holiday context, payday features, and weather information.
 
 XGBoost was chosen because:
 
@@ -295,7 +300,7 @@ XGBoost was chosen because:
 
 Beyond SARIMAX and XGBoost, the project also trained an LSTM and a small Transformer (PyTorch) on the same feature set, for a fair comparison against a modern deep-learning approach - full results (including a multi-model leaderboard, spike-day accuracy, and business-impact comparison) are in the [portfolio walkthrough notebook](notebooks/portofolio_walkthrough.ipynb) below.
 
-Every model trained in this project - the six baselines, SARIMAX, XGBoost, the LSTM, and the Transformer - is logged as a run to a public [Weights & Biases](https://wandb.ai/) project:
+Every model trained in this project - the six baselines, SARIMAX, XGBoost, the LSTM, the Transformer, and the final CatBoost ensemble - is logged as a run to a public [Weights & Biases](https://wandb.ai/) project:
 
 **[wandb.ai/kevin-pino-arias-three-body/hospitality-forecasting](https://wandb.ai/kevin-pino-arias-three-body/hospitality-forecasting)**
 
@@ -303,7 +308,7 @@ Every model trained in this project - the six baselines, SARIMAX, XGBoost, the L
 
 The comparisons above each rest on a single train/validation split. Given the project's own finding that accuracy on one period does not transfer cleanly to another (see [Validation Strategy](#validation-strategy-and-generalisation)), a single split is a weak basis for choosing a model. The next stage replaced it with **10-fold rolling-origin backtesting**: train on history, test on the next 60 days, roll forward, repeat - on 2.5 years of data (January 2024 to September 2026).
 
-On that footing, 17 hypothesis-driven experiment series tested algorithms and hyperparameters (adding CatBoost, LightGBM and Prophet), a 38-feature set, short-lag features, three different encodings of the December trading pattern, post-hoc December corrections, alternative loss functions, a log-transformed target, a CatBoost-Prophet ensemble, and seed bagging. **Every series is recorded in [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md) with its hypothesis, method, results and conclusion - including the many that failed** - and every figure in it can be regenerated from committed code with `python -m src.experiments.run_all_series`.
+On that footing, 18 hypothesis-driven experiment series tested algorithms and hyperparameters (adding CatBoost, LightGBM and Prophet), a 38-feature set, short-lag features, three different encodings of the December trading pattern, post-hoc December corrections, alternative loss functions, a log-transformed target, a CatBoost-Prophet ensemble, seed bagging, and how to serve the result beyond the end of the data. **Every series is recorded in [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md) with its hypothesis, method, results and conclusion - including the many that failed** - and every figure in it can be regenerated from committed code with `python -m src.experiments.run_all_series`.
 
 **The resulting model**: CatBoost on 38 features, trained on log-transformed sales, averaged across 25 random seeds.
 
@@ -327,7 +332,7 @@ Three findings worth highlighting:
 
 **Business impact.** Rotas are planned from the sales forecast, so over-forecasting pays for staff that demand never needed. Staffing to the final model and correcting on site as usual is simulated to save **about £58k a year, 5.5% of the 2025 wage bill**. This counts wage savings only: the model over-forecasts less often but under-forecasts more, and the cost of understaffing (service, lost sales) is not modelled. It is a simulation over historical days, not a measured deployment outcome. See the [business impact entry](docs/EXPERIMENT_LOG.md#business-impact--what-forecast-error-costs-in-labour) for the method and every assumption.
 
-> **Note:** the live API and chat assistant below still serve the original XGBoost model. The model from this experimentation programme has been validated but not yet deployed.
+**Deployment, and forecasting further ahead.** The live API and chat assistant serve this model. The 15% figure holds when recent sales are available - forecasting next week with data up to yesterday - because the model reads the last fortnight's sales. The public demo's data stops on 6 September 2026, so its forecasts run weeks or months beyond the data, with those inputs filled from historical weekday and seasonal patterns. Series 18 tested exactly that, out to 180 days: supplied with the manager's own forecast, the served model stayed **about 10% more accurate than the manual forecast** (MAE £978 vs £1,082) and ahead of the original XGBoost served the same way (£1,078); without it, it roughly matched the manual forecast (£1,078) and beat the original XGBoost (£1,132). See [Series 18](docs/EXPERIMENT_LOG.md#series-18--serving-the-final-model-beyond-the-end-of-the-data) for the breakdown by horizon.
 
 ## Evaluation Metrics
 
@@ -443,7 +448,7 @@ This is what makes the project stronger than a standard notebook-style ML exerci
 
 ## Serving the Model via API
 
-The trained XGBoost model is exposed through a small [FastAPI](https://fastapi.tiangolo.com/) service, containerised with Docker, and deployed to Google Cloud Run.
+The final model (25-seed CatBoost, see [Systematic experimentation](#systematic-experimentation-rolling-origin-backtesting)) is exposed through a small [FastAPI](https://fastapi.tiangolo.com/) service, containerised with Docker, and deployed to Google Cloud Run.
 
 ### Live demo
 
@@ -465,12 +470,13 @@ curl -X POST https://hospitality-forecasting-api-56220375160.us-central1.run.app
 
 ### What the API does
 
-- **`GET /health`** — reports whether the model has finished loading and how many historical rows are cached.
+- **`GET /health`** — reports whether the model has finished loading, which model it is and the last day it was trained on, and how many historical rows are cached.
 - **`POST /predict`** — accepts a batch of `{date, forecast_sales?}` requests.
   - `date` is the only required field.
-  - `forecast_sales` (the manual/operational forecast for that day) is optional - if omitted, it is estimated from a weekday + seasonal-window historical average rather than left blank, since a real prediction still needs *some* value for it.
-  - Rain (`is_heavy_rain`) is resolved from a live weather forecast when the date falls within the provider's usable forecast horizon, or from a historical seasonal probability otherwise - with automatic retry and fallback if the live weather call fails.
+  - `forecast_sales` (the manual/operational forecast for that day) is optional. If omitted, a past date uses the manager's forecast on record, and a future date a weekday + seasonal-window historical average rather than a blank, since a real prediction still needs *some* value for it.
+  - For a date beyond the historical data, the model's recent-sales inputs are filled from the same kind of historical average, and its weather inputs (temperature, rain, sunshine, and the previous fortnight's temperatures) from a live Open-Meteo forecast or observation where one exists, historical averages otherwise - with automatic retry and fallback if the live weather call fails. This is the approach [Series 18](docs/EXPERIMENT_LOG.md#series-18--serving-the-final-model-beyond-the-end-of-the-data) validated, built by the same code (`src/features/serving_features.py`), which reuses the training pipeline's own feature functions.
   - Each result includes a **dry-day scenario**, a **heavy-rain scenario**, and a resolved **best estimate**, plus metadata on where each input came from (`forecast_sales_source`, `rain_data_source`) and how far the requested date sits beyond the training data (`days_beyond_training_data`), so a caller can judge how much to trust it.
+  - `prediction_source` says where the best estimate comes from. For a past date covered by the pipeline's backtest it is `out_of_sample_backtest`: what the model predicted *before* it saw that day, so comparing it with `actual_sales` is a fair test. A past date the served model was trained on is `in_sample`, and a future date `forecast`.
   - When a real weather outlook is available (not the historical-average fallback), the response also includes the actual `weather` figures used (`expected_rain_mm`, `expected_max_temp_c`) - `null` otherwise, since there's no single real figure to report that far out.
   - `historical_comparison` returns the real realised sales for the same day the previous week and the same day the previous year, when those exact dates exist in the historical data - `null` for whichever isn't available, never estimated.
 
@@ -478,7 +484,7 @@ curl -X POST https://hospitality-forecasting-api-56220375160.us-central1.run.app
 
 ```bash
 pip install -r requirements.txt
-python main.py            # generates data/features/model_features.csv and models/xgboost_model.json
+python main.py            # generates data/features/engineered_features.csv and models/final_model/
 uvicorn src.api.main:app --reload
 ```
 
@@ -504,7 +510,7 @@ https://hospitality-forecasting-assistant-56220375160.us-central1.run.app
 It has three tools, all grounded in real, already-computed data - it never invents a figure:
 
 - **`get_forecast`** - the same `/predict` API above, in plain language: a forecast for any date, "what if it rains", how a forecast compares to what actually happened (and it knows the venue is closed on Christmas Day and New Year's Day, so it won't present those as real forecasting misses).
-- **`get_model_comparison`** - the real evaluation results comparing every model this project tested (XGBoost, an LSTM, a Transformer, SARIMAX, and baselines) - which performed best, how they did on spike days, and the labour-cost impact of forecast error.
+- **`get_model_comparison`** - the real evaluation results: the final model against the manual forecast and the original XGBoost, how its accuracy holds up further ahead, the business-impact simulation, and the earlier comparison of every model tested (XGBoost, an LSTM, a Transformer, SARIMAX, and baselines), including spike days.
 - **`get_sales_and_forecast_patterns`** - which single day/week/weekend had the highest sales or the best/worst forecast accuracy, and the average pattern by day-of-week and by month.
 
 An automated evaluation suite (`src/assistant/evaluate_output.py`) checks every response against the real tool data behind it - numeric grounding, correct weekday naming, no leaked internal field names, honest "I don't know" answers rather than invented explanations, and correct handling of known closure days.
@@ -526,9 +532,9 @@ This portfolio version has several important limitations, which are acknowledged
 
 The public repository uses anonymised local data and does not reproduce the original private ingestion setup.
 
-**2. Static feature set**
+**2. Diminishing returns from feature engineering**
 
-The deployed model uses a selected 15-feature subset. The experimentation programme found that a 38-feature set performs better, and that adding further features on top of it - short lags, or explicit December signals - made accuracy worse, suggesting diminishing returns from further engineering of the same inputs. Genuinely new information (see 3) looks like the more promising route; Easter, summer and New Year period flags remain untested.
+The deployed model uses 38 features. The experimentation programme found that adding further features on top of them - short lags, or explicit December signals - made accuracy worse, suggesting diminishing returns from further engineering of the same inputs. Genuinely new information (see 3) looks like the more promising route; Easter, summer and New Year period flags remain untested.
 
 **3. Limited external event signals**
 
@@ -538,19 +544,23 @@ The current model includes weather, bank holidays, payday effects, and school-ho
 
 Validation on newer unseen periods showed degradation, indicating that a one-off model is not enough for a dynamic forecasting environment. Rolling-origin backtesting now measures performance across many periods rather than one, but the deployed model is still trained once, and no automated retraining or drift monitoring is in place.
 
-**5. Spike-day handling**
+**5. Frozen data behind the live demo**
+
+The final model is most accurate with recent sales to read. The public deployment's data ends on 6 September 2026, so every live forecast runs beyond it, where Series 18 measured an MAE of about £978 with the manager's forecast supplied and £1,078 without - against £933 with every real input. Beyond 180 days ahead, accuracy is untested.
+
+**6. Spike-day handling**
 
 The current system still struggles most on the hardest and most volatile days, which are likely where the biggest future gains can be found. December is the clearest case: four different ways of telling the model about the December trading pattern all failed to improve its forecasts.
 
-**6. Two Decembers of history**
+**7. Two Decembers of history**
 
 Several December-specific ideas could not be properly validated because only two Decembers exist in the data, and each behaved differently (see Series 12 in the experiment log). A third December is needed before a December correction can be tested honestly.
 
-**7. The business-impact figure is a simulation**
+**8. The business-impact figure is a simulation**
 
 The ~£58k annual saving is simulated over historical days, counts wage savings only, and does not cost understaffing on days the model under-forecasts. It is an estimate of potential, not a measured outcome.
 
-**8. No authentication on the deployed API**
+**9. No authentication on the deployed API**
 
 The live Cloud Run deployment is public and unauthenticated - anyone with the URL can call `/predict`. This is a deliberate simplification for a portfolio demo rather than a production posture; a real deployment handling genuine business data would add an API key or similar access control before going live.
 
@@ -570,6 +580,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 - compare these against school-holiday flags
 - evaluate whether broad seasonal markers are more robust than council-specific school break proxies
 - re-test a December correction once a third December of data exists
+- extend the school-holiday table back to January 2024: the 2024 Easter and summer breaks are missing, so the model learns those breaks from 2025-26 only (a fix changes every backtest figure, so it means re-running the experiment log)
 
 **Hard-day forecasting**
 - isolate and investigate spike days
@@ -591,8 +602,8 @@ Several future directions emerged from the project. Items marked **done** or **t
 **Production-style improvements**
 - centralise config usage more completely
 - ~~add experiment tracking~~ - **done**: Weights & Biases, plus the experiment log
-- add tests for each stage of the pipeline - **partly done**: the pytest suite covers anonymisation, the experimentation framework, neural data preparation, the labour metrics and the newer feature functions; preprocessing, the core feature functions, the API and the assistant are not yet covered
-- deploy the model from the experimentation programme to the live API
+- add tests for each stage of the pipeline - **partly done**: the pytest suite covers anonymisation, the experimentation framework, neural data preparation, the labour metrics, the newer feature functions, the final model, the serving features and the API (the API tests need a trained model, so they skip on a fresh clone); preprocessing, the core feature functions and the assistant are not yet covered
+- ~~deploy the model from the experimentation programme to the live API~~ - **done** (Series 18 tested how to serve it)
 - add authentication to the deployed API
 - package the system more cleanly for reuse across venues or clients
 
@@ -634,6 +645,7 @@ This will:
 - evaluate the manual forecast
 - train SARIMAX
 - train XGBoost, saving the model to `models/xgboost_model.json`
+- train the final model: re-run its rolling-origin backtest, then refit it on every day and save it, with its out-of-sample backtest predictions, to `models/final_model/` - the model the API serves
 - save metrics, predictions, and figures into the `reports/` directory
 
 See [Serving the Model via API](#serving-the-model-via-api) above for running the API itself, either directly or via Docker.
@@ -649,7 +661,7 @@ pip install -r requirements.txt -r requirements-dev.txt -c constraints-experimen
 Then, with `python main.py` already run, every result in [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md) can be regenerated in dependency order:
 
 ```bash
-python -m src.experiments.run_all_series                 # Series 5-17 and business impact
+python -m src.experiments.run_all_series                 # Series 5-18 and business impact
 python -m src.experiments.run_all_series --only 16 17    # a subset
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4, which take much longer
 ```
