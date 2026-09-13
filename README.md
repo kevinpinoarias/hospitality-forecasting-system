@@ -618,7 +618,7 @@ Install the pre-commit safety hook once, so a raw export can never be accidental
 git config core.hooksPath scripts/git-hooks
 ```
 
-Place fresh raw exports in `data/raw_private/` (gitignored - never committed), then run the full pipeline:
+The anonymised dataset is already tracked in `data/raw/`, so on a fresh clone you can run the full pipeline straight away. New raw exports, if you have them, go in `data/raw_private/` (gitignored - never committed) first:
 
 ```bash
 python main.py
@@ -626,7 +626,7 @@ python main.py
 
 This will:
 
-- anonymise any not-yet-processed files in `data/raw_private/` into `data/raw/`
+- anonymise any not-yet-processed files in `data/raw_private/` into `data/raw/` (skipped when there are none)
 - split raw files into sales and labour outputs
 - build daily sales and labour datasets
 - engineer forecasting features
