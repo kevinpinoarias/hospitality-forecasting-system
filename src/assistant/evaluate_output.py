@@ -56,6 +56,18 @@ JARGON_TERMS = [
     "temperature_vs_previous_fortnight",
     "warm_streak_days",
     "hot_for_scotland",
+    "recent_forecast_accuracy",
+    "lag_1_fe",
+    "lag_7_fe",
+    "rolling_7_fe",
+    "forecast_error",
+    "month_sin",
+    "month_cos",
+    "day_of_week_sin",
+    "day_of_week_cos",
+    "day_of_year_sin",
+    "day_of_year_cos",
+    "cyclical encoding",
 ]
 
 UNCERTAINTY_PHRASES = [
@@ -339,6 +351,13 @@ TEST_CASES = [
     {
         "name": "several days - Christmas week",
         "turns": ["Give me the forecast for 21 to 27 December 2026 and point out anything unusual about those days."],
+    },
+    {
+        "name": "everything the model used for one forecast",
+        # 28 June 2025 is a past date with real recent-sales and
+        # forecast-accuracy history, weather, and payday context all present
+        # at once - the fullest test of the "give everything" rule.
+        "turns": ["What features or data did you use to work out the forecast for 28 June 2025? Give me everything, not just the highlights."],
     },
     {
         "name": "accuracy check with no actual_sales on record",
