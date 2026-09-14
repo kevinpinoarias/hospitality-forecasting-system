@@ -91,3 +91,17 @@ def test_recent_sales_only_when_real(frame):
     real = context(frame, "2026-11-12", real_sales=True).recent_sales
     assert real.average_daily_sales_previous_7_days == pytest.approx(expected, abs=0.01)
     assert context(frame, "2026-11-12", real_sales=False).recent_sales is None
+
+
+def test_recent_forecast_accuracy_reads_the_forecast_error_history(frame):
+    day = pd.Timestamp("2026-11-12")
+    fe = frame["total_sales"] - frame["forecast_sales"]
+    expected_yesterday = fe.loc[day - pd.Timedelta(days=1)]
+    expected_last_week = fe.loc[day - pd.Timedelta(days=7)]
+    expected_average = fe.loc[day - pd.Timedelta(days=7): day - pd.Timedelta(days=1)].mean()
+
+    real = context(frame, "2026-11-12", real_sales=True).recent_forecast_accuracy
+    assert real.actual_vs_forecast_yesterday_gbp == pytest.approx(expected_yesterday, abs=0.01)
+    assert real.actual_vs_forecast_same_day_last_week_gbp == pytest.approx(expected_last_week, abs=0.01)
+    assert real.average_actual_vs_forecast_previous_7_days_gbp == pytest.approx(expected_average, abs=0.01)
+    assert context(frame, "2026-11-12", real_sales=False).recent_forecast_accuracy is None

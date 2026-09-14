@@ -23,7 +23,13 @@ import math
 import holidays
 import pandas as pd
 
-from src.api.schemas import BankHolidayContext, DayContext, PaydayContext, RecentSalesContext
+from src.api.schemas import (
+    BankHolidayContext,
+    DayContext,
+    PaydayContext,
+    RecentForecastAccuracyContext,
+    RecentSalesContext,
+)
 
 UK_SUBDIVISION = "SCT"  # matches add_bank_holiday_features / add_payday_features
 PAYDAY_WINDOW_DAYS = 3
@@ -82,19 +88,42 @@ def school_holiday_name(row: pd.Series) -> str | None:
     return None
 
 
+def recent_sales_context(row: pd.Series) -> RecentSalesContext | None:
+    week, fortnight = _optional_float(row["rolling_7_sales"]), _optional_float(row["rolling_14_sales"])
+    if week is None or fortnight is None:
+        return None
+    return RecentSalesContext(
+        average_daily_sales_previous_7_days=week,
+        average_daily_sales_previous_14_days=fortnight,
+    )
+
+
+def recent_forecast_accuracy_context(row: pd.Series) -> RecentForecastAccuracyContext | None:
+    """How far actual sales have recently run from the manager's own forecast
+    - built from the model's forecast-error history features (`lag_1_fe`,
+    `lag_7_fe`, `rolling_7_fe`; forecast_error = actual sales - forecast
+    sales, see build_features.add_time_features)."""
+    yesterday = _optional_float(row["lag_1_fe"])
+    last_week = _optional_float(row["lag_7_fe"])
+    average = _optional_float(row["rolling_7_fe"])
+    if yesterday is None or last_week is None or average is None:
+        return None
+    return RecentForecastAccuracyContext(
+        actual_vs_forecast_yesterday_gbp=yesterday,
+        actual_vs_forecast_same_day_last_week_gbp=last_week,
+        average_actual_vs_forecast_previous_7_days_gbp=average,
+    )
+
+
 def build_day_context(row: pd.Series, target_date: dt.date, sales_history_is_real: bool) -> DayContext:
     """`row` is the feature row the prediction used. `sales_history_is_real`
-    is False when the previous fortnight's sales were filled from
-    historical averages (a date beyond the data), in which case they are not
-    reported as if they were real sales."""
-    recent = None
+    is False when the previous fortnight's sales/forecast-accuracy history
+    were filled from historical averages (a date beyond the data), in which
+    case they are not reported as if they were real."""
+    recent, recent_accuracy = None, None
     if sales_history_is_real:
-        week, fortnight = _optional_float(row["rolling_7_sales"]), _optional_float(row["rolling_14_sales"])
-        if week is not None and fortnight is not None:
-            recent = RecentSalesContext(
-                average_daily_sales_previous_7_days=week,
-                average_daily_sales_previous_14_days=fortnight,
-            )
+        recent = recent_sales_context(row)
+        recent_accuracy = recent_forecast_accuracy_context(row)
 
     return DayContext(
         part_of_weekend_trading=bool(row["is_weekend"]),
@@ -102,4 +131,5 @@ def build_day_context(row: pd.Series, target_date: dt.date, sales_history_is_rea
         bank_holidays=bank_holiday_context(row, target_date),
         school_holiday=school_holiday_name(row),
         recent_sales=recent,
+        recent_forecast_accuracy=recent_accuracy,
     )

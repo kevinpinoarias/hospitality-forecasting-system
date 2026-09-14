@@ -86,6 +86,16 @@ class RecentSalesContext(BaseModel):
     average_daily_sales_previous_14_days: float
 
 
+class RecentForecastAccuracyContext(BaseModel):
+    """How far actual sales have recently run from the manager's own sales
+    forecast (not the model's forecast) - positive means actual sales came in
+    ABOVE that forecast, negative means BELOW. Only present when the days
+    behind it are in the historical data - never estimated."""
+    actual_vs_forecast_yesterday_gbp: float
+    actual_vs_forecast_same_day_last_week_gbp: float
+    average_actual_vs_forecast_previous_7_days_gbp: float
+
+
 class DayContext(BaseModel):
     """What the model took into account about the date, as plain facts - see
     src/api/day_context.py."""
@@ -98,6 +108,7 @@ class DayContext(BaseModel):
     # so null does not rule out another school break (e.g. October week).
     school_holiday: str | None = None
     recent_sales: RecentSalesContext | None = None
+    recent_forecast_accuracy: RecentForecastAccuracyContext | None = None
 
 
 class PredictResult(BaseModel):

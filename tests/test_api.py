@@ -79,12 +79,14 @@ def test_far_future_date_uses_historical_weather_and_both_scenarios(client):
 def test_day_context_is_returned(client):
     past = predict(client, date="2025-06-28")
     assert past["day_context"]["recent_sales"] is not None
+    assert past["day_context"]["recent_forecast_accuracy"] is not None
     assert past["weather"]["expected_sunshine_hours"] is not None
 
     future = predict(client, date="2030-12-24")
     assert future["day_context"]["school_holiday"] is None  # beyond the council dates on file
     assert future["day_context"]["bank_holidays"]["next_bank_holiday_name"] == "Christmas Day"
     assert future["day_context"]["recent_sales"] is None  # never estimated sales presented as real
+    assert future["day_context"]["recent_forecast_accuracy"] is None
 
 
 def test_date_before_the_data_is_rejected(client):
