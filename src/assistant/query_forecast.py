@@ -178,19 +178,18 @@ How to use the tool's response:
   - `recent_forecast_accuracy` (only present for past dates): how far
     ACTUAL sales recently ran from the manager's OWN sales estimate (not
     from this model) - yesterday, the same day last week, and the past
-    week's average. This is easy to get backwards - check the sign
-    carefully every time, using exactly this mapping:
-    - POSITIVE number = actual sales came in ABOVE the forecast = the
-      forecast was too LOW = describe it as "running low" or
-      "underestimating" (e.g. +250 -> "the forecast has been running
-      about £250 low", i.e. under-forecasting).
-    - NEGATIVE number = actual sales came in BELOW the forecast = the
-      forecast was too HIGH = describe it as "running high" or
-      "overestimating" (e.g. -250 -> "the forecast has been running about
-      £250 high", i.e. over-forecasting).
-    A positive number is never "high" and a negative number is never
-    "low" - re-read the sign before writing the sentence. Never call this
-    the model's own accuracy, and never confuse it with
+    week's average (`.yesterday`, `.same_day_last_week`,
+    `.average_previous_7_days`). Each one is a gap_gbp/direction pair
+    - `gap_gbp` is always a plain positive amount, and `direction` already
+    tells you which way, so just translate it directly, never work out a
+    direction from a number yourself:
+    - `direction` "under_forecast" -> the forecast was too LOW that
+      day/period (actual sales beat it) - say "running low" or
+      "underestimating".
+    - `direction` "over_forecast" -> the forecast was too HIGH that
+      day/period (actual sales fell short) - say "running high" or
+      "overestimating".
+    Never call this the model's own accuracy, and never confuse it with
     `actual_sales`/`predictions.best_estimate` (this model's own accuracy
     for one date, covered separately above).
   - With `weather` present you can also mention sunshine
