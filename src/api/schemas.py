@@ -86,14 +86,26 @@ class RecentSalesContext(BaseModel):
     average_daily_sales_previous_14_days: float
 
 
+class ForecastGap(BaseModel):
+    """How far actual sales ran from the manager's own sales forecast (not
+    the model's forecast) for one day, or on average. `gap_gbp` is always a
+    positive amount - read `direction` to know which way, never infer it
+    from a signed number."""
+    gap_gbp: float
+    # "under_forecast": actual sales came in ABOVE the forecast (the
+    #   forecast was too LOW).
+    # "over_forecast": actual sales came in BELOW the forecast (the
+    #   forecast was too HIGH).
+    direction: str
+
+
 class RecentForecastAccuracyContext(BaseModel):
     """How far actual sales have recently run from the manager's own sales
-    forecast (not the model's forecast) - positive means actual sales came in
-    ABOVE that forecast, negative means BELOW. Only present when the days
-    behind it are in the historical data - never estimated."""
-    actual_vs_forecast_yesterday_gbp: float
-    actual_vs_forecast_same_day_last_week_gbp: float
-    average_actual_vs_forecast_previous_7_days_gbp: float
+    forecast (not the model's forecast). Only present when the days behind
+    it are in the historical data - never estimated."""
+    yesterday: ForecastGap
+    same_day_last_week: ForecastGap
+    average_previous_7_days: ForecastGap
 
 
 class DayContext(BaseModel):

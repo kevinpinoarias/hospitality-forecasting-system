@@ -93,15 +93,36 @@ def test_recent_sales_only_when_real(frame):
     assert context(frame, "2026-11-12", real_sales=False).recent_sales is None
 
 
+def _expected_gap(forecast_error: float) -> tuple[float, str]:
+    return abs(forecast_error), ("under_forecast" if forecast_error >= 0 else "over_forecast")
+
+
 def test_recent_forecast_accuracy_reads_the_forecast_error_history(frame):
+    """The direction is pre-computed in code, not left for a reader to work
+    out from a sign - a real bug found in live testing had the assistant
+    inverting "high"/"low" when it had to interpret the raw signed number
+    itself."""
     day = pd.Timestamp("2026-11-12")
     fe = frame["total_sales"] - frame["forecast_sales"]
-    expected_yesterday = fe.loc[day - pd.Timedelta(days=1)]
-    expected_last_week = fe.loc[day - pd.Timedelta(days=7)]
-    expected_average = fe.loc[day - pd.Timedelta(days=7): day - pd.Timedelta(days=1)].mean()
+    expected_yesterday = _expected_gap(fe.loc[day - pd.Timedelta(days=1)])
+    expected_last_week = _expected_gap(fe.loc[day - pd.Timedelta(days=7)])
+    expected_average = _expected_gap(fe.loc[day - pd.Timedelta(days=7): day - pd.Timedelta(days=1)].mean())
 
     real = context(frame, "2026-11-12", real_sales=True).recent_forecast_accuracy
-    assert real.actual_vs_forecast_yesterday_gbp == pytest.approx(expected_yesterday, abs=0.01)
-    assert real.actual_vs_forecast_same_day_last_week_gbp == pytest.approx(expected_last_week, abs=0.01)
-    assert real.average_actual_vs_forecast_previous_7_days_gbp == pytest.approx(expected_average, abs=0.01)
+    assert real.yesterday.direction == expected_yesterday[1]
+    assert real.yesterday.gap_gbp == pytest.approx(expected_yesterday[0], abs=0.01)
+    assert real.same_day_last_week.direction == expected_last_week[1]
+    assert real.same_day_last_week.gap_gbp == pytest.approx(expected_last_week[0], abs=0.01)
+    assert real.average_previous_7_days.direction == expected_average[1]
+    assert real.average_previous_7_days.gap_gbp == pytest.approx(expected_average[0], abs=0.01)
     assert context(frame, "2026-11-12", real_sales=False).recent_forecast_accuracy is None
+
+
+def test_forecast_gap_direction_for_both_signs(frame):
+    from src.api.day_context import _forecast_gap
+
+    positive = _forecast_gap(150.0)  # actual beat the forecast
+    assert positive.direction == "under_forecast" and positive.gap_gbp == 150.0
+
+    negative = _forecast_gap(-150.0)  # actual fell short of the forecast
+    assert negative.direction == "over_forecast" and negative.gap_gbp == 150.0

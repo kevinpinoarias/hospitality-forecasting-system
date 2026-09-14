@@ -26,6 +26,7 @@ import pandas as pd
 from src.api.schemas import (
     BankHolidayContext,
     DayContext,
+    ForecastGap,
     PaydayContext,
     RecentForecastAccuracyContext,
     RecentSalesContext,
@@ -98,20 +99,31 @@ def recent_sales_context(row: pd.Series) -> RecentSalesContext | None:
     )
 
 
+def _forecast_gap(forecast_error: float | None) -> ForecastGap | None:
+    """forecast_error = actual sales - forecast sales (see
+    build_features.add_time_features). A positive forecast_error means
+    actual sales came in above the forecast, i.e. the forecast under-shot -
+    reported here as a positive gap with an explicit direction, so nothing
+    downstream has to interpret a sign."""
+    if forecast_error is None:
+        return None
+    direction = "under_forecast" if forecast_error >= 0 else "over_forecast"
+    return ForecastGap(gap_gbp=round(abs(forecast_error), 2), direction=direction)
+
+
 def recent_forecast_accuracy_context(row: pd.Series) -> RecentForecastAccuracyContext | None:
     """How far actual sales have recently run from the manager's own forecast
     - built from the model's forecast-error history features (`lag_1_fe`,
-    `lag_7_fe`, `rolling_7_fe`; forecast_error = actual sales - forecast
-    sales, see build_features.add_time_features)."""
-    yesterday = _optional_float(row["lag_1_fe"])
-    last_week = _optional_float(row["lag_7_fe"])
-    average = _optional_float(row["rolling_7_fe"])
+    `lag_7_fe`, `rolling_7_fe`)."""
+    yesterday = _forecast_gap(_optional_float(row["lag_1_fe"]))
+    last_week = _forecast_gap(_optional_float(row["lag_7_fe"]))
+    average = _forecast_gap(_optional_float(row["rolling_7_fe"]))
     if yesterday is None or last_week is None or average is None:
         return None
     return RecentForecastAccuracyContext(
-        actual_vs_forecast_yesterday_gbp=yesterday,
-        actual_vs_forecast_same_day_last_week_gbp=last_week,
-        average_actual_vs_forecast_previous_7_days_gbp=average,
+        yesterday=yesterday,
+        same_day_last_week=last_week,
+        average_previous_7_days=average,
     )
 
 
