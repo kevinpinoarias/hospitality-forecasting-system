@@ -292,13 +292,15 @@ def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict])
         if dry is None or rain is None or abs(dry - rain) < 1:
             continue  # scenarios aren't meaningfully distinct, nothing to check
 
-        # A tight, fixed tolerance here deliberately - this check needs to
-        # tell two genuinely different real numbers apart (e.g. a scenario
-        # figure vs. an unrelated historical comparison that happens to be
-        # numerically close), not just confirm a number is real at all,
-        # which is what the looser percentage-based tolerance is for.
-        dry_mentioned = any(abs(dry - n) <= NUMBER_TOLERANCE for n in claimed)
-        rain_mentioned = any(abs(rain - n) <= NUMBER_TOLERANCE for n in claimed)
+        # A tight tolerance here deliberately - this check needs to tell two
+        # genuinely different real numbers apart (e.g. a scenario figure vs.
+        # an unrelated historical comparison that happens to be numerically
+        # close: £15,256 vs £15,277 in a real run), not just confirm a number
+        # is real at all, which is what the looser 1% tolerance is for. 0.1%
+        # still separates those, while allowing the everyday rounding the
+        # assistant does ("around £5,880" for £5,881.13).
+        dry_mentioned = any(abs(dry - n) <= max(NUMBER_TOLERANCE, dry * 0.001) for n in claimed)
+        rain_mentioned = any(abs(rain - n) <= max(NUMBER_TOLERANCE, rain * 0.001) for n in claimed)
         weather_known = td.get("weather") is not None
 
         if weather_known and dry_mentioned and rain_mentioned and not is_explicit_what_if:
