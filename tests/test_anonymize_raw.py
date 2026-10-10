@@ -24,18 +24,6 @@ from src.ingestion.anonymize_raw import (
     normalise_department,
 )
 
-RAW_COLUMNS = [
-    "Site",
-    "Department",
-    "Metric",
-    "Subdivision",
-    "Date of business",
-    "UTC datetime",
-    "Stream",
-    "Value",
-]
-
-
 def make_raw_df(**overrides) -> pd.DataFrame:
     row = {
         "Site": "Example Venue City",

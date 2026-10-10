@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-from pathlib import Path
 
 import requests
 from dotenv import load_dotenv

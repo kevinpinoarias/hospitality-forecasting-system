@@ -65,7 +65,6 @@ CANDIDATE_FEATURE_GROUPS: dict[str, list[str]] = {
 ALL_CANDIDATES: list[str] = [f for group in CANDIDATE_FEATURE_GROUPS.values() for f in group]
 
 LEAKAGE_EXCLUDED = ["forecast_error"]
-NON_FEATURE_INTERMEDIATES = ["payday", "prev_payday", "next_payday"]
 
 
 @dataclass(frozen=True)

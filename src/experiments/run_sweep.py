@@ -34,13 +34,12 @@ from __future__ import annotations
 
 import argparse
 import time
-import traceback
 from pathlib import Path
 
 import pandas as pd
 
 from src.evaluation.metrics import regression_metrics
-from src.experiments.adapters import DATE_COL, MODEL_ADAPTERS, SARIMAX_EXOG_FEATURES, TARGET_COL
+from src.experiments.adapters import DATE_COL, MODEL_ADAPTERS, SARIMAX_EXOG_FEATURES
 from src.experiments.grids import MODEL_GRIDS, TRAIN_WINDOW_OPTIONS, total_planned_fits
 from src.experiments.splits import Fold, generate_rolling_origin_folds, slice_test_window, slice_train_window
 

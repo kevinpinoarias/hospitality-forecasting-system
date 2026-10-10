@@ -20,6 +20,8 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
+from src.preprocessing.common import normalise_series, read_file
+
 
 # ---------------------------------------------------------------------
 # Paths
@@ -48,21 +50,6 @@ REQUIRED_COLS = ["Metric", "Subdivision"]
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
-
-def normalise_series(series: pd.Series) -> pd.Series:
-    """Normalise text for reliable matching."""
-    return series.astype(str).str.strip().str.lower()
-
-
-def read_file(path: Path) -> pd.DataFrame:
-    """Read a CSV or Excel file into a DataFrame."""
-    if path.suffix.lower() == ".csv":
-        return pd.read_csv(path)
-    elif path.suffix.lower() == ".xlsx":
-        return pd.read_excel(path)
-    else:
-        raise ValueError(f"Unsupported file type: {path.suffix}")
-
 
 def find_split_index(df: pd.DataFrame) -> int | None:
     """

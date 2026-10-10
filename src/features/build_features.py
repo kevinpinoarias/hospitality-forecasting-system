@@ -233,8 +233,8 @@ def add_bank_holiday_features(df: pd.DataFrame, date_col: str = DATE_COL, uk_sub
     pos_next = np.searchsorted(hol_vals, d.values, side="left")
     pos_prev = np.searchsorted(hol_vals, d.values, side="right") - 1
 
-    next_hol = np.where(pos_next < len(hol_vals), hol_vals[pos_next], np.datetime64("NaT"))
-    prev_hol = np.where(pos_prev >= 0, hol_vals[pos_prev], np.datetime64("NaT"))
+    next_hol = np.where(pos_next < len(hol_vals), hol_vals[pos_next], np.array("NaT", dtype=hol_vals.dtype))
+    prev_hol = np.where(pos_prev >= 0, hol_vals[pos_prev], np.array("NaT", dtype=hol_vals.dtype))
 
     out["days_to_bank_holiday"] = (pd.to_datetime(next_hol) - d).dt.days
     out["days_since_bank_holiday"] = (d - pd.to_datetime(prev_hol)).dt.days

@@ -23,11 +23,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from src.evaluation.metrics import regression_metrics
-from src.evaluation.error_analysis import add_error_columns, summarise_error_by_group
+from src.evaluation.error_analysis import summarise_error_by_group
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
@@ -51,6 +50,9 @@ MODEL_SOURCES = [
     ("lstm_predictions.csv", "total_sales", "lstm_pred", "lstm"),
     ("transformer_predictions.csv", "total_sales", "transformer_pred", "transformer"),
 ]
+
+
+MODEL_NAMES = [name for _, _, _, name in MODEL_SOURCES]
 
 
 def load_all_predictions() -> pd.DataFrame:
@@ -90,13 +92,9 @@ def add_spike_flag(df: pd.DataFrame, percentile: float = SPIKE_PERCENTILE) -> pd
     return out
 
 
-def model_names(df: pd.DataFrame) -> list[str]:
-    return [name for _, _, _, name in MODEL_SOURCES]
-
-
 def compute_overall_metrics(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
-    for name in model_names(df):
+    for name in MODEL_NAMES:
         m = regression_metrics(df[ACTUAL_COL], df[name])
         rows.append({"model": name, **m, "n": len(df)})
     return pd.DataFrame(rows).sort_values("MAE").reset_index(drop=True)
@@ -106,7 +104,7 @@ def compute_grouped_comparison(df: pd.DataFrame, group_col: str) -> pd.DataFrame
     """Cross-model version of error_analysis.summarise_error_by_group -
     same underlying tool, run once per model and stacked together."""
     frames = []
-    for name in model_names(df):
+    for name in MODEL_NAMES:
         summary = summarise_error_by_group(df, ACTUAL_COL, name, group_col)
         summary.insert(0, "model", name)
         frames.append(summary)
@@ -115,7 +113,7 @@ def compute_grouped_comparison(df: pd.DataFrame, group_col: str) -> pd.DataFrame
 
 def compute_daily_winner(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """For each day, which model had the smallest absolute error."""
-    names = model_names(df)
+    names = MODEL_NAMES
     errors = pd.DataFrame({name: (df[name] - df[ACTUAL_COL]).abs() for name in names})
 
     winner_df = df[[DATE_COL, ACTUAL_COL, "is_spike_day"]].copy()
@@ -164,7 +162,7 @@ def compute_business_impact(df: pd.DataFrame) -> tuple[pd.DataFrame, float]:
     wage_to_sales_ratio = training_period["total_wages"].sum() / training_period["total_sales"].sum()
 
     rows = []
-    for name in model_names(df):
+    for name in MODEL_NAMES:
         implied_wages_forecast = df[name] * wage_to_sales_ratio
         implied_wages_actual = df[ACTUAL_COL] * wage_to_sales_ratio  # same ratio, actual sales
 
