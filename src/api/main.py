@@ -10,12 +10,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
+from src.api.error_ranking import DEFAULT_RANKING_DAYS, MAX_RANKING_DAYS, rank_errors
 from src.api.history import HistoryCache
 from src.api.inference import ModelService
-from src.api.schemas import HealthResponse, PredictRequest, PredictResponse
+from src.api.schemas import ErrorRankingResponse, HealthResponse, PredictRequest, PredictResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hospitality_api")
@@ -84,3 +86,22 @@ def predict(payload: PredictRequest) -> PredictResponse:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PredictResponse(results=results)
+
+
+@app.get("/errors/ranking", response_model=ErrorRankingResponse)
+def error_ranking(
+    kind: Literal["worst", "over", "under"] = "worst",
+    forecast: Literal["model", "manager"] = "model",
+    limit: int = Query(DEFAULT_RANKING_DAYS, ge=1, le=MAX_RANKING_DAYS),
+) -> ErrorRankingResponse:
+    """The days a forecast missed by the most: `kind` is the biggest misses
+    in either direction (worst), the days it was too high (over) or too low
+    (under); `forecast` is whose forecast to judge - the model's or the
+    manager's own."""
+    if model_service is None:
+        raise HTTPException(status_code=503, detail="Model not yet loaded")
+
+    try:
+        return rank_errors(history_cache.df, model_service.backtest_predictions, kind, forecast, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

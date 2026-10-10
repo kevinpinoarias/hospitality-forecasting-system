@@ -123,7 +123,8 @@ hospitality-forecasting-system/
     │   ├── run_business_impact.py
     │   └── run_all_series.py     # regenerates every result in docs/EXPERIMENT_LOG.md
     ├── api/
-    │   ├── main.py               # FastAPI app: /health, /predict
+    │   ├── main.py               # FastAPI app: /health, /predict, /errors/ranking
+    │   ├── error_ranking.py      # ranks the days a forecast missed by the most
     │   ├── schemas.py            # Pydantic request/response models
     │   ├── history.py            # historical-data cache + lookups
     │   ├── weather.py            # live Open-Meteo weather
@@ -480,6 +481,10 @@ curl -X POST https://hospitality-forecasting-api-56220375160.us-central1.run.app
   - When a real weather outlook is available (not the historical-average fallback), the response also includes the actual `weather` figures used - rain, maximum temperature, sunshine, whether it counts as hot for Scotland, how it compares with the previous fortnight, and any warm spell - `null` otherwise, since there's no single real figure to report that far out.
   - `day_context` spells out, as plain facts, what the model took into account about the date: the last and next payday and how many days away they are, the previous and next Scottish bank holiday by name and whether it's a long weekend, any Glasgow school break, whether it's a Friday-to-Sunday weekend trading day, and - for past dates only - the real average daily sales over the week and fortnight before, plus how far actual sales ran from the manager's own forecast yesterday, the same day last week, and on average over the past week. It is built from the same feature row the prediction used (`src/api/day_context.py`).
   - `historical_comparison` returns the real realised sales for the same day the previous week and the same day the previous year, when those exact dates exist in the historical data - `null` for whichever isn't available, never estimated.
+- **`GET /errors/ranking?kind=worst|over|under&forecast=model|manager&limit=10`** — the days a forecast missed by the most: the biggest misses in either direction (`worst`), the days it was too high (`over`) or too low (`under`). `forecast` chooses whose forecast is judged, the model's or the manager's own manual estimate, and `limit` is capped at 20.
+  - Only days that have a forecast made before the day was known (the backtest period) are ranked, for both forecasts, so they are judged on the same days; the response states the period it covers.
+  - Christmas Day and New Year's Day (the venue is closed, so £0 sales is not a miss) and days with no recorded sales are left out, and the response counts what was excluded.
+  - Each day gives the actual sales, the forecast, the gap as a positive amount plus a `direction` (`over_forecast` / `under_forecast`) and the gap as a percentage of actual sales.
 
 ### Running the API locally
 
@@ -508,10 +513,11 @@ https://hospitality-forecasting-assistant-56220375160.us-central1.run.app
 
 > Same cold-start note as the API above: this also scales to zero when idle, so the first message can take 20-45 seconds.
 
-It has four tools, all grounded in real, already-computed data - it never invents a figure:
+It has seven tools, all grounded in real, already-computed data - it never invents a figure:
 
 - **`get_forecast`** and **`get_forecast_range`** - the same `/predict` API above, in plain language, for one date or a period of up to 31 days: a forecast, what's special about the day (payday, bank and school holidays, weekend trading, the weather), "what if it rains", and how a forecast compares to what actually happened (it knows the venue is closed on Christmas Day and New Year's Day, so it won't present those as real forecasting misses).
 - **`get_model_comparison`** - the real evaluation results: the final model against the manual forecast and the original XGBoost, how its accuracy holds up further ahead, the business-impact simulation, and the earlier comparison of every model tested (XGBoost, an LSTM, a Transformer, SARIMAX, and baselines), including spike days.
+- **`get_top_worst_days`**, **`get_top_overpredictions`** and **`get_top_underpredictions`** - the days a forecast was furthest from what actually sold, too high by the most, or too low by the most, for either the model's forecast or the manager's own (from the `/errors/ranking` endpoint above, at most 20 days, closure days left out).
 - **`get_sales_and_forecast_patterns`** - which single day/week/weekend had the highest sales or the best/worst forecast accuracy, and the average pattern by day-of-week and by month.
 
 An automated evaluation suite (`src/assistant/evaluate_output.py`) checks every response against the real tool data behind it - numeric grounding, correct weekday naming, no leaked internal field names, honest "I don't know" answers rather than invented explanations, and correct handling of known closure days.

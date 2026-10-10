@@ -286,6 +286,18 @@ def check_closure_day_handling(question: str, answer_text: str, tool_data: list[
     return [f"Date(s) discussed this turn are known closure days ({closure_dates}), but the response never mentioned the venue being closed."]
 
 
+def check_ranking_cap(question: str, answer_text: str, tool_data: list[dict]) -> list[str]:
+    """The error-ranking tools show at most 20 days. When a question asked
+    for more, the tool result carries a `limit_note` and the response must
+    say the list was capped, not present it as if it were what was asked for."""
+    if not any(isinstance(td, dict) and td.get("limit_note") for td in tool_data):
+        return []
+    lower = answer_text.lower()
+    if "20" in lower or "twenty" in lower:
+        return []
+    return ["The ranking was capped at 20 days (the tool returned a limit_note), but the response never says so."]
+
+
 def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict]) -> list[str]:
     # An explicit "what if X" question legitimately gets both figures - the
     # asked-about scenario as the answer, the other as comparison context
@@ -394,6 +406,22 @@ TEST_CASES = [
         "name": "sales patterns - week and month",
         "turns": ["What was our best week for sales, and is December a strong month for us?"],
     },
+    {
+        "name": "biggest misses - the model",
+        "turns": ["On which days was the forecast furthest from what we actually sold?"],
+    },
+    {
+        "name": "biggest over-forecasts - the manager's own forecast",
+        "turns": ["Which days was the manager's own forecast too high by the most?"],
+    },
+    {
+        "name": "biggest under-forecasts - the model",
+        "turns": ["When did the model underestimate our sales by the most?"],
+    },
+    {
+        "name": "ranking asked for more days than can be shown",
+        "turns": ["Show me the 50 worst forecast days."],
+    },
 ]
 
 
@@ -405,6 +433,7 @@ def run_turn_checks(question: str, answer_text: str, tool_data: list[dict]) -> l
     issues += check_scenario_logic(question, answer_text, tool_data)
     issues += check_actual_sales_refusal(question, answer_text, tool_data)
     issues += check_closure_day_handling(question, answer_text, tool_data)
+    issues += check_ranking_cap(question, answer_text, tool_data)
     if "why" in question.lower():
         issues += check_why_refusal(answer_text)
     return issues

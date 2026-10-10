@@ -31,9 +31,7 @@ from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import InMemorySaver
 
-from src.assistant.model_comparison_data import get_model_comparison
-from src.assistant.query_forecast import MODEL, SYSTEM_INSTRUCTION, get_forecast, get_forecast_range
-from src.assistant.sales_patterns_data import get_sales_and_forecast_patterns
+from src.assistant.query_forecast import MODEL, SYSTEM_INSTRUCTION, TOOL_FUNCTIONS
 
 
 def _extract_text(content) -> str:
@@ -92,7 +90,7 @@ def build_agent():
 
     return create_agent(
         model=llm,
-        tools=[get_forecast, get_forecast_range, get_model_comparison, get_sales_and_forecast_patterns],
+        tools=TOOL_FUNCTIONS,
         system_prompt=SYSTEM_INSTRUCTION + ACCURACY_CHECK_INSTRUCTION,
         checkpointer=InMemorySaver(),
     )
