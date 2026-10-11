@@ -1,0 +1,7 @@
+{
+  "model": "final_model",
+  "metric": "MAE",
+  "expected": 909.57,
+  "tolerance_pct": 1.0,
+  "expected_days": 585
+}

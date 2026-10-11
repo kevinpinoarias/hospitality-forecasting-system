@@ -81,6 +81,11 @@ jobs:
 
       - run: pytest -q
 
+      # Fails the build if the rebuilt model's error drifts from the expected
+      # figure in config/quality_gate.json by more than the tolerance.
+      - name: Quality gate
+        run: python scripts/quality_gate.py
+
       - name: Keep the rebuilt model for later jobs
         uses: actions/upload-artifact@v4
         with:
@@ -91,3 +96,47 @@ jobs:
             reports/results/final_model_metrics.csv
           retention-days: 7
           if-no-files-found: error
+
+  image:
+    name: Image (build and smoke test)
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the model the tests job rebuilt
+        uses: actions/download-artifact@v4
+        with:
+          name: rebuilt-model
+      - name: Check the model arrived
+        run: test -f models/final_model/metadata.json && test -f data/features/engineered_features.csv
+      - uses: docker/setup-buildx-action@v3
+
+      # The model is copied into the image by the Dockerfile's `COPY . .`.
+      # Layers that did not change (the pip install, mostly) come from the
+      # cache, so an unchanged image rebuilds in seconds.
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: hospitality-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Start the container
+        run: docker run -d --name api -p 8000:8000 hospitality-api:ci
+      - name: Smoke test
+        run: python3 scripts/smoke_test.py http://localhost:8000
+      - name: Show the container's log if something failed
+        if: failure()
+        run: docker logs api
+
+      # Built only to prove it builds; the assistant needs a Gemini key to run.
+      - name: Build the assistant image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.assistant
+          tags: hospitality-assistant:ci
+          cache-from: type=gha,scope=assistant
+          cache-to: type=gha,mode=max,scope=assistant
