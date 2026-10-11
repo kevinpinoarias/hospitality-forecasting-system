@@ -339,6 +339,8 @@ On that footing, 18 hypothesis-driven experiment series tested algorithms and hy
 
 **The resulting model**: CatBoost on 38 features, trained on log-transformed sales, averaged across 25 random seeds.
 
+**Four later series tried to improve on it, and did not** ([Series 19-22](docs/EXPERIMENT_LOG.md#series-19--does-the-order-of-the-38-columns-matter), each scored under the model's own protocol and re-checked on fresh seeds): the order of the 38 columns moves the result no more than seed luck does (100 random orders, spread £1.95 against £1.78); shallower trees with more iterations, 60 configurations, never beat the current setting (£909.57); and the LSTM and Transformer - given the 38 features, a hyperparameter grid, and finally the predicted day's own features - stay at least £120 behind (best £1,029 against £907 on the same days).
+
 **Against the venue's manual forecast** (Series 17), on 569 matched days:
 
 | Forecast | MAE | MAPE | vs. manual |

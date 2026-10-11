@@ -37,7 +37,8 @@ memory or scattered CSVs.
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
-python -m src.experiments.run_all_series     # Series 5-18 and business impact, in dependency order
+python -m src.experiments.run_all_series     # Series 5-22 and business impact, in dependency order
+python -m src.experiments.run_all_series --only 5 6 7   # a subset (Series 19-22 take about 3 hours together)
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
 ```
 
@@ -60,6 +61,15 @@ figures, was unaffected. `constraints-experiments.txt` pins the exact
 versions this log was produced with - install with it to reproduce the
 figures exactly. Every fit also uses a fixed seed, but different hardware
 or thread counts can still introduce tiny floating-point differences.
+
+**Series 19-22 write JSONL files, not CSVs.** Each of those series fits hundreds of
+models, so every finished task is appended to a JSONL file under
+`reports/experiments/series19_21/` and a re-run resumes where it stopped
+(`python -m src.experiments.report_series19_21` turns them into the tables and
+charts of a review report). Their protocol is the final model's own - 950 rows,
+10 rolling-origin folds, 585 test days - and every figure is pooled MAE over
+those days unless stated; the harness reproduces the final model's £909.57
+exactly.
 
 ---
 
@@ -1764,6 +1774,332 @@ with its out-of-sample backtest predictions. For a past date, the API
 returns that out-of-sample prediction, so comparing it with the actual
 sales is a fair test; for a future date it builds features exactly as
 this series did (checked by `tests/test_api.py`).
+
+## Series 19 — Does the Order of the 38 Columns Matter?
+
+**Run**: 2026-10-11 · **Script**: `src/experiments/run_series19_column_order.py` ·
+**Raw data**: `series19_21/series19_column_order.jsonl`, `series19_21/series19_orders.json`
+
+### Context
+
+Column order changes CatBoost's seeded fits - documented in
+`src/models/final_model.py`, which is why the 38 features are kept in one
+fixed order. That left two open questions: how much does the order move the
+final model's headline figure, and is the current order a lucky one?
+
+### Hypothesis
+
+**H19**: the order of the 38 columns moves the 25-seed final model's MAE by
+more than seed luck alone does, and some orders beat the current one.
+
+### Method
+
+The final model's exact protocol (25-seed log1p CatBoost, `depth=4`,
+`iterations=300`, `learning_rate=0.05`, the 10 folds and 585 test days of
+`train_final_model.py`) with **only the column order changed**.
+
+- 100 random permutations of the 38 columns (NumPy generator seeded 19;
+  all distinct, none equal to the current order), plus three structured
+  orders for reference: reversed, alphabetical, and the 23 candidates
+  before the original 15.
+- **Control**: the current order with 30 different sets of 25 seeds. This
+  is the yardstick - how far the figure moves from seed luck alone.
+- **Confirmation**: the 3 best random orders and the current order re-run
+  on 5 fresh sets of 25 seeds, none used to pick them.
+- Every run also records a 5-seed bag and a single seed, taken from the
+  same fits, to show how the spread grows as seeds are removed.
+
+The harness is checked against the real model: the current order
+reproduces the final model's £909.57 pooled and £910.78 fold-mean MAE
+exactly, and a test (`tests/test_series19_21.py`) asserts its CatBoost loop
+gives predictions identical to `BaggedCatBoost`.
+
+### Results
+
+| Group | Runs | Mean MAE (£) | Std dev | Min | Max |
+|---|---|---|---|---|---|
+| Random orders, 25-seed bag (the final-model protocol) | 100 | 910.38 | 1.95 | 906.17 | 916.78 |
+| **Control**: current order, other seed sets | 30 | 909.44 | 1.78 | 906.48 | 913.18 |
+| Random orders, 5-seed bag | 100 | 911.65 | 3.92 | 904.00 | 925.70 |
+| Random orders, a single seed | 100 | 921.65 | 8.59 | 903.39 | 947.13 |
+
+The current order scores **£909.57**; 31 of the 100 random orders scored
+lower. Structured orders: reversed £911.20, alphabetical £914.17,
+candidates-first £909.69.
+
+**Confirmation on fresh seeds** - the three "best" orders scored £906.17,
+£906.21 and £906.53 on the seeds that picked them, and **£909.11, £909.06
+and £909.66** on seeds that did not, against **£908.68** for the current
+order on the same seed sets.
+
+**Does position matter?** Across the 100 orders, only one of the 38 features
+passes a Bonferroni-corrected test of "position in the order vs MAE":
+`is_weekend` (Spearman +0.51; the limit is ±0.32). It holds in each half of
+the orders (+0.49, +0.52) and weakly in the 5-seed (+0.30) and single-seed
+(+0.28) bags. Mean MAE by where `is_weekend` sits: positions 1-10 £909.43,
+11-20 £909.66, 21-30 £910.83, 31-38 £911.97. In the current order it is 23rd.
+
+The random orders average £0.93 worse than the current order's seed
+control (Welch t = 2.47, p = 0.017): the hand-built order is, if anything,
+slightly better than average.
+
+### Conclusion
+
+**H19 is rejected.** The spread from column order (std dev £1.95) is the
+spread from seed luck (£1.78; Levene test for different spread p = 0.60).
+The best of 100 orders is no better than luck produces: simulating "the
+luckiest of 100 seed sets" from the control gives an expected best of
+£904.98, and the observed £906.17 is higher than 97% of such simulated
+bests. Re-run on fresh seeds, the three best orders show no gain. The
+current order is kept.
+
+Two things are worth carrying forward. First, the spread widens fast as
+seeds are removed - £1.95 for 25 seeds, £3.92 for 5, £8.59 for one - the
+same lesson as Series 16: any comparison between orders, features or
+settings made with fewer than 25 seeds is mostly noise. Second, the one
+repeatable pattern, `is_weekend` early (about £2.5), is the size of seed
+noise; a plausible mechanism is CatBoost's tie-breaking between
+near-duplicate columns such as `day_of_week` and `is_weekend`, but that was
+not tested and is not worth acting on.
+
+## Series 20 — The Neural Networks on the 38-Feature Set
+
+**Run**: 2026-10-11 · **Script**: `src/experiments/run_series20_neural_v2.py` ·
+**Raw data**: `series19_21/series20_neural.jsonl`
+
+### Context
+
+Series 1 compared the LSTM and Transformer with CatBoost only on the
+original 15 features (V1), with one seed per run and a small grid. The
+log's conclusion that neural forecasters "do not earn their complexity" was
+therefore never tested on the 38-feature set (V2) that the final model uses.
+
+### Hypothesis
+
+**H20**: the networks improve when given V2, and a tuned V2 network closes
+much of the gap to the final model.
+
+### Method
+
+The repository's own `LSTMForecaster` and `TransformerForecaster`, trained
+from scratch on each fold's expanding history, scored on the final model's
+10 folds (950 rows, 585 test days). Adam, learning rate 1e-3, batch 16, MSE
+loss, features scaled on the training windows only. Unchanged from the
+originals: each network reads the `window` days **before** the one it
+predicts, not that day's own features, and skips windows spanning a missing
+calendar day - so 555 of the 585 days have a prediction from every run, and
+all figures below are scored on those 555 days (the final model scores
+£906.87 on them, the manager's forecast £1,079.71). The run uses CPU workers
+and the final model's folds, so its V1 figures are not comparable with
+Series 1's £1,168 / £1,218.
+
+- **Stage A** - the current configurations (the production defaults: 100
+  epochs; and the Series 1 winners: 40 epochs), on V1, V2 and V2 without
+  `year` (a diagnostic: `year` is outside the training range in every test
+  block), 5 seeds each.
+- **Stage B** - a grid on V1 and on V2, seed 42: LSTM hidden size {16, 32,
+  64} × layers {1, 2} × window {7, 14, 30} × epochs {40, 100}; Transformer
+  model width {16, 32, 64} × heads {2, 4} × window {7, 14, 30} × epochs
+  {40, 100} (72 settings × 2 feature sets).
+- **Stage C** - the 3 best settings per network and feature set re-run on
+  5 fresh seeds (100-104): the best of 36 on one seed is partly luck.
+
+### Results
+
+**Stage A** - mean pooled MAE (£) over 5 seeds (± std dev):
+
+| Configuration | V1 (15) | V2 (38) | V2 without `year` |
+|---|---|---|---|
+| LSTM, production | 1,277.7 ± 20.3 | 1,471.2 ± 56.4 | 1,465.5 ± 62.5 |
+| LSTM, Series 1 winner | 1,164.1 ± 22.6 | 1,382.5 ± 44.1 | 1,362.6 ± 44.6 |
+| Transformer, production | 1,223.3 ± 46.3 | 1,453.9 ± 62.1 | 1,417.5 ± 80.6 |
+| Transformer, Series 1 winner | 1,149.6 ± 21.0 | 1,403.5 ± 38.7 | 1,373.3 ± 107.3 |
+
+**Stage B** - V2 beat V1 in 3 of 36 LSTM settings and 0 of 36 Transformer
+settings. LSTM: V1 £1,111-£1,395 (median £1,241), V2 £1,300-£1,683 (median
+£1,399). Transformer: V1 £1,077-£1,295 (median £1,160), V2 £1,200-£1,541
+(median £1,341). On average V2 was £195.5 (LSTM) and £168.7 (Transformer)
+worse.
+
+**Stage C** - best confirmed setting per network and feature set, on fresh
+seeds:
+
+| Network | Features | Setting | Fresh-seed MAE | Seed-42 MAE that chose it | vs final model (paired, 95% CI) |
+|---|---|---|---|---|---|
+| Transformer | V1 | width 16, 2 heads, window 14, 40 epochs | 1,106.2 | 1,099.8 | +199.3 [+122.2, +300.8] |
+| Transformer | V2 | width 32, 4 heads, window 7, 40 epochs | 1,226.1 | 1,199.7 | +319.2 [+227.2, +418.1] |
+| LSTM | V1 | hidden 32, 1 layer, window 14, 40 epochs | 1,143.1 | 1,137.0 | +236.2 |
+| LSTM | V2 | hidden 64, 2 layers, window 14, 100 epochs | 1,365.3 | 1,321.3 | +458.4 |
+
+Re-running on fresh seeds worsened the best settings by £6-£96, the usual
+winner's curse.
+
+### Conclusion
+
+**H20 is rejected.** V2 hurts both networks - by about £200-£250 for the
+current configurations, in 33 of 36 LSTM and all 36 Transformer grid
+settings - and no network comes within £199 of the final model (95%
+intervals exclude zero). Dropping `year` recovers only £6-£36, so
+out-of-range `year` is not the main cause. Why more features hurt is not
+established here; plausible contributors are roughly 500 training windows
+(at the middle folds) against 38 features, and the networks never seeing the predicted day's own
+features (calendar, manager's forecast, weather), which Series 22 tests.
+
+## Series 21 — Shallower Trees, More Iterations
+
+**Run**: 2026-10-11 · **Script**: `src/experiments/run_series21_catboost_depth_iterations.py` ·
+**Raw data**: `series19_21/series21_catboost_grid.jsonl`
+
+### Hypothesis
+
+The final model is a 25-seed log1p CatBoost with `depth=4`, `iterations=300`,
+`learning_rate=0.05`. **H21**: shallower trees with many more iterations -
+the usual direction for a small, noisy dataset - beat it.
+
+### Method
+
+A full-factorial grid, every point scored under the final model's exact
+protocol (25 seeds, 10 folds, 585 test days): `depth` {2, 3, 4} ×
+`iterations` {300, 500, 800, 1,200, 2,000} × `learning_rate` {0.02, 0.03,
+0.05, 0.08} = 60 configurations, the current model among them. The learning
+rate is a third axis because the right number of iterations depends on it.
+Because the grid is a full cross, every one-setting-at-a-time slice is in
+the results. The 5 best other configurations and the current model were
+then re-run on 25 fresh seeds (100-124).
+
+### Results
+
+Pooled MAE (£), learning rate held at the current 0.05:
+
+| | 300 iterations | 500 | 800 | 1,200 | 2,000 |
+|---|---|---|---|---|---|
+| depth 4 (current) | **909.57** | 923.90 | 941.38 | 957.03 | 975.54 |
+| depth 3 | 913.20 | 919.89 | 940.80 | 959.50 | 981.89 |
+| depth 2 | 932.13 | 925.15 | 943.22 | 959.45 | 985.15 |
+
+At the current learning rate more iterations only hurt (£66 worse over the
+range at depth 4) and shallower depth hurts at 300 iterations (£3.63 worse
+at depth 3, £22.56 at depth 2). The 60 configurations span £909.57 to
+£1,054.16 (median £939.86); **none beats the current model.** The runners-up
+all sit on a ridge where learning rate × iterations is about 15:
+
+| Configuration | MAE (£) | vs current |
+|---|---|---|
+| depth 4, 500 iterations, learning rate 0.03 | 910.45 | +0.88 |
+| depth 4, 800 iterations, learning rate 0.02 | 911.23 | +1.66 |
+| depth 3, 800 iterations, learning rate 0.02 | 911.28 | +1.71 |
+| depth 3, 500 iterations, learning rate 0.03 | 912.35 | +2.77 |
+| depth 3, 300 iterations, learning rate 0.05 | 913.20 | +3.62 |
+| best at depth 2 (1,200 iterations, learning rate 0.02) | 922.31 | +12.73 |
+
+**Confirmation on 25 fresh seeds** - paired difference in daily absolute
+error against the current model (£909.06 on these seeds), mean with a 95%
+block-bootstrap interval: depth 4 / 800 / 0.02 +0.9 [-3.5, +5.0]; depth 3 /
+500 / 0.03 +2.3 [-7.0, +11.5]; depth 4 / 500 / 0.03 +2.3 [-0.8, +4.9];
+depth 3 / 800 / 0.02 +2.9 [-6.9, +12.6]; depth 3 / 300 / 0.05 +3.1 [-6.8,
++12.9]. Every interval includes zero.
+
+### Conclusion
+
+**H21 is rejected.** The current setting is the best of 60, and the
+alternatives that match it are statistical ties, not improvements. The
+model sits on a plateau: depth 3 or 4 with a total training length
+(learning rate × iterations) of about 15 all land within £4 of each other.
+Depth 2 is at least £12.73 worse than the current model at every learning rate,
+and learning rates above 0.05 with more iterations overfit. Not adopted.
+
+## Series 22 — The Neural Networks, Allowed to See the Day They Predict
+
+**Run**: 2026-10-11 · **Script**: `src/experiments/run_series22_neural_target_day.py` ·
+**Raw data**: `series19_21/series22_neural_target_day.jsonl`
+
+### Context
+
+Series 20 found that more features hurt both networks. But the networks
+inherited from the original portfolio code read only the `window` days
+**before** the day they predict. They never see that day's own calendar
+features, the manager's forecast or the weather - exactly the inputs the
+tree models rely on, and all known in advance. That is a design difference,
+not just a model-family difference, and it may have confounded the V1-vs-V2
+comparison.
+
+### Hypothesis
+
+**H22**: once the predicted day's own features are inputs, the networks
+close most of the gap to the final model, and V2 stops hurting them.
+
+### Method
+
+`build_windows` / `prepare_datasets` in `src/models/neural_common.py` gained
+an opt-in `include_target_day` switch (off by default, so every earlier
+result is unchanged): the window now **ends at** the predicted day, so its
+own features are the last step. The day's sales is never an input - the
+features are the same 15 / 38 columns, all known before the day. Everything
+else is as in Series 20 (same folds, optimiser, scaling, 555 common test
+days; the final model scores £906.87 on them).
+
+- **Stage D** - the 3 best fresh-seed-confirmed settings per network and
+  feature set from Series 20 stage C, re-run with the target day visible on
+  the **same 5 fresh seeds (100-104)**, so each with/without comparison is
+  paired seed for seed.
+- **Stage E** - the best setting per network and feature set with the
+  window swept over {1, 3, 7, 14, 30} days (window 1 = the predicted day's
+  own features only), 3 seeds each.
+
+### Results
+
+**Stage D** - mean pooled MAE (£) over 5 seeds, same settings with and
+without the predicted day:
+
+| Network | Features | Setting | Without | With | Change |
+|---|---|---|---|---|---|
+| Transformer | V1 | width 16, 2 heads, window 14 | 1,106.2 | **1,028.9** | -77.2 |
+| Transformer | V1 | width 16, 2 heads, window 7 | 1,107.3 | 1,044.6 | -62.7 |
+| Transformer | V1 | width 32, 2 heads, window 7 | 1,130.9 | 1,078.2 | -52.7 |
+| LSTM | V1 | hidden 32, 1 layer, window 30 | 1,146.3 | 1,090.7 | -55.6 |
+| LSTM | V1 | hidden 32, 1 layer, window 14 | 1,143.1 | 1,097.7 | -45.4 |
+| LSTM | V1 | hidden 32, 2 layers, window 14 | 1,227.3 | 1,105.4 | -121.8 |
+| Transformer | V2 | width 16, 4 heads, window 14 | 1,239.7 | 1,098.8 | -140.9 |
+| Transformer | V2 | width 32, 4 heads, window 7 | 1,226.1 | 1,172.9 | -53.1 |
+| Transformer | V2 | width 16, 2 heads, window 7, 100 epochs | 1,253.5 | 1,186.4 | -67.1 |
+| LSTM | V2 | hidden 64, 2 layers, window 14, 100 epochs | 1,365.3 | 1,205.5 | -159.8 |
+| LSTM | V2 | hidden 32, 2 layers, window 30 | 1,395.4 | 1,251.5 | -143.9 |
+| LSTM | V2 | hidden 64, 1 layer, window 14, 100 epochs | 1,380.0 | 1,260.2 | -119.8 |
+
+Seeing the day improves **all 12 settings**, by £45-£160. The best network
+with the day visible - the Transformer on V1 - scores **£1,028.9, £122.1
+behind the final model** (paired difference 95% CI +£58.6 to +£191.0). The
+best V2 network scores £1,098.8, £192.0 behind (+£119.9 to +£271.3). With
+the day visible, V2 is still £69.9 worse than V1 (95% CI -£0.3 to +£143.0,
+a borderline result), against £120 worse for the best settings in Series 20.
+
+**Stage E** - mean pooled MAE (£) over 3 seeds by window, best settings:
+
+| Window (days) | 1 | 3 | 7 | 14 | 30 |
+|---|---|---|---|---|---|
+| Transformer V1 | 1,023.7 | 1,040.4 | 1,045.4 | 1,021.7 | 1,037.9 |
+| LSTM V1 | 1,028.3 | 1,037.3 | 1,072.4 | 1,086.3 | 1,071.3 |
+| Transformer V2 | 1,077.8 | 1,069.4 | 1,182.6 | 1,219.8 | 1,250.8 |
+| LSTM V2 | 1,371.3 | 1,328.5 | 1,243.4 | 1,222.2 | 1,241.2 |
+
+### Conclusion
+
+**H22 is partly supported.** Giving the networks the predicted day is worth
+£45-£160 and is the single largest improvement found for them - so the
+original design did hold them back, and Series 20's V1-vs-V2 gap for the best settings (£120) shrinks to about £70. But they remain **£115-£190
+behind the final model**, and the intervals exclude zero.
+
+Stage E explains why: on V1, a window of **one day** (the predicted day's
+own features and nothing else) scores as well as any longer window (£1,024
+and £1,028 against £1,022-£1,086). The sequence models are not using the
+history; they are acting as small feed-forward networks on one day's
+features, and have no edge over gradient-boosted trees there. On V2 the
+Transformer prefers one to three days and degrades as the window grows
+(£1,078 to £1,251), consistent with the 23 extra columns - several of them
+already summaries of recent history (`lag_7_sales`, rolling means) - adding
+redundancy and noise rather than information at about 500 training rows.
+The neural-network conclusion of Series 1 stands, now on firmer ground: the
+networks do not beat CatBoost on this data under any configuration tested.
 
 ## Appendix: full candidate pool reference
 
