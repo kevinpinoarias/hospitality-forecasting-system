@@ -171,6 +171,12 @@ def test_a_missing_or_absolute_path_is_refused(raw, tmp_path):
     with pytest.raises(ValidationError, match="relative"):
         load_config(write(tmp_path, absolute))
 
+    for bad in ("/srv/models", r"\\server\share\models", r"C:\models", "models/../../x"):
+        other = copy.deepcopy(raw)
+        other["paths"]["models_dir"] = bad
+        with pytest.raises(ValidationError, match="relative"):
+            load_config(write(tmp_path, other))
+
     escaping = copy.deepcopy(raw)
     escaping["paths"]["models_dir"] = "../models"
     with pytest.raises(ValidationError, match="relative"):

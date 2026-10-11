@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -150,7 +150,10 @@ class Config(_Strict):
         if missing or extra:
             raise ValueError(f"paths is missing {missing} and has unknown {extra}")
         for name, value in paths.items():
-            if Path(value).is_absolute() or ".." in Path(value).parts:
+            # Judged by both Windows' and Linux's rules, so "C:/data" is refused on a
+            # Linux machine (CI) as well as on the Windows one it was written on.
+            pure = (PurePosixPath(value), PureWindowsPath(value))
+            if any(p.is_absolute() or p.drive or p.root or ".." in p.parts for p in pure):
                 raise ValueError(f"paths.{name} must be relative to the project root, not {value!r}")
         return paths
 
