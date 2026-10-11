@@ -58,7 +58,7 @@ training data", "observed" vs "forecast" weather data, "backtest",
 implementation details the manager doesn't need to see - translate
 everything into plain language.
 
-You have seven tools. get_forecast answers questions about one specific
+You have eight tools. get_forecast answers questions about one specific
 date's forecast; get_forecast_range does the same for every day in a
 period of up to 31 days (a weekend, a week, the run-up to Christmas) in
 one call - use it whenever a question covers more than one or two dates.
@@ -81,10 +81,12 @@ week", "is December strong", or "which weekday do we forecast worst" -
 never try to answer these by mentally combining several get_forecast
 calls yourself. Same rule applies to every tool: only state figures that
 came from a real tool call, or the fixed figures given below.
-get_top_worst_days, get_top_overpredictions and get_top_underpredictions
-rank the days a forecast was furthest from what actually sold: the biggest
-misses in either direction, the days it was too high by the most, and the
-days it was too low by the most. Use them for questions like "when were we
+get_top_worst_days, get_top_overpredictions, get_top_underpredictions and
+get_top_best_days rank the days by how far a forecast was from what actually
+sold: the biggest misses in either direction, the days it was too high by
+the most, the days it was too low by the most, and the days it came closest
+(the best forecasts, the smallest gaps). Use them for questions like "which
+days did we get right" or "show me the best ones" as well as "when were we
 most wrong", "which days did we overestimate the most" or "when did we
 underestimate". They can judge either forecast: the model's (the default -
 use it for "your forecast" or "the model") or the venue manager's own manual
@@ -230,18 +232,20 @@ How to use the tool's response:
   "it also knows the exact calendar date and time of year", never by
   naming the internal encoding.
 
-- Biggest misses (get_top_worst_days, get_top_overpredictions,
-  get_top_underpredictions): each day has `actual_sales`, `forecast` (the
+- Rankings (get_top_worst_days, get_top_overpredictions,
+  get_top_underpredictions, get_top_best_days): each day has `actual_sales`, `forecast` (the
   forecast being judged), `gap_gbp` (always a plain positive amount) and
   `direction`. `over_forecast` means the forecast was too HIGH (actual sales
   fell short of it); `under_forecast` means it was too LOW (actual sales beat
-  it). Translate the direction into plain words - never repeat these labels,
+  it); `exact` means it matched to the penny. Translate the direction into plain words - never repeat these labels,
   and never work a direction out from the numbers yourself. Always say whose
   forecast was judged (the model's or the manager's), and say plainly what
   period the ranking covers using `period_start` and `period_end`. Use each
   day's `day_of_week` for its weekday. Christmas Day and New Year's Day are
   left out because the venue is closed - mention that once, briefly, if it
-  matters. At most 20 days can be shown; if `limit_note` is present, say so.
+  matters. At most 20 days can be shown; if `limit_note` is present, say so. For the
+  best days, a quiet day can rank high simply because there was less to miss -
+  use `gap_percent_of_actual` to put a gap in proportion if it matters.
   Only the days listed are ranked: never claim a day that isn't in the list
   was better or worse than one that is, and never invent a reason a day was
   missed - give only the real size and direction of the gap.
@@ -300,7 +304,7 @@ MODEL_INTRO_MESSAGE = (
     "Ask me for a forecast for any date or week, what's special about a "
     "day (payday, holidays, the weather), \"what if it rains\", how a "
     "forecast was worked out, how a past forecast compared to what actually "
-    "happened, which days the forecast missed by the most, or how the "
+    "happened, which days the forecast missed by the most or got closest to, or how the "
     "different models tested here compared - I'll "
     "always ground my answers in the real system, never invent a figure."
 )
@@ -426,6 +430,19 @@ def get_top_underpredictions(forecast: str = "model", n: int = 10) -> dict:
     return _get_error_ranking("under", forecast, n)
 
 
+def get_top_best_days(forecast: str = "model", n: int = 10) -> dict:
+    """The days a forecast came CLOSEST to what was actually sold - the best
+    forecasts, smallest gap first.
+
+    Args:
+        forecast: whose forecast to judge - "model" (this system's own
+            forecast, the default) or "manager" (the venue manager's own
+            manual sales estimate).
+        n: how many days to return, 1 to 20 (default 10).
+    """
+    return _get_error_ranking("best", forecast, n)
+
+
 TOOL_FUNCTIONS = [
     get_forecast,
     get_forecast_range,
@@ -434,6 +451,7 @@ TOOL_FUNCTIONS = [
     get_top_worst_days,
     get_top_overpredictions,
     get_top_underpredictions,
+    get_top_best_days,
 ]
 TOOLS = {fn.__name__: fn for fn in TOOL_FUNCTIONS}
 

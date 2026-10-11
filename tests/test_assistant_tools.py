@@ -21,6 +21,7 @@ TOOLS_UNDER_TEST = {
     "get_top_worst_days": "worst",
     "get_top_overpredictions": "over",
     "get_top_underpredictions": "under",
+    "get_top_best_days": "best",
 }
 
 
@@ -95,7 +96,7 @@ def test_the_tools_are_registered_and_described_to_the_model():
         assert tool_name in q.SYSTEM_INSTRUCTION
         assert "Args:" in getattr(q, tool_name).__doc__  # the schema the LLM sees is built from this
     assert q.TOOLS.keys() == set(names)
-    assert len(names) == 7 and "You have seven tools" in q.SYSTEM_INSTRUCTION
+    assert len(names) == 8 and "You have eight tools" in q.SYSTEM_INSTRUCTION
 
 
 @pytest.mark.skipif(

@@ -20,7 +20,12 @@ from typing import Literal
 import pandas as pd
 
 from src.api.schemas import ErrorRankingResponse, ExcludedDays, RankedErrorDay
-from src.evaluation.error_analysis import top_overpredictions, top_underpredictions, top_worst_days
+from src.evaluation.error_analysis import (
+    top_best_days,
+    top_overpredictions,
+    top_underpredictions,
+    top_worst_days,
+)
 from src.preprocessing.build_daily_sales import KNOWN_CLOSURE_MONTH_DAYS
 
 DATE_COL = "date"
@@ -31,16 +36,22 @@ MODEL_COL = "model_forecast"
 DEFAULT_RANKING_DAYS = 10
 MAX_RANKING_DAYS = 20
 
-Kind = Literal["worst", "over", "under"]
+Kind = Literal["worst", "over", "under", "best"]
 Forecast = Literal["model", "manager"]
 
-_RANKERS = {"worst": top_worst_days, "over": top_overpredictions, "under": top_underpredictions}
+_RANKERS = {
+    "worst": top_worst_days,
+    "over": top_overpredictions,
+    "under": top_underpredictions,
+    "best": top_best_days,
+}
 _JUDGED_COL = {"model": MODEL_COL, "manager": MANAGER_COL}
 _SUBJECT = {"model": "the model's forecast", "manager": "the manager's own forecast"}
 _WHAT = {
     "worst": "was furthest from what was actually sold, too high or too low",
     "over": "was too high by the most (actual sales came in below it)",
     "under": "was too low by the most (actual sales came in above it)",
+    "best": "came closest to what was actually sold (the smallest gaps)",
 }
 
 
@@ -90,13 +101,17 @@ def rank_errors(
         actual = float(getattr(row, ACTUAL_COL))
         predicted = float(getattr(row, judged_col))
         gap = abs(float(row.signed_error))
+        if round(gap, 2) == 0:
+            direction = "exact"
+        else:
+            direction = "over_forecast" if row.signed_error > 0 else "under_forecast"
         items.append(RankedErrorDay(
             date=row.date.date(),
             day_of_week=row.date.strftime("%A"),
             actual_sales=round(actual, 2),
             forecast=round(predicted, 2),
             gap_gbp=round(gap, 2),
-            direction="over_forecast" if row.signed_error > 0 else "under_forecast",
+            direction=direction,
             gap_percent_of_actual=round(gap / actual * 100, 1) if actual > 0 else None,
         ))
 
@@ -120,5 +135,11 @@ def rank_errors(
             "that have a forecast made before the day was known, so the comparison is fair. "
             "Days outside this period are not covered. Christmas Day and New Year's Day are "
             "left out because the venue is closed."
+            + (
+                " The smallest gaps are in pounds, so a quiet day can rank high simply because "
+                "there was less to miss - gap_percent_of_actual shows each gap relative to sales."
+                if kind == "best"
+                else ""
+            )
         ),
     )

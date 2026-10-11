@@ -105,7 +105,7 @@ def test_error_ranking_defaults_to_the_ten_worst_days_by_gap(client):
 
 
 def test_error_ranking_leaves_out_closure_days(client):
-    for kind in ("worst", "over", "under"):
+    for kind in ("worst", "over", "under", "best"):
         body = ranking(client, kind=kind, limit=20)
         dates = {d["date"] for d in body["days"]}
         assert not dates & {"2025-12-25", "2026-01-01"}
@@ -119,6 +119,14 @@ def test_error_ranking_directions_match_the_kind(client):
     assert over and under
     assert all(d["direction"] == "over_forecast" and d["forecast"] > d["actual_sales"] for d in over)
     assert all(d["direction"] == "under_forecast" and d["forecast"] < d["actual_sales"] for d in under)
+
+
+def test_error_ranking_best_lists_the_smallest_gaps_first(client):
+    best = ranking(client, kind="best", limit=20)["days"]
+    worst = ranking(client, kind="worst", limit=1)["days"][0]
+    gaps = [d["gap_gbp"] for d in best]
+    assert gaps == sorted(gaps)
+    assert max(gaps) < worst["gap_gbp"]
 
 
 def test_error_ranking_covers_the_backtest_period_with_the_models_own_figures(client):
@@ -141,7 +149,7 @@ def test_error_ranking_judges_either_forecast(client):
 
 
 def test_error_ranking_rejects_bad_requests(client):
-    for params in ({"limit": 21}, {"limit": 0}, {"kind": "best"}, {"forecast": "robot"}):
+    for params in ({"limit": 21}, {"limit": 0}, {"kind": "median"}, {"forecast": "robot"}):
         assert client.get("/errors/ranking", params=params).status_code == 422
 
 

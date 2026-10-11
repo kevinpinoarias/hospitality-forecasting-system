@@ -450,6 +450,10 @@ TEST_CASES = [
         "turns": ["When did the model underestimate our sales by the most?"],
     },
     {
+        "name": "best forecast days - the model",
+        "turns": ["Which days was the forecast closest to what we actually sold?"],
+    },
+    {
         "name": "ranking asked for more days than can be shown",
         "turns": ["Show me the 50 worst forecast days."],
     },

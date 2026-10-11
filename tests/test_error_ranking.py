@@ -74,13 +74,23 @@ def test_gap_percent_and_weekday_are_provided():
     assert top.actual_sales == 5000 and top.forecast == 4000
 
 
+def test_best_ranks_the_smallest_gaps_first_and_calls_exact_matches_exact():
+    history, model = make_inputs()
+    result = rank_errors(history, model, "best", "model", limit=4)
+    # Two days are exact (3 and 7 March); then +100 and +300.
+    assert dates_of(result) == ["2025-03-03", "2025-03-07", "2025-03-01", "2025-03-06"]
+    assert [d.gap_gbp for d in result.days] == [0, 0, 100, 300]
+    assert [d.direction for d in result.days] == ["exact", "exact", "over_forecast", "over_forecast"]
+    assert "closest" in result.ranking and "quiet day" in result.note
+
+
 def test_known_closure_days_are_left_out_and_reported():
     history, model = make_inputs()
     closure = pd.DataFrame({"date": [pd.Timestamp("2025-12-25")], "total_sales": [0.0], "forecast_sales": [8000.0]})
     history = pd.concat([history, closure], ignore_index=True)
     model = {**model, pd.Timestamp("2025-12-25").date(): 8000.0}
 
-    for kind in ("worst", "over", "under"):
+    for kind in ("worst", "over", "under", "best"):
         result = rank_errors(history, model, kind, "model", limit=MAX_RANKING_DAYS)
         assert "2025-12-25" not in dates_of(result)
     assert result.excluded.known_closure_days == 1
@@ -119,7 +129,7 @@ def test_the_limit_is_respected_and_bounded():
 def test_unknown_options_are_rejected():
     history, model = make_inputs()
     with pytest.raises(ValueError):
-        rank_errors(history, model, "best", "model")
+        rank_errors(history, model, "median", "model")
     with pytest.raises(ValueError):
         rank_errors(history, model, "worst", "robot")
 
