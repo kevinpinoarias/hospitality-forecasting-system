@@ -23,9 +23,11 @@ import pandas as pd
 
 from src.preprocessing.build_daily_sales import KNOWN_CLOSURE_MONTH_DAYS
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-EXPERIMENTS_DIR = PROJECT_ROOT / "reports" / "experiments"
+RESULTS_DIR = CONFIG.path("results_dir")
+EXPERIMENTS_DIR = CONFIG.path("experiments_dir")
 
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",

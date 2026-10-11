@@ -17,12 +17,15 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 
+from src.config import CONFIG
+from src.features.build_features import features_for, load_model_frame
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "features" / "model_features.csv"
+INPUT_PATH = CONFIG.path("engineered_features")
 
 DATE_COL = "date"
 TARGET_COL = "total_sales"
-DEFAULT_SPLIT_DATE = "2024-12-31"
+DEFAULT_SPLIT_DATE = CONFIG.splits.neural_split_date
 DEFAULT_WINDOW = 30
 
 # Uses the GPU automatically when one is available. Note this mostly matters
@@ -33,23 +36,7 @@ DEFAULT_WINDOW = 30
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Same final feature set used by the XGBoost model, for a fair comparison.
-FEATURES = [
-    "forecast_sales",
-    "month_sin",
-    "day_of_week",
-    "day_of_year_cos",
-    "day_of_year_sin",
-    "day_of_year",
-    "month_cos",
-    "month",
-    "day_of_week_sin",
-    "is_bank_holiday",
-    "days_to_bank_holiday",
-    "days_since_payday",
-    "is_payday_window_pm3",
-    "is_long_weekend",
-    "is_heavy_rain",
-]
+FEATURES = features_for("neural")
 
 
 def set_seed(seed: int) -> None:
@@ -64,8 +51,7 @@ def set_seed(seed: int) -> None:
 
 
 def load_model_data(path: Path = INPUT_PATH) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
+    df = load_model_frame(path, FEATURES)
     df = df.dropna(subset=[DATE_COL]).sort_values(DATE_COL).reset_index(drop=True)
     return df
 
@@ -163,7 +149,7 @@ def prepare_datasets(
 
     `df` lets a caller (e.g. the rolling-origin sweep in
     src/experiments/) supply an already-loaded/truncated dataframe instead
-    of reading the full model_features.csv from disk - truncating to a
+    of reading the full feature frame from disk - truncating to a
     fold's own cutoff so later folds' data can never leak into an earlier
     one's training or validation.
 

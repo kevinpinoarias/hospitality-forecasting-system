@@ -48,9 +48,11 @@ import pandas as pd
 # Paths
 # ---------------------------------------------------------------------
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_DIR = PROJECT_ROOT / "data" / "raw_private"
-OUTPUT_DIR = PROJECT_ROOT / "data" / "raw"
+INPUT_DIR = CONFIG.path("raw_private_dir")
+OUTPUT_DIR = CONFIG.path("raw_data_dir")
 MANIFEST_PATH = INPUT_DIR / ".anonymize_manifest.json"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

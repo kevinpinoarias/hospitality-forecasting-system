@@ -27,9 +27,11 @@ from src.preprocessing.common import normalise_series, read_file
 # Paths
 # ---------------------------------------------------------------------
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "labour"
-OUTPUT_DIR = PROJECT_ROOT / "data" / "processed" / "labour"
+INPUT_DIR = CONFIG.path("interim_labour_dir")
+OUTPUT_DIR = CONFIG.path("processed_labour_dir")
 PER_FILE_DIR = OUTPUT_DIR / "per_file"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

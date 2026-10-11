@@ -30,7 +30,9 @@ Jobs 1-3 run in parallel; `image` waits for `tests`; `deploy` waits for all.
   raw data, so the pipeline proves on every change that the project can
   rebuild itself from a fresh clone. It is cached under a fingerprint of the
   raw data, the feature/model/evaluation/experiment code and the pinned
-  library versions, so unchanged inputs skip the retrain.
+  library versions, so unchanged inputs skip the retrain. `config/config.yaml`
+  is part of that fingerprint: changing a model, split or feature setting
+  retrains the model, and the deploy job treats it as an API change.
 - **The quality gate has a tolerance.** A rebuild is not bit-identical (the
   weather service revises old days; CatBoost differs slightly between
   machines). Measured drift was 0.005%; the gate allows 1% either way. Too

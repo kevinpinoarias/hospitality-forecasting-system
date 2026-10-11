@@ -83,7 +83,10 @@ more reliably-generalising model than the incumbent.
 ### Method
 
 - **Data**: `data/features/model_features.csv`, 978 rows, 2024-01-02 to
-  2026-09-06.
+  2026-09-06. (That file was the 15 original features selected from the
+  engineered features. It no longer exists as a separate file: the same
+  rows come from `load_model_frame()` in `src/features/build_features.py`,
+  verified identical.)
 - **Folds**: 10 rolling-origin folds. Fold 0 trains on the first 365 days
   (2024-01-02 → 2025-01-01) and tests on the following 60 days; each
   subsequent fold's test window starts immediately after the previous

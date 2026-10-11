@@ -23,6 +23,7 @@ import math
 import holidays
 import pandas as pd
 
+from src.config import CONFIG
 from src.api.schemas import (
     BankHolidayContext,
     DayContext,
@@ -32,7 +33,7 @@ from src.api.schemas import (
     RecentSalesContext,
 )
 
-UK_SUBDIVISION = "SCT"  # matches add_bank_holiday_features / add_payday_features
+UK_SUBDIVISION = CONFIG.project.uk_subdivision  # the calendar add_bank_holiday_features / add_payday_features use
 PAYDAY_WINDOW_DAYS = 3
 SCHOOL_BREAK_NAMES = {"christmas": "Christmas holidays", "easter": "Easter holidays", "summer": "summer holidays"}
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
+from src.config import CONFIG
 from src.preprocessing.common import normalise_series, read_file
 
 
@@ -43,8 +44,8 @@ KNOWN_CLOSURE_MONTH_DAYS = {
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "sales"
-OUTPUT_DIR = PROJECT_ROOT / "data" / "processed" / "sales"
+INPUT_DIR = CONFIG.path("interim_sales_dir")
+OUTPUT_DIR = CONFIG.path("processed_sales_dir")
 PER_FILE_DIR = OUTPUT_DIR / "per_file"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

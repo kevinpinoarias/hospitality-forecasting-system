@@ -24,6 +24,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from src.evaluation.experiment_tracking import log_run
+from src.config import CONFIG
 
 
 # ---------------------------------------------------------------------
@@ -31,9 +32,9 @@ from src.evaluation.experiment_tracking import log_run
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "features" / "engineered_features.csv"
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+INPUT_PATH = CONFIG.path("engineered_features")
+RESULTS_DIR = CONFIG.path("results_dir")
+FIGURES_DIR = CONFIG.path("figures_dir")
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,16 +46,13 @@ FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 DATE_COL = "date"
 TARGET_COL = "total_sales"
-DEFAULT_SPLIT_DATE = "2024-11-01"
+DEFAULT_SPLIT_DATE = CONFIG.splits.sarimax_split_date
 
 # Keep SARIMAX modest and interpretable
-DEFAULT_EXOG_FEATURES = [
-    "forecast_sales",
-    "lag_7_sales",
-]
+DEFAULT_EXOG_FEATURES = list(CONFIG.sarimax.exog_features)
 
-SARIMAX_ORDER = (1, 1, 1)
-SARIMAX_SEASONAL_ORDER = (0, 1, 1, 7)
+SARIMAX_ORDER = CONFIG.sarimax.order
+SARIMAX_SEASONAL_ORDER = CONFIG.sarimax.seasonal_order
 
 
 # ---------------------------------------------------------------------

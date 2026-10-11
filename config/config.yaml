@@ -1,40 +1,43 @@
 # --------------------------------------------------
 # PROJECT CONFIGURATION
 # --------------------------------------------------
+# The single place for settings that used to be repeated across the code.
+# Loaded and validated by src/config.py - a misspelt key or a wrong type stops
+# the program at start-up with a clear message, rather than being ignored.
+#
+# Changing a value here changes what the pipeline does. Features, splits and
+# model settings also change the model's results, so re-run the pipeline and
+# check the quality gate (config/quality_gate.json) after editing them. CI
+# retrains automatically when this file changes.
 
 project:
   name: hospitality-forecasting-system
   timezone: Europe/London
-  council: Glasgow
-  uk_subdivision: SCT
+  council: Glasgow          # school-break calendar used for the school-holiday features
+  uk_subdivision: SCT       # bank-holiday and payday calendar
 
 # --------------------------------------------------
-# PATHS
+# PATHS (relative to the project root)
 # --------------------------------------------------
 
 paths:
   raw_data_dir: data/raw
-  interim_data_dir: data/interim
-  processed_data_dir: data/processed
-  features_dir: data/features
-  reports_dir: reports
-  results_dir: reports/results
-  figures_dir: reports/figures
-  cache_dir: data_cache/open_meteo
-
-# --------------------------------------------------
-# DATA FILES
-# --------------------------------------------------
-
-data:
-  sales_folder: data/interim/Sales
-  labour_folder: data/interim/Labour
-
+  raw_private_dir: data/raw_private
+  interim_dir: data/interim
+  interim_sales_dir: data/interim/sales
+  interim_labour_dir: data/interim/labour
+  processed_sales_dir: data/processed/sales
+  processed_labour_dir: data/processed/labour
   daily_sales_master: data/processed/sales/daily_sales_totals_master.csv
   daily_labour_master: data/processed/labour/daily_labour_totals_master.csv
-
+  features_dir: data/features
   engineered_features: data/features/engineered_features.csv
-  model_features: data/features/model_features.csv
+  cache_dir: data_cache/open_meteo
+  results_dir: reports/results
+  figures_dir: reports/figures
+  experiments_dir: reports/experiments
+  models_dir: models
+  final_model_dir: models/final_model
 
 # --------------------------------------------------
 # TRAIN / VALIDATION SPLITS
@@ -44,58 +47,49 @@ splits:
   baseline_split_date: "2024-11-01"
   sarimax_split_date: "2024-11-01"
   xgboost_split_date: "2024-12-31"
+  neural_split_date: "2024-12-31"
 
 # --------------------------------------------------
 # FEATURES
 # --------------------------------------------------
+# The two feature sets are defined once, in src/features/build_features.py:
+#   v1  the original 15 features
+#   v2  all 38: v1 plus 23 candidates, in a fixed order (column order changes
+#       CatBoost's seeded fits, so the order is part of the definition)
+# Below, each model says which set it uses. The experiment log's baseline is
+# v1 - do not change "experiments_baseline" without re-running it.
 
 features:
-  final_model_features:
-    - forecast_sales
-    - month_sin
-    - day_of_week
-    - day_of_year_cos
-    - day_of_year_sin
-    - day_of_year
-    - month_cos
-    - month
-    - day_of_week_sin
-    - is_bank_holiday
-    - days_to_bank_holiday
-    - days_since_payday
-    - is_payday_window_pm3
-    - is_long_weekend
-    - is_heavy_rain
+  use:
+    xgboost: v1
+    neural: v1
+    experiments_baseline: v1
+    catboost: v2             # the served final model
 
 # --------------------------------------------------
 # WEATHER SETTINGS
 # --------------------------------------------------
+# Coordinates are the ones every figure in the experiment log was produced
+# with. Changing them changes the weather features and so every result.
 
 weather:
-  latitude: 55.860852
-  longitude: -4.252403
-  timezone: Europe/London
-
+  latitude: 55.8612
+  longitude: -4.2502
   warm_temp_c: 18.0
   hot_scotland_c: 20.0
   heavy_rain_mm: 5.0
   anomaly_window: 14
 
 # --------------------------------------------------
-# SARIMAX CONFIG
+# MODEL SETTINGS
 # --------------------------------------------------
 
 sarimax:
   order: [1, 1, 1]
   seasonal_order: [0, 1, 1, 7]
-
   exog_features:
     - forecast_sales
     - lag_7_sales
-
-# --------------------------------------------------
-# XGBOOST CONFIG
-# --------------------------------------------------
 
 xgboost:
   n_estimators: 300
@@ -106,10 +100,17 @@ xgboost:
   objective: reg:squarederror
   random_state: 42
 
+# The served model: log1p target, mean of `n_seeds` seeds (0 .. n_seeds-1).
+catboost:
+  iterations: 300
+  learning_rate: 0.05
+  depth: 4
+  n_seeds: 25
+
 # --------------------------------------------------
 # ERROR ANALYSIS / REPORTING
 # --------------------------------------------------
 
 analysis:
-  best_window_days: 56
+  best_window_days: 56      # 8 weeks - the window where the model beats the manual forecast most
   top_n_error_days: 20

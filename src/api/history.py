@@ -23,8 +23,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENGINEERED_FEATURES_PATH = PROJECT_ROOT / "data" / "features" / "engineered_features.csv"
+ENGINEERED_FEATURES_PATH = CONFIG.path("engineered_features")
 
 DATE_COL = "date"
 

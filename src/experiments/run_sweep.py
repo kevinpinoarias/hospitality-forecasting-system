@@ -39,14 +39,15 @@ from pathlib import Path
 import pandas as pd
 
 from src.evaluation.metrics import regression_metrics
-from src.experiments.adapters import DATE_COL, MODEL_ADAPTERS, SARIMAX_EXOG_FEATURES
+from src.config import CONFIG
+from src.experiments.adapters import DATE_COL, FEATURES, MODEL_ADAPTERS, SARIMAX_EXOG_FEATURES
+from src.features.build_features import load_model_frame
 from src.experiments.grids import MODEL_GRIDS, TRAIN_WINDOW_OPTIONS, total_planned_fits
 from src.experiments.splits import Fold, generate_rolling_origin_folds, slice_test_window, slice_train_window
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_FEATURES_PATH = PROJECT_ROOT / "data" / "features" / "model_features.csv"
-ENGINEERED_FEATURES_PATH = PROJECT_ROOT / "data" / "features" / "engineered_features.csv"
-RESULTS_DIR = PROJECT_ROOT / "reports" / "experiments"
+ENGINEERED_FEATURES_PATH = CONFIG.path("engineered_features")
+RESULTS_DIR = CONFIG.path("experiments_dir")
 
 DEFAULT_INITIAL_TRAIN_DAYS = 365
 DEFAULT_TEST_DAYS = 60
@@ -67,8 +68,7 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     every fold is defined against this shared range so every algorithm
     family is scored on exactly the same test periods.
     """
-    model_df = pd.read_csv(MODEL_FEATURES_PATH)
-    model_df[DATE_COL] = pd.to_datetime(model_df[DATE_COL])
+    model_df = load_model_frame(ENGINEERED_FEATURES_PATH, FEATURES)
     model_df = model_df.sort_values(DATE_COL).reset_index(drop=True)
 
     eng_df = pd.read_csv(ENGINEERED_FEATURES_PATH)

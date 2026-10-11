@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.config import CONFIG
+
 
 def add_error_columns(
     df: pd.DataFrame,
@@ -27,7 +29,7 @@ def top_worst_days(
     df: pd.DataFrame,
     actual_col: str,
     pred_col: str,
-    n: int = 20,
+    n: int = CONFIG.analysis.top_n_error_days,
 ) -> pd.DataFrame:
     """Return top n worst days by absolute error."""
     out = add_error_columns(df, actual_col, pred_col)
@@ -38,7 +40,7 @@ def top_best_days(
     df: pd.DataFrame,
     actual_col: str,
     pred_col: str,
-    n: int = 20,
+    n: int = CONFIG.analysis.top_n_error_days,
 ) -> pd.DataFrame:
     """Return the n days the forecast came closest to the actual figure
     (smallest absolute error first; ties keep date order)."""
@@ -50,7 +52,7 @@ def top_overpredictions(
     df: pd.DataFrame,
     actual_col: str,
     pred_col: str,
-    n: int = 20,
+    n: int = CONFIG.analysis.top_n_error_days,
 ) -> pd.DataFrame:
     """Return top n overprediction days."""
     out = add_error_columns(df, actual_col, pred_col)
@@ -61,7 +63,7 @@ def top_underpredictions(
     df: pd.DataFrame,
     actual_col: str,
     pred_col: str,
-    n: int = 20,
+    n: int = CONFIG.analysis.top_n_error_days,
 ) -> pd.DataFrame:
     """Return top n underprediction days."""
     out = add_error_columns(df, actual_col, pred_col)

@@ -76,7 +76,7 @@ jobs:
             data/features
             models
             reports
-          key: model-${{ runner.os }}-py3.11-${{ hashFiles('data/raw/**', 'src/preprocessing/**', 'src/features/**', 'src/models/**', 'src/evaluation/**', 'src/experiments/**', 'rebuild_model.py', 'constraints-experiments.txt', 'requirements-ci.txt') }}
+          key: model-${{ runner.os }}-py3.11-${{ hashFiles('data/raw/**', 'src/preprocessing/**', 'src/features/**', 'src/models/**', 'src/evaluation/**', 'src/experiments/**', 'src/config.py', 'config/config.yaml', 'rebuild_model.py', 'constraints-experiments.txt', 'requirements-ci.txt') }}
       - name: Rebuild the model from the raw data
         if: steps.model-cache.outputs.cache-hit != 'true'
         run: python rebuild_model.py
@@ -174,7 +174,7 @@ jobs:
           echo "$changed"
           api=false
           assistant=false
-          if echo "$changed" | grep -v '^src/assistant/' | grep -qE '^(data/raw/|src/|Dockerfile$|requirements\.txt$|constraints-experiments\.txt$|rebuild_model\.py$)'; then api=true; fi
+          if echo "$changed" | grep -v '^src/assistant/' | grep -qE '^(data/raw/|src/|Dockerfile$|requirements\.txt$|constraints-experiments\.txt$|rebuild_model\.py$|config/config\.yaml$)'; then api=true; fi
           if echo "$changed" | grep -qE '^(src/assistant/|Dockerfile\.assistant$|requirements-assistant\.txt$)'; then assistant=true; fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then api=true; assistant=true; fi
           echo "api=$api" >> "$GITHUB_OUTPUT"

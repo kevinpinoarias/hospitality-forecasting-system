@@ -39,11 +39,13 @@ import json
 import pandas as pd
 
 from src.experiments.series_common import (
-    ADD_ALL_CANDIDATES, PROJECT_ROOT, REFERENCE_PARAMS, apply_december_ratio, collect_fold_predictions,
+    ADD_ALL_CANDIDATES, REFERENCE_PARAMS, apply_december_ratio, collect_fold_predictions,
     pooled_mae, results_path,
 )
 
-DAILY_SALES_PATH = PROJECT_ROOT / "data" / "processed" / "sales" / "daily_sales_totals_master.csv"
+from src.config import CONFIG
+
+DAILY_SALES_PATH = CONFIG.path("daily_sales_master")
 
 
 def build_pooled_december_ratio() -> dict[int, float]:

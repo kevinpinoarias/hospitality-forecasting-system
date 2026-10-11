@@ -20,6 +20,7 @@ import time
 
 import pandas as pd
 
+from src.config import CONFIG
 from src.features.build_features import (
     CACHE_DIR,
     LAT,
@@ -33,7 +34,7 @@ logger = logging.getLogger("hospitality_api")
 # Open-Meteo forecasts 16 days including today, so the last forecastable
 # date is today + 15 (asking for more makes the whole request fail).
 FORECAST_HORIZON_DAYS = 16
-HEAVY_RAIN_MM = 5.0  # matches is_heavy_rain in src/features/build_features.py
+HEAVY_RAIN_MM = CONFIG.weather.heavy_rain_mm  # the same threshold is_heavy_rain is built with
 DRY_MM = 1.0  # matches is_dry_day in src/features/build_features.py
 MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = (1, 2, 4)
