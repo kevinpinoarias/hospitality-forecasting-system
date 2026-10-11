@@ -9,14 +9,13 @@ features for the hospitality forecasting project.
 Outputs
 -------
 - data/features/engineered_features.csv
-- data/features/model_features.csv
 
 Notes
 -----
 - This public portfolio version uses anonymised local data.
-- The file builds a broad engineered feature set, then exports a narrower
-  model-ready feature subset based on the final selected features used in the
-  project.
+- The file builds one broad engineered feature set. The narrower sets the
+  models train on (V1_FEATURES, V2_FEATURES below) are selected from it with
+  `model_frame` / `features_for`; there is no separate model-ready file.
 """
 
 from __future__ import annotations
@@ -32,15 +31,17 @@ import pandas as pd
 import holidays
 import requests
 
+from src.config import CONFIG
+
 
 # ---------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "sales" / "daily_sales_totals_master.csv"
-OUTPUT_DIR = PROJECT_ROOT / "data" / "features"
-CACHE_DIR = PROJECT_ROOT / "data_cache" / "open_meteo"
+INPUT_PATH = CONFIG.path("daily_sales_master")
+OUTPUT_DIR = CONFIG.path("features_dir")
+CACHE_DIR = CONFIG.path("cache_dir")
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,8 +54,19 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 DATE_COL = "date"
 TARGET_COL = "total_sales"
 
-# Final selected features used in the model
-FINAL_MODEL_FEATURES = [
+# ---------------------------------------------------------------------
+# Feature sets - the ONE definition of which columns each model reads
+# ---------------------------------------------------------------------
+# V1: the original 15 features (XGBoost, the neural models, and the baseline
+#     the experiment log started from).
+# V2: all 38 - V1 plus 23 candidates added in Series 2 - used by the final
+#     CatBoost model. The order is part of the definition: column order
+#     changes CatBoost's seeded fits, so V2 must keep V1 first and the
+#     candidates in this order (tests/test_final_model.py and
+#     tests/test_config.py check it against the experiment framework).
+# config/config.yaml says which set each model uses (features.use).
+
+V1_FEATURES = [
     "forecast_sales",
     "month_sin",
     "day_of_week",
@@ -72,10 +84,55 @@ FINAL_MODEL_FEATURES = [
     "is_heavy_rain",
 ]
 
+CANDIDATE_FEATURES = [
+    "lag_7_sales",
+    "rolling_7_sales",
+    "rolling_14_sales",
+    "lag_1_fe",
+    "lag_7_fe",
+    "rolling_7_fe",
+    "year",
+    "is_weekend",
+    "day_of_week_cos",
+    "is_payday",
+    "days_to_payday",
+    "days_since_bank_holiday",
+    "is_christmas_break",
+    "is_summer_break",
+    "is_easter_break",
+    "is_school_holiday",
+    "max_temp",
+    "rain_mm",
+    "sun_hours",
+    "is_hot_for_scotland",
+    "is_dry_day",
+    "temp_anomaly_14d",
+    "warm_streak_len",
+]
+
+V2_FEATURES = V1_FEATURES + CANDIDATE_FEATURES
+
+FEATURE_SETS = {"v1": V1_FEATURES, "v2": V2_FEATURES}
+
+# The anomaly feature's name contains its window (temp_anomaly_14d), so the
+# window in the config and the name in V2_FEATURES must agree.
+if f"temp_anomaly_{CONFIG.weather.anomaly_window}d" not in V2_FEATURES:
+    raise ValueError(
+        f"weather.anomaly_window is {CONFIG.weather.anomaly_window}, which builds a column "
+        f"named temp_anomaly_{CONFIG.weather.anomaly_window}d - that is not in V2_FEATURES. "
+        "Rename the feature there (and everywhere it is used) or change the window back."
+    )
+
+
+def features_for(model: str) -> list[str]:
+    """The feature list a model uses, as chosen in config.yaml (features.use)."""
+    return list(FEATURE_SETS[CONFIG.features.use[model]])
+
+
 # Glasgow area coordinates used in the original project
-LAT = 55.8612
-LON = -4.2502
-TIMEZONE = "Europe/London"
+LAT = CONFIG.weather.latitude
+LON = CONFIG.weather.longitude
+TIMEZONE = CONFIG.project.timezone
 
 
 # ---------------------------------------------------------------------
@@ -173,7 +230,9 @@ def add_time_features(df: pd.DataFrame, date_col: str = DATE_COL) -> pd.DataFram
 # Payday features
 # ---------------------------------------------------------------------
 
-def add_payday_features(df: pd.DataFrame, date_col: str = DATE_COL, uk_subdiv: str = "SCT") -> pd.DataFrame:
+def add_payday_features(
+    df: pd.DataFrame, date_col: str = DATE_COL, uk_subdiv: str = CONFIG.project.uk_subdivision
+) -> pd.DataFrame:
     """Add payday proximity features based on last working day of month."""
     out = df.copy()
     out[date_col] = pd.to_datetime(out[date_col])
@@ -213,7 +272,9 @@ def add_payday_features(df: pd.DataFrame, date_col: str = DATE_COL, uk_subdiv: s
 # Bank holiday features
 # ---------------------------------------------------------------------
 
-def add_bank_holiday_features(df: pd.DataFrame, date_col: str = DATE_COL, uk_subdiv: str = "SCT") -> pd.DataFrame:
+def add_bank_holiday_features(
+    df: pd.DataFrame, date_col: str = DATE_COL, uk_subdiv: str = CONFIG.project.uk_subdivision
+) -> pd.DataFrame:
     """Add bank holiday proximity and long-weekend features."""
     out = df.copy()
     out[date_col] = pd.to_datetime(out[date_col])
@@ -280,7 +341,7 @@ def add_school_holiday_features(
     df: pd.DataFrame,
     date_col: str = DATE_COL,
     breaks_df: pd.DataFrame | None = None,
-    council: str = "Glasgow",
+    council: str = CONFIG.project.council,
     break_types: tuple[str, ...] = ("christmas", "summer", "easter"),
 ) -> pd.DataFrame:
     """Add school holiday flags from a council-specific break table."""
@@ -625,10 +686,10 @@ def add_weather_features(
     df: pd.DataFrame,
     weather_df: pd.DataFrame,
     date_col: str = DATE_COL,
-    warm_temp_c: float = 18.0,
-    hot_scotland_c: float = 20.0,
-    heavy_rain_mm: float = 5.0,
-    anomaly_window: int = 14,
+    warm_temp_c: float = CONFIG.weather.warm_temp_c,
+    hot_scotland_c: float = CONFIG.weather.hot_scotland_c,
+    heavy_rain_mm: float = CONFIG.weather.heavy_rain_mm,
+    anomaly_window: int = CONFIG.weather.anomaly_window,
 ) -> pd.DataFrame:
     """Merge weather data and add weather-derived features."""
     out = df.copy()
@@ -665,11 +726,32 @@ def add_weather_features(
 # Final dataset preparation
 # ---------------------------------------------------------------------
 
+def model_frame(df: pd.DataFrame, features: list[str] | None = None) -> pd.DataFrame:
+    """The date, the target and `features` (V1 by default), with the rows the
+    lag/rolling/weather edges leave incomplete dropped - what the XGBoost and
+    neural models train on. Replaces the old model_features.csv, which was
+    exactly this selection written to disk."""
+    columns = [DATE_COL, TARGET_COL] + list(V1_FEATURES if features is None else features)
+    missing = [col for col in columns if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required model columns: {missing}")
+    return df[columns].dropna().reset_index(drop=True)
+
+
+def load_model_frame(path: Path | None = None, features: list[str] | None = None) -> pd.DataFrame:
+    """Read the engineered features and return `model_frame` of them."""
+    path = path or OUTPUT_DIR / "engineered_features.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"Feature dataset not found: {path} - run the pipeline first")
+    df = pd.read_csv(path)
+    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
+    return model_frame(df, features)
+
+
 def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Build both:
-    1. full engineered feature dataset
-    2. final model-ready dataset with selected features only
+    Build and save the full engineered feature dataset, and return it together
+    with the V1 model frame (`model_frame`; not written to disk).
     """
     df = load_daily_sales()
 
@@ -680,7 +762,7 @@ def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
         df,
         date_col=DATE_COL,
         breaks_df=SCHOOL_BREAKS,
-        council="Glasgow",
+        council=CONFIG.project.council,
         break_types=("christmas", "summer", "easter"),
     )
     df = add_christmas_period_feature(df, date_col=DATE_COL)  # is_christmas_period: DEPRECATED, see function docstring
@@ -705,22 +787,7 @@ def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
     df.to_csv(engineered_path, index=False)
     print(f"Engineered feature dataset written to: {engineered_path}")
 
-    # Build final model-ready dataset
-    required_cols = [DATE_COL, TARGET_COL] + FINAL_MODEL_FEATURES
-    missing = [col for col in required_cols if col not in df.columns]
-    if missing:
-        raise ValueError(f"Missing required model columns: {missing}")
-
-    model_df = df[required_cols].copy()
-
-    # Drop rows with NA values created by lag/rolling/weather edges
-    model_df = model_df.dropna().reset_index(drop=True)
-
-    model_path = OUTPUT_DIR / "model_features.csv"
-    model_df.to_csv(model_path, index=False)
-    print(f"Model-ready dataset written to: {model_path}")
-
-    return df, model_df
+    return df, model_frame(df)
 
 
 if __name__ == "__main__":

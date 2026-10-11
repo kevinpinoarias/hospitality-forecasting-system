@@ -27,9 +27,11 @@ from src.experiments.grids import TRAIN_WINDOW_OPTIONS
 from src.experiments.run_feature_sweep import build_folds, load_data
 from src.experiments.splits import slice_train_window, slice_test_window
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = PROJECT_ROOT / "reports" / "experiments"
-FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+RESULTS_DIR = CONFIG.path("experiments_dir")
+FIGURES_DIR = CONFIG.path("figures_dir")
 
 # The 38-feature winning set from Series 2 (15 production + 23 candidates).
 ADD_ALL_CANDIDATES = list(BASELINE_FEATURES) + list(ALL_CANDIDATES)

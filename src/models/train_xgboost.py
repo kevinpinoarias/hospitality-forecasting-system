@@ -26,6 +26,8 @@ from xgboost import XGBRegressor
 from src.evaluation.metrics import regression_metrics
 from src.evaluation.plots import plot_forecast_vs_actual, plot_best_window_comparison
 from src.evaluation.experiment_tracking import log_run
+from src.config import CONFIG
+from src.features.build_features import features_for, load_model_frame
 
 
 # ---------------------------------------------------------------------
@@ -33,9 +35,9 @@ from src.evaluation.experiment_tracking import log_run
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "features" / "model_features.csv"
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+INPUT_PATH = CONFIG.path("engineered_features")
+RESULTS_DIR = CONFIG.path("results_dir")
+FIGURES_DIR = CONFIG.path("figures_dir")
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,25 +49,9 @@ FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 DATE_COL = "date"
 TARGET_COL = "total_sales"
-DEFAULT_SPLIT_DATE = "2024-12-31"
+DEFAULT_SPLIT_DATE = CONFIG.splits.xgboost_split_date
 
-FEATURES = [
-    "forecast_sales",
-    "month_sin",
-    "day_of_week",
-    "day_of_year_cos",
-    "day_of_year_sin",
-    "day_of_year",
-    "month_cos",
-    "month",
-    "day_of_week_sin",
-    "is_bank_holiday",
-    "days_to_bank_holiday",
-    "days_since_payday",
-    "is_payday_window_pm3",
-    "is_long_weekend",
-    "is_heavy_rain",
-]
+FEATURES = features_for("xgboost")
 
 
 # ---------------------------------------------------------------------
@@ -74,11 +60,7 @@ FEATURES = [
 
 def load_model_data(path: Path = INPUT_PATH) -> pd.DataFrame:
     """Load final model-ready feature dataset."""
-    if not path.exists():
-        raise FileNotFoundError(f"Model feature file not found: {path}")
-
-    df = pd.read_csv(path)
-    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
+    df = load_model_frame(path, FEATURES)
     df = df.sort_values(DATE_COL).reset_index(drop=True)
 
     required = [DATE_COL, TARGET_COL] + FEATURES
@@ -107,20 +89,12 @@ def temporal_train_valid_split(
 
 def build_model() -> XGBRegressor:
     """Instantiate the final XGBoost regressor."""
-    return XGBRegressor(
-        n_estimators=300,
-        learning_rate=0.05,
-        max_depth=4,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        objective="reg:squarederror",
-        random_state=42,
-    )
+    return XGBRegressor(**CONFIG.xgboost.params())
 
 
 def compute_best_window(
     valid_df: pd.DataFrame,
-    window: int = 56,
+    window: int = CONFIG.analysis.best_window_days,
 ) -> tuple[pd.DataFrame, dict]:
     """
     Find the best rolling window where AI beats human forecast most strongly.

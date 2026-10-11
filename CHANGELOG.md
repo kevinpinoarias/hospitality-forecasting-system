@@ -2,6 +2,12 @@
 
 Notable changes, newest first. Dates are when the work was merged or finished.
 
+## Unreleased
+- Activated `config/config.yaml`, which was previously unused: a strict, validated loader (`src/config.py`, Pydantic) now supplies the paths, split dates, weather thresholds and coordinates, XGBoost/SARIMAX/CatBoost settings, analysis defaults and each model's feature set. About 35 hard-coded path constants and a dozen duplicated settings across 25 files now read from it. The stale values in the old file were replaced with the ones the code actually used, so no result changes (the weather coordinates stay as they were).
+- Feature sets: the original 15 features (V1) and all 38 (V2) are each defined once in `src/features/build_features.py` (previously copied into four and two files); `features.use` in the config picks the set per model.
+- Removed `data/features/model_features.csv`: it was the V1 selection of `engineered_features.csv`, now `load_model_frame()`.
+- Verified by running the whole pipeline before and after: all 586 reproducible output files are byte-identical (features, preprocessing, baselines, SARIMAX, XGBoost, the final model's backtest predictions and metrics, figures). `config/config.yaml` changes now retrain the model in CI and redeploy the API. New tests in `tests/test_config.py`.
+
 ## 2026-10-11 - CI/CD
 - Added GitHub Actions (`.github/workflows/ci.yml`): lint (ruff), secret scan
   (gitleaks), tests, a quality gate on a model rebuilt from the raw data,

@@ -17,8 +17,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.config import CONFIG
+from src.features.build_features import features_for
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_DIR = PROJECT_ROOT / "models" / "final_model"
+MODEL_DIR = CONFIG.path("final_model_dir")
 METADATA_FILENAME = "metadata.json"
 BACKTEST_PREDICTIONS_FILENAME = "backtest_predictions.csv"
 
@@ -30,49 +33,10 @@ TARGET_COL = "total_sales"
 # src/experiments/series_common.py - column order changes CatBoost's
 # seeded fits, so it has to match for the backtest to reproduce the log.
 # tests/test_final_model.py checks the two stay identical.
-FINAL_FEATURES = [
-    "forecast_sales",
-    "month_sin",
-    "day_of_week",
-    "day_of_year_cos",
-    "day_of_year_sin",
-    "day_of_year",
-    "month_cos",
-    "month",
-    "day_of_week_sin",
-    "is_bank_holiday",
-    "days_to_bank_holiday",
-    "days_since_payday",
-    "is_payday_window_pm3",
-    "is_long_weekend",
-    "is_heavy_rain",
-    "lag_7_sales",
-    "rolling_7_sales",
-    "rolling_14_sales",
-    "lag_1_fe",
-    "lag_7_fe",
-    "rolling_7_fe",
-    "year",
-    "is_weekend",
-    "day_of_week_cos",
-    "is_payday",
-    "days_to_payday",
-    "days_since_bank_holiday",
-    "is_christmas_break",
-    "is_summer_break",
-    "is_easter_break",
-    "is_school_holiday",
-    "max_temp",
-    "rain_mm",
-    "sun_hours",
-    "is_hot_for_scotland",
-    "is_dry_day",
-    "temp_anomaly_14d",
-    "warm_streak_len",
-]
+FINAL_FEATURES = features_for("catboost")  # V2: see src/features/build_features.py and config/config.yaml
 
-FINAL_PARAMS = {"iterations": 300, "learning_rate": 0.05, "depth": 4}
-FINAL_SEEDS = list(range(25))
+FINAL_PARAMS = CONFIG.catboost.params()
+FINAL_SEEDS = CONFIG.catboost.seeds()
 
 
 class BaggedCatBoost:

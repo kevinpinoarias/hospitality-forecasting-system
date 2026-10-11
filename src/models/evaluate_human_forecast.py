@@ -32,13 +32,15 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 # Paths
 # ---------------------------------------------------------------------
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-SALES_INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "sales" / "daily_sales_totals_master.csv"
-LABOUR_INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "labour" / "daily_labour_totals_master.csv"
+SALES_INPUT_PATH = CONFIG.path("daily_sales_master")
+LABOUR_INPUT_PATH = CONFIG.path("daily_labour_master")
 
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+RESULTS_DIR = CONFIG.path("results_dir")
+FIGURES_DIR = CONFIG.path("figures_dir")
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)

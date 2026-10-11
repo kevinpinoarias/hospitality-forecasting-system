@@ -72,7 +72,7 @@ hospitality-forecasting-system/
 ├── LICENSE
 ├── .github/workflows/ci.yml     # CI/CD: lint, secret scan, tests, quality gate, image, deploy
 ├── config/
-│   ├── config.yaml
+│   ├── config.yaml               # paths, split dates, weather thresholds, model settings, which feature set each model uses
 │   ├── quality_gate.json         # expected model error and tolerance for CI
 │   └── registry_cleanup_policy.json  # Artifact Registry cleanup rule
 ├── data/
@@ -100,6 +100,7 @@ hospitality-forecasting-system/
 │   └── deploy_service.sh         # CI: deploy a Cloud Run revision with no traffic, test it, then promote
 ├── tests/                        # pytest suite
 └── src/
+    ├── config.py                 # loads and validates config/config.yaml (strict: typos and bad values stop start-up)
     ├── ingestion/
     │   └── anonymize_raw.py      # strips venue-identifying fields before anything else runs
     ├── preprocessing/
@@ -232,6 +233,15 @@ These were chosen because they produced the best generalisation among the explor
 - holiday context
 - payday behaviour
 - limited weather sensitivity
+
+### Feature sets: V1 and V2
+
+The project uses two named feature sets, each defined **once**, in `src/features/build_features.py`:
+
+- **V1** - the original 15 features above. Used by XGBoost, the neural models and the experiment log's baseline.
+- **V2** - all 38: V1 plus the 23 candidates the experimentation programme added, in a fixed order (column order changes CatBoost's seeded fits). Used by the final CatBoost model the API serves.
+
+`config/config.yaml` says which set each model uses (`features.use`), so switching a model's features is one line there, not an edit in several files. The XGBoost and neural models read V1 straight from `engineered_features.csv` (`load_model_frame`); the old separate `model_features.csv` no longer exists.
 
 ### Broader engineered feature set
 
@@ -563,6 +573,14 @@ Login to Google uses short-lived tokens (Workload Identity Federation), not a st
 
 ---
 
+## Configuration
+
+Settings that used to be repeated across the code now live in [`config/config.yaml`](config/config.yaml), loaded and validated by `src/config.py`: file paths, the train/validation split dates, the weather thresholds and coordinates, the XGBoost, SARIMAX and CatBoost settings, and which feature set each model uses. Validation is strict - a misspelt key, a wrong type, a bad date, an unknown feature set or an absolute path stops the program at start-up with a message saying what is wrong, instead of being quietly ignored.
+
+Changing a model or feature setting changes the model's results, so re-run the pipeline afterwards. CI does it for you: `config/config.yaml` is part of the fingerprint that decides whether the model is retrained, and a change to it redeploys the API. The coordinates are the ones every figure in the experiment log was produced with; changing them changes the weather features and so every result.
+
+---
+
 ## Limitations
 
 This portfolio version has several important limitations, which are acknowledged deliberately.
@@ -640,7 +658,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 - explore whether staffing metrics can be forecast more directly
 
 **Production-style improvements**
-- centralise config usage more completely
+- ~~centralise config usage~~ - **done**: `config/config.yaml` is the single, validated source for paths, splits, weather settings, model settings and feature-set choice (see [Configuration](#configuration))
 - ~~add experiment tracking~~ - **done**: Weights & Biases, plus the experiment log
 - add tests for each stage of the pipeline - **partly done**: the pytest suite covers anonymisation, the experimentation framework, neural data preparation, the labour metrics, the newer feature functions, the final model, the serving features, the API, the error ranking and the assistant's tools and evaluator (tests that need a trained model skip on a fresh clone, and run in CI against a rebuilt model); preprocessing and the core feature functions are not yet covered
 - ~~deploy the model from the experimentation programme to the live API~~ - **done** (Series 18 tested how to serve it)

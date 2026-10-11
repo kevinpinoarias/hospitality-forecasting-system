@@ -44,6 +44,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
+from src.config import CONFIG
 from src.features.build_features import (
     SCHOOL_BREAKS,
     add_bank_holiday_features,
@@ -114,7 +115,7 @@ def seasonal_medians(
     return out
 
 
-def typical_heavy_rain_mm(history: pd.DataFrame, heavy_rain_mm: float = 5.0) -> float:
+def typical_heavy_rain_mm(history: pd.DataFrame, heavy_rain_mm: float = CONFIG.weather.heavy_rain_mm) -> float:
     """Median rainfall on the historical days that counted as heavy rain -
     the rain amount used for the heavy-rain scenario when no real forecast
     exists for the date."""

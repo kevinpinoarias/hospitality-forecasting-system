@@ -28,6 +28,9 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from src.config import CONFIG
+from src.features.build_features import features_for
+
 logging.getLogger("cmdstanpy").setLevel(logging.WARNING)
 logging.getLogger("prophet").setLevel(logging.WARNING)
 
@@ -43,26 +46,10 @@ TARGET_COL = "total_sales"
 
 # Same final feature set the production XGBoost/LSTM/Transformer models
 # use (see src/features/build_features.py's FINAL_MODEL_FEATURES) -
-# redefined locally, matching this codebase's existing convention of each
-# script owning its own copy rather than a shared config import (a known,
-# already-documented gap - see README's Future Work).
-FEATURES = [
-    "forecast_sales",
-    "month_sin",
-    "day_of_week",
-    "day_of_year_cos",
-    "day_of_year_sin",
-    "day_of_year",
-    "month_cos",
-    "month",
-    "day_of_week_sin",
-    "is_bank_holiday",
-    "days_to_bank_holiday",
-    "days_since_payday",
-    "is_payday_window_pm3",
-    "is_long_weekend",
-    "is_heavy_rain",
-]
+# now chosen in config/config.yaml (features.use.experiments_baseline) and
+# defined once in build_features.py. Do not change it to another set without
+# re-running the experiment log - every series is measured against V1.
+FEATURES = features_for("experiments_baseline")
 
 PROPHET_REGRESSORS = [
     "forecast_sales",
@@ -72,7 +59,7 @@ PROPHET_REGRESSORS = [
     "is_payday_window_pm3",
 ]
 
-SARIMAX_EXOG_FEATURES = ["forecast_sales", "lag_7_sales"]
+SARIMAX_EXOG_FEATURES = list(CONFIG.sarimax.exog_features)
 
 
 def _result(dates: pd.Series, actual: np.ndarray, pred: np.ndarray) -> pd.DataFrame:

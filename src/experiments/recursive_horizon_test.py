@@ -33,7 +33,6 @@ Outputs
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -43,7 +42,9 @@ from src.experiments.feature_sets import ALL_CANDIDATES
 from src.experiments.run_feature_sweep import ENGINEERED_FEATURES_PATH, MODEL_PARAMS, build_folds, load_data
 from src.experiments.splits import Fold, slice_train_window
 
-RESULTS_DIR = Path(__file__).resolve().parents[2] / "reports" / "experiments"
+from src.config import CONFIG
+
+RESULTS_DIR = CONFIG.path("experiments_dir")
 
 
 def load_full_history() -> pd.DataFrame:

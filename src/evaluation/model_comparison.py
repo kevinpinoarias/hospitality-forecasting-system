@@ -28,10 +28,12 @@ import pandas as pd
 from src.evaluation.metrics import regression_metrics
 from src.evaluation.error_analysis import summarise_error_by_group
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-SALES_PATH = PROJECT_ROOT / "data" / "processed" / "sales" / "daily_sales_totals_master.csv"
-LABOUR_PATH = PROJECT_ROOT / "data" / "processed" / "labour" / "daily_labour_totals_master.csv"
+RESULTS_DIR = CONFIG.path("results_dir")
+SALES_PATH = CONFIG.path("daily_sales_master")
+LABOUR_PATH = CONFIG.path("daily_labour_master")
 
 DATE_COL = "date"
 ACTUAL_COL = "total_sales"

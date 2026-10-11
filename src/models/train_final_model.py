@@ -52,10 +52,12 @@ from src.models.final_model import (
 )
 from src.models.train_xgboost import FEATURES as XGBOOST_FEATURES, build_model as build_xgboost
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "features" / "engineered_features.csv"
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+INPUT_PATH = CONFIG.path("engineered_features")
+RESULTS_DIR = CONFIG.path("results_dir")
+FIGURES_DIR = CONFIG.path("figures_dir")
 
 # The experiment log's backtest: a year of initial history, then
 # back-to-back 60-day test blocks with an expanding training window.
@@ -128,7 +130,7 @@ def run_final_model() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     df = load_final_model_data()
 
-    print("Rolling-origin backtest (25 seeds x each fold)...")
+    print(f"Rolling-origin backtest ({len(FINAL_SEEDS)} seeds x each fold)...")
     predictions = rolling_origin_backtest(df)
     metrics = summarise_backtest(predictions)
     final = metrics.set_index("model").loc["final_model"]
@@ -180,7 +182,7 @@ def run_final_model() -> tuple[pd.DataFrame, pd.DataFrame]:
     log_run(
         model_name="catboost_final_ensemble",
         config={
-            "model": "CatBoost, log1p target, mean of 25 seeds",
+            "model": f"CatBoost, log1p target, mean of {len(FINAL_SEEDS)} seeds",
             "n_features": len(FINAL_FEATURES),
             "seeds": len(FINAL_SEEDS),
             "evaluation": f"rolling-origin backtest, {INITIAL_TRAIN_DAYS}-day initial window, "

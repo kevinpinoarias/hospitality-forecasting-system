@@ -48,9 +48,11 @@ from src.experiments.feature_sets import (
 )
 from src.experiments.splits import Fold, generate_rolling_origin_folds, slice_train_window, slice_test_window
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ENGINEERED_FEATURES_PATH = PROJECT_ROOT / "data" / "features" / "engineered_features.csv"
-RESULTS_DIR = PROJECT_ROOT / "reports" / "experiments"
+ENGINEERED_FEATURES_PATH = CONFIG.path("engineered_features")
+RESULTS_DIR = CONFIG.path("experiments_dir")
 
 # Held fixed at the winning configuration from the prior algorithm/
 # hyperparameter sweep (see reports/experiments/sweep_leaderboard.csv) so

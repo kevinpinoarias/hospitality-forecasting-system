@@ -33,7 +33,6 @@ Outputs
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import pandas as pd
 
@@ -44,7 +43,9 @@ from src.experiments.grids import TRAIN_WINDOW_OPTIONS
 from src.experiments.run_feature_sweep import build_folds, load_data
 from src.experiments.splits import Fold, slice_test_window, slice_train_window
 
-RESULTS_DIR = Path(__file__).resolve().parents[2] / "reports" / "experiments"
+from src.config import CONFIG
+
+RESULTS_DIR = CONFIG.path("experiments_dir")
 
 CATBOOST_PARAMS = {"iterations": 300, "learning_rate": 0.03, "depth": 4}
 

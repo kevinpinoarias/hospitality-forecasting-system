@@ -36,10 +36,12 @@ from src.models.neural_common import (
     train_model,
 )
 
+from src.config import CONFIG
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_DIR = PROJECT_ROOT / "models"
-RESULTS_DIR = PROJECT_ROOT / "reports" / "results"
-FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
+MODEL_DIR = CONFIG.path("models_dir")
+RESULTS_DIR = CONFIG.path("results_dir")
+FIGURES_DIR = CONFIG.path("figures_dir")
 
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)

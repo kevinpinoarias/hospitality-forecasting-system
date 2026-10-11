@@ -25,6 +25,7 @@ import pandas as pd
 
 from src.evaluation.experiment_tracking import log_run
 from src.evaluation.metrics import mae, mape, rmse
+from src.config import CONFIG
 from src.features.build_features import add_cyclical
 
 
@@ -33,8 +34,8 @@ from src.features.build_features import add_cyclical
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "sales" / "daily_sales_totals_master.csv"
-OUTPUT_DIR = PROJECT_ROOT / "reports" / "results"
+INPUT_PATH = CONFIG.path("daily_sales_master")
+OUTPUT_DIR = CONFIG.path("results_dir")
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -45,7 +46,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATE_COL = "date"
 TARGET_COL = "total_sales"
-DEFAULT_SPLIT_DATE = "2024-11-01"
+DEFAULT_SPLIT_DATE = CONFIG.splits.baseline_split_date
 
 
 # ---------------------------------------------------------------------
