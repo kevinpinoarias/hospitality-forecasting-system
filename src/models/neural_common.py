@@ -92,6 +92,7 @@ def build_windows(
     df: pd.DataFrame,
     features: list[str],
     window: int,
+    include_target_day: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, pd.Series]:
     """
     Build (window, n_features) sequences and next-day targets.
@@ -101,19 +102,28 @@ def build_windows(
     dataset (Christmas Day, New Year's Day) have no row at all rather than
     a zero, and a naive row-based window would silently treat those gaps
     as adjacent days.
+
+    By default the sequence is the `window` days BEFORE the day being
+    predicted - the network never sees that day's own calendar, manager's
+    forecast or weather. With `include_target_day=True` the sequence is the
+    `window` days ENDING AT the predicted day, so its own features (all known
+    in advance, exactly as the tree models see them) are the last step; the
+    target itself is never an input.
     """
     feature_matrix = df[features].to_numpy(dtype=np.float32)
     target = df[TARGET_COL].to_numpy(dtype=np.float32)
 
     X_list, y_list, date_list = [], [], []
 
-    for end_idx in range(window, len(df)):
-        span_dates = df[DATE_COL].iloc[end_idx - window : end_idx + 1]
+    first_end = window - 1 if include_target_day else window
+    for end_idx in range(first_end, len(df)):
+        span_start = end_idx - window + 1 if include_target_day else end_idx - window
+        span_dates = df[DATE_COL].iloc[span_start : end_idx + 1]
         day_gaps = span_dates.diff().dt.days.iloc[1:]
         if (day_gaps != 1).any():
             continue
 
-        X_list.append(feature_matrix[end_idx - window : end_idx])
+        X_list.append(feature_matrix[span_start : end_idx + (1 if include_target_day else 0)])
         y_list.append(target[end_idx])
         date_list.append(df[DATE_COL].iloc[end_idx])
 
@@ -143,6 +153,7 @@ def prepare_datasets(
     df: pd.DataFrame | None = None,
     train_window_days: int | None = None,
     valid_end_date: str | None = None,
+    include_target_day: bool = False,
 ) -> dict:
     """Load data, build gap-aware windows, split by date, and scale using
     statistics fit on the training split only (no leakage from validation).
@@ -163,7 +174,7 @@ def prepare_datasets(
     isolation rather than "the rest of history"."""
     if df is None:
         df = load_model_data()
-    X, y, target_dates = build_windows(df, features, window)
+    X, y, target_dates = build_windows(df, features, window, include_target_day=include_target_day)
 
     split_ts = pd.to_datetime(split_date)
     train_mask = (target_dates < split_ts).to_numpy()

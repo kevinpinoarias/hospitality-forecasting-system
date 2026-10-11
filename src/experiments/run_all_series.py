@@ -12,6 +12,12 @@ predictions:
 Series 18 (serving the final model beyond the end of the data) needs no
 earlier output.
 
+Series 19-22 (column order; the networks on the 38 features; CatBoost depth and
+iterations; the networks with the predicted day visible) each fit hundreds of
+models, so together they take about 3 hours on a 12-thread machine. They write
+JSONL files to reports/experiments/series19_21/ and resume where they stopped if
+interrupted; Series 22 reads Series 20's results. Skip them with --only.
+
 Series 1-4 are skipped unless --include-1-4 is passed: Series 1's full
 algorithm sweep fits every model family including SARIMAX and Prophet and
 takes far longer than everything else combined. Their results are not
@@ -48,6 +54,10 @@ LATER_SERIES = [
     ("17", "run_series17_manual_forecast_comparison"),
     ("business", "run_business_impact"),
     ("18", "run_series18_serving_horizon"),
+    ("19", "run_series19_column_order"),
+    ("20", "run_series20_neural_v2"),
+    ("21", "run_series21_catboost_depth_iterations"),
+    ("22", "run_series22_neural_target_day"),  # needs Series 20
 ]
 
 # Series 1-4 were built with their own CLIs; run them as subprocesses with
