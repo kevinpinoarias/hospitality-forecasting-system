@@ -40,6 +40,7 @@ jobs:
   tests:
     name: Tests (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       WANDB_MODE: disabled # the training code logs to wandb; CI has no login
     steps:
@@ -57,4 +58,36 @@ jobs:
           -r requirements-ci.txt
           -c constraints-experiments.txt
           --extra-index-url https://download.pytorch.org/whl/cpu
+
+      # The model and its data are not in git. They are rebuilt from the raw
+      # data - unless nothing that feeds them has changed since a run that
+      # already built them, in which case that run's copy is reused. The key
+      # is a fingerprint of every input: change one file below and the
+      # fingerprint changes, so the model is retrained.
+      - name: Restore the model if its inputs are unchanged
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/Interim
+            data/processed
+            data/features
+            models
+            reports
+          key: model-${{ runner.os }}-py3.11-${{ hashFiles('data/raw/**', 'src/preprocessing/**', 'src/features/**', 'src/models/**', 'src/evaluation/**', 'src/experiments/**', 'rebuild_model.py', 'constraints-experiments.txt', 'requirements-ci.txt') }}
+      - name: Rebuild the model from the raw data
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: python rebuild_model.py
+
       - run: pytest -q
+
+      - name: Keep the rebuilt model for later jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebuilt-model
+          path: |
+            models/final_model
+            data/features/engineered_features.csv
+            reports/results/final_model_metrics.csv
+          retention-days: 7
+          if-no-files-found: error
