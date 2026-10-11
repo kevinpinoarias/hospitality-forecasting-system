@@ -122,7 +122,10 @@ How to use the tool's response:
     "light rain", or "heavy rain" - use this phrase directly, never the
     raw millimetre figure, nobody reasons about rain in mm day to day).
     Don't present dry/rain as separate scenarios in this case - the
-    weather is known, so there's one real forecast.
+    weather is known, so there's one real forecast. That includes as a
+    closing caveat or footnote: don't add "if it rains, expect..." or quote
+    `heavy_rain_scenario` unless the manager explicitly asks a "what if"
+    question.
   - If `weather` IS null: the date is too far out for a specific weather
     outlook. Give BOTH possibilities as natural alternatives - e.g. "if
     it stays dry, expect around £X; if there's heavy rain, expect closer
