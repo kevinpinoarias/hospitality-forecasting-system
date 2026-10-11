@@ -21,10 +21,11 @@ Outputs
 from __future__ import annotations
 
 from pathlib import Path
-import numpy as np
 import pandas as pd
 
 from src.evaluation.experiment_tracking import log_run
+from src.evaluation.metrics import mae, mape, rmse
+from src.features.build_features import add_cyclical
 
 
 # ---------------------------------------------------------------------
@@ -90,14 +91,6 @@ def add_basic_time_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_cyclical(df: pd.DataFrame, col: str, period: int) -> pd.DataFrame:
-    """Add cyclical sine and cosine encoding."""
-    angle = 2 * np.pi * (df[col] - 1) / period
-    df[f"{col}_sin"] = np.sin(angle)
-    df[f"{col}_cos"] = np.cos(angle)
-    return df
-
-
 def add_exploratory_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add exploratory features that were used during baseline-stage analysis.
@@ -131,28 +124,6 @@ def add_baseline_predictions(df: pd.DataFrame) -> pd.DataFrame:
     out["roll28_pred"] = out[TARGET_COL].shift(1).rolling(28).mean()
 
     return out
-
-
-def mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Mean absolute error."""
-    return float(np.mean(np.abs(y_true - y_pred)))
-
-
-def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Root mean squared error."""
-    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
-
-
-def mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Mean absolute percentage error."""
-    y_true = np.asarray(y_true)
-    y_pred = np.asarray(y_pred)
-
-    mask = y_true != 0
-    if mask.sum() == 0:
-        return np.nan
-
-    return float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100)
 
 
 def eval_metrics(df: pd.DataFrame, y_col: str, pred_col: str) -> dict:

@@ -170,6 +170,50 @@ class PredictResponse(BaseModel):
     results: list[PredictResult]
 
 
+class RankedErrorDay(BaseModel):
+    """One day in an error ranking. `gap_gbp` is always a positive amount -
+    read `direction` to know which way, never infer it from a signed number."""
+    date: date_type
+    # Computed here, not left for a caller (or an LLM) to work out from the date.
+    day_of_week: str
+    actual_sales: float
+    # The forecast being judged (the model's or the manager's - see
+    # ErrorRankingResponse.forecast_judged).
+    forecast: float
+    gap_gbp: float
+    # "over_forecast": the forecast was too HIGH (actual sales fell short of it).
+    # "under_forecast": the forecast was too LOW (actual sales beat it).
+    direction: str
+    gap_percent_of_actual: float | None = None
+
+
+class ExcludedDays(BaseModel):
+    """Days left out of a ranking because a miss on them means nothing."""
+    # Christmas Day and New Year's Day: the venue is closed, so £0 sales
+    # isn't a forecasting miss.
+    known_closure_days: int
+    known_closure_dates: list[date_type]
+    # Days with no recorded sales figure, or no figure for the forecast judged.
+    missing_figures: int
+
+
+class ErrorRankingResponse(BaseModel):
+    """The days a forecast missed by the most. Only days with a forecast made
+    before the day was known are ranked, for both the model and the manager,
+    so the two are judged on the same days."""
+    # Plain-English description of what was ranked.
+    ranking: str
+    # "model" or "manager".
+    forecast_judged: str
+    period_start: date_type
+    period_end: date_type
+    days_ranked: int
+    excluded: ExcludedDays
+    limit: int
+    days: list[RankedErrorDay]
+    note: str
+
+
 class HealthResponse(BaseModel):
     status: str
     model: str

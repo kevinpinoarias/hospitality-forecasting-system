@@ -19,7 +19,7 @@ from src.features.serving_features import (
     build_feature_frame,
     fill_future_sales_recursively,
     history_features_at,
-    weekday_seasonal_lookup,
+    seasonal_medians,
     with_history_features,
 )
 
@@ -98,13 +98,13 @@ def test_with_history_features_uses_the_supplied_series():
     assert out["lag_7_sales"].iloc[0] == pytest.approx(500.0)
 
 
-def test_weekday_seasonal_lookup_ignores_missing_values():
+def test_seasonal_medians_ignores_missing_values():
     daily = make_daily(400, start="2024-01-01")
     target = dt.date(2025, 2, 3)
-    baseline = weekday_seasonal_lookup(daily, target, "total_sales")
+    baseline = seasonal_medians(daily, [target], "total_sales")[0]
 
     with_gap = daily.copy()
     same_weekday = pd.to_datetime(with_gap["date"]).dt.dayofweek == target.weekday()
     with_gap.loc[same_weekday & (with_gap.index < 5), "total_sales"] = np.nan
-    assert np.isfinite(weekday_seasonal_lookup(with_gap, target, "total_sales"))
+    assert np.isfinite(seasonal_medians(with_gap, [target], "total_sales")[0])
     assert np.isfinite(baseline)

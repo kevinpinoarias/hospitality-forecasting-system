@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
@@ -59,7 +58,7 @@ training data", "observed" vs "forecast" weather data, "backtest",
 implementation details the manager doesn't need to see - translate
 everything into plain language.
 
-You have four tools. get_forecast answers questions about one specific
+You have seven tools. get_forecast answers questions about one specific
 date's forecast; get_forecast_range does the same for every day in a
 period of up to 31 days (a weekend, a week, the run-up to Christmas) in
 one call - use it whenever a question covers more than one or two dates.
@@ -82,6 +81,17 @@ week", "is December strong", or "which weekday do we forecast worst" -
 never try to answer these by mentally combining several get_forecast
 calls yourself. Same rule applies to every tool: only state figures that
 came from a real tool call, or the fixed figures given below.
+get_top_worst_days, get_top_overpredictions and get_top_underpredictions
+rank the days a forecast was furthest from what actually sold: the biggest
+misses in either direction, the days it was too high by the most, and the
+days it was too low by the most. Use them for questions like "when were we
+most wrong", "which days did we overestimate the most" or "when did we
+underestimate". They can judge either forecast: the model's (the default -
+use it for "your forecast" or "the model") or the venue manager's own manual
+estimate (pass "manager" when the question is about the manager's, the
+venue's own or the manual forecast). If it isn't clear which is meant, use
+the model's and say you can check the manager's too. Never answer these
+questions by combining several get_forecast calls yourself.
 
 How to use the tool's response:
 
@@ -112,7 +122,10 @@ How to use the tool's response:
     "light rain", or "heavy rain" - use this phrase directly, never the
     raw millimetre figure, nobody reasons about rain in mm day to day).
     Don't present dry/rain as separate scenarios in this case - the
-    weather is known, so there's one real forecast.
+    weather is known, so there's one real forecast. That includes as a
+    closing caveat or footnote: don't add "if it rains, expect..." or quote
+    `heavy_rain_scenario` unless the manager explicitly asks a "what if"
+    question.
   - If `weather` IS null: the date is too far out for a specific weather
     outlook. Give BOTH possibilities as natural alternatives - e.g. "if
     it stays dry, expect around £X; if there's heavy rain, expect closer
@@ -217,6 +230,22 @@ How to use the tool's response:
   "it also knows the exact calendar date and time of year", never by
   naming the internal encoding.
 
+- Biggest misses (get_top_worst_days, get_top_overpredictions,
+  get_top_underpredictions): each day has `actual_sales`, `forecast` (the
+  forecast being judged), `gap_gbp` (always a plain positive amount) and
+  `direction`. `over_forecast` means the forecast was too HIGH (actual sales
+  fell short of it); `under_forecast` means it was too LOW (actual sales beat
+  it). Translate the direction into plain words - never repeat these labels,
+  and never work a direction out from the numbers yourself. Always say whose
+  forecast was judged (the model's or the manager's), and say plainly what
+  period the ranking covers using `period_start` and `period_end`. Use each
+  day's `day_of_week` for its weekday. Christmas Day and New Year's Day are
+  left out because the venue is closed - mention that once, briefly, if it
+  matters. At most 20 days can be shown; if `limit_note` is present, say so.
+  Only the days listed are ranked: never claim a day that isn't in the list
+  was better or worse than one that is, and never invent a reason a day was
+  missed - give only the real size and direction of the gap.
+
 - Several days: for a period, summarise rather than listing every field
   for every day - give the daily figures (or a total if asked) and point
   out the days that stand out and why. For days with a weather outlook,
@@ -271,7 +300,8 @@ MODEL_INTRO_MESSAGE = (
     "Ask me for a forecast for any date or week, what's special about a "
     "day (payday, holidays, the weather), \"what if it rains\", how a "
     "forecast was worked out, how a past forecast compared to what actually "
-    "happened, or how the different models tested here compared - I'll "
+    "happened, which days the forecast missed by the most, or how the "
+    "different models tested here compared - I'll "
     "always ground my answers in the real system, never invent a figure."
 )
 
@@ -330,12 +360,82 @@ def get_forecast_range(start_date: str, end_date: str) -> dict:
     return {"results": response.json()["results"]}
 
 
-TOOLS = {
-    "get_forecast": get_forecast,
-    "get_forecast_range": get_forecast_range,
-    "get_model_comparison": get_model_comparison,
-    "get_sales_and_forecast_patterns": get_sales_and_forecast_patterns,
-}
+# Mirrors MAX_RANKING_DAYS in src/api/error_ranking.py (this module can't
+# import it - the assistant's image contains only src/assistant/);
+# tests/test_assistant_tools.py checks the two stay equal.
+MAX_RANKING_DAYS = 20
+
+
+def _get_error_ranking(kind: str, forecast: str, n: int) -> dict:
+    forecast = str(forecast).strip().lower()
+    if forecast not in {"model", "manager"}:
+        return {"error": 'forecast must be "model" or "manager".'}
+
+    days = max(1, min(int(n), MAX_RANKING_DAYS))
+    response = requests.get(
+        f"{API_BASE_URL}/errors/ranking",
+        params={"kind": kind, "forecast": forecast, "limit": days},
+        timeout=45,  # same cold-start allowance as get_forecast
+    )
+    response.raise_for_status()
+    result = response.json()
+    if days != int(n):
+        result["limit_note"] = (
+            f"{int(n)} days were asked for, but at most {MAX_RANKING_DAYS} can be shown, "
+            f"so this is the top {days}."
+        )
+    return result
+
+
+def get_top_worst_days(forecast: str = "model", n: int = 10) -> dict:
+    """The days a forecast was furthest from what was actually sold, in either
+    direction - the biggest misses overall, largest first.
+
+    Args:
+        forecast: whose forecast to judge - "model" (this system's own
+            forecast, the default) or "manager" (the venue manager's own
+            manual sales estimate).
+        n: how many days to return, 1 to 20 (default 10).
+    """
+    return _get_error_ranking("worst", forecast, n)
+
+
+def get_top_overpredictions(forecast: str = "model", n: int = 10) -> dict:
+    """The days a forecast was too HIGH by the most - actual sales came in
+    below it - largest first.
+
+    Args:
+        forecast: whose forecast to judge - "model" (this system's own
+            forecast, the default) or "manager" (the venue manager's own
+            manual sales estimate).
+        n: how many days to return, 1 to 20 (default 10).
+    """
+    return _get_error_ranking("over", forecast, n)
+
+
+def get_top_underpredictions(forecast: str = "model", n: int = 10) -> dict:
+    """The days a forecast was too LOW by the most - actual sales came in
+    above it - largest first.
+
+    Args:
+        forecast: whose forecast to judge - "model" (this system's own
+            forecast, the default) or "manager" (the venue manager's own
+            manual sales estimate).
+        n: how many days to return, 1 to 20 (default 10).
+    """
+    return _get_error_ranking("under", forecast, n)
+
+
+TOOL_FUNCTIONS = [
+    get_forecast,
+    get_forecast_range,
+    get_model_comparison,
+    get_sales_and_forecast_patterns,
+    get_top_worst_days,
+    get_top_overpredictions,
+    get_top_underpredictions,
+]
+TOOLS = {fn.__name__: fn for fn in TOOL_FUNCTIONS}
 
 
 def ask(question: str) -> str:
@@ -349,7 +449,7 @@ def ask(question: str) -> str:
         model=MODEL,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
-            tools=[get_forecast, get_forecast_range, get_model_comparison, get_sales_and_forecast_patterns],
+            tools=TOOL_FUNCTIONS,
             # Executed manually below instead - see module docstring.
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         ),

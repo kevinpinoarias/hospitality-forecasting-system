@@ -1,0 +1,25 @@
+# What the GitHub Actions workflow installs (.github/workflows/ci.yml).
+# Everything the test suite imports, and nothing it does not: no jupyter,
+# gradio, lightgbm or prophet, which would add minutes to every run.
+# Versions are pinned through constraints-experiments.txt.
+
+-r requirements.txt
+
+pytest>=8.0
+ruff>=0.5
+httpx2>=2.0
+
+# training pipeline and evaluation code that the tests import
+scikit-learn>=1.3
+xgboost>=2.0
+statsmodels>=0.14
+matplotlib>=3.7
+tabulate>=0.9
+wandb>=0.19
+torch>=2.2
+
+# assistant code (tests/test_assistant_tools.py, tests/test_evaluate_output.py)
+google-genai>=1.0
+python-dotenv>=1.0
+langchain>=1.4
+langchain-google-genai>=4.4

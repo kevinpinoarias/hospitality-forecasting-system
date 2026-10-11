@@ -26,6 +26,7 @@ reads. Five checks, each targeting a real failure mode already observed
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 
@@ -286,6 +287,35 @@ def check_closure_day_handling(question: str, answer_text: str, tool_data: list[
     return [f"Date(s) discussed this turn are known closure days ({closure_dates}), but the response never mentioned the venue being closed."]
 
 
+def check_ranking_cap(question: str, answer_text: str, tool_data: list[dict]) -> list[str]:
+    """The error-ranking tools show at most 20 days. When a question asked
+    for more, the tool result carries a `limit_note` and the response must
+    say the list was capped, not present it as if it were what was asked for."""
+    if not any(isinstance(td, dict) and td.get("limit_note") for td in tool_data):
+        return []
+    lower = answer_text.lower()
+    if "20" in lower or "twenty" in lower:
+        return []
+    return ["The ranking was capped at 20 days (the tool returned a limit_note), but the response never says so."]
+
+
+def _mentions_scenario(figure: float, claimed: list[float], other_figures: list[float]) -> bool:
+    """True if the answer states `figure` (a scenario forecast). A stated
+    number is credited to the closest real figure in the day's data: if
+    another one (e.g. last week's sales) is at least as close, the answer
+    is quoting that, not the scenario - a coincidence a real run hit
+    (last week's £14,143 vs a £14,145 dry scenario)."""
+    tolerance = max(NUMBER_TOLERANCE, figure * 0.001)
+    for n in claimed:
+        gap = abs(n - figure)
+        if gap > tolerance:
+            continue
+        if any(abs(n - o) <= max(NUMBER_TOLERANCE, o * 0.001) and abs(n - o) < gap for o in other_figures):
+            continue
+        return True
+    return False
+
+
 def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict]) -> list[str]:
     # An explicit "what if X" question legitimately gets both figures - the
     # asked-about scenario as the answer, the other as comparison context
@@ -314,8 +344,12 @@ def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict])
         # is real at all, which is what the looser 1% tolerance is for. 0.1%
         # still separates those, while allowing the everyday rounding the
         # assistant does ("around £5,880" for £5,881.13).
-        dry_mentioned = any(abs(dry - n) <= max(NUMBER_TOLERANCE, dry * 0.001) for n in claimed)
-        rain_mentioned = any(abs(rain - n) <= max(NUMBER_TOLERANCE, rain * 0.001) for n in claimed)
+        other_figures: list[float] = []
+        for key, value in td.items():
+            if key != "predictions":
+                _flatten_numbers(value, other_figures)
+        dry_mentioned = _mentions_scenario(dry, claimed, other_figures)
+        rain_mentioned = _mentions_scenario(rain, claimed, other_figures)
         weather_known = td.get("weather") is not None
 
         if weather_known and dry_mentioned and rain_mentioned and not is_explicit_what_if:
@@ -331,11 +365,20 @@ def check_scenario_logic(question: str, answer_text: str, tool_data: list[dict])
     return issues
 
 
+# The cases that need a real weather outlook use dates computed from today, so
+# they stay inside the weather provider's forecast window however long after
+# they were written the suite is run (a fixed date drifts into the past).
+_TODAY = dt.date.today()
+NEXT_SATURDAY = (_TODAY + dt.timedelta(days=(5 - _TODAY.weekday()) % 7 or 7)).isoformat()
+NEXT_THREE_DAYS = ", ".join((_TODAY + dt.timedelta(days=i)).isoformat() for i in (1, 2)) + " and " + (
+    _TODAY + dt.timedelta(days=3)
+).isoformat()
+
 TEST_CASES = [
-    {"name": "how the forecast was made", "turns": ["How is the forecast for 2026-09-12 calculated?"]},
-    {"name": "what if it rains", "turns": ["What if it rains on 2026-09-12?"]},
-    {"name": "multi-day summary", "turns": ["What's the forecast for Sept 9, 10 and 11 2026?"]},
-    {"name": "historical comparison", "turns": ["Is 2026-09-12 busier than a typical Saturday?"]},
+    {"name": "how the forecast was made", "turns": [f"How is the forecast for {NEXT_SATURDAY} calculated?"]},
+    {"name": "what if it rains", "turns": [f"What if it rains on {NEXT_SATURDAY}?"]},
+    {"name": "multi-day summary", "turns": [f"What's the forecast for {NEXT_THREE_DAYS}?"]},
+    {"name": "historical comparison", "turns": [f"Is {NEXT_SATURDAY} busier than a typical Saturday?"]},
     {
         "name": "accuracy check + why-refusal",
         "turns": [
@@ -394,6 +437,22 @@ TEST_CASES = [
         "name": "sales patterns - week and month",
         "turns": ["What was our best week for sales, and is December a strong month for us?"],
     },
+    {
+        "name": "biggest misses - the model",
+        "turns": ["On which days was the forecast furthest from what we actually sold?"],
+    },
+    {
+        "name": "biggest over-forecasts - the manager's own forecast",
+        "turns": ["Which days was the manager's own forecast too high by the most?"],
+    },
+    {
+        "name": "biggest under-forecasts - the model",
+        "turns": ["When did the model underestimate our sales by the most?"],
+    },
+    {
+        "name": "ranking asked for more days than can be shown",
+        "turns": ["Show me the 50 worst forecast days."],
+    },
 ]
 
 
@@ -405,6 +464,7 @@ def run_turn_checks(question: str, answer_text: str, tool_data: list[dict]) -> l
     issues += check_scenario_logic(question, answer_text, tool_data)
     issues += check_actual_sales_refusal(question, answer_text, tool_data)
     issues += check_closure_day_handling(question, answer_text, tool_data)
+    issues += check_ranking_cap(question, answer_text, tool_data)
     if "why" in question.lower():
         issues += check_why_refusal(answer_text)
     return issues

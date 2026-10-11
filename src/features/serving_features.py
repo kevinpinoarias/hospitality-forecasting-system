@@ -114,16 +114,6 @@ def seasonal_medians(
     return out
 
 
-def weekday_seasonal_lookup(
-    df: pd.DataFrame,
-    target_date: dt.date,
-    column: str,
-    window_days: int = 10,
-) -> float:
-    """seasonal_medians() for a single date."""
-    return float(seasonal_medians(df, [target_date], column, window_days)[0])
-
-
 def typical_heavy_rain_mm(history: pd.DataFrame, heavy_rain_mm: float = 5.0) -> float:
     """Median rainfall on the historical days that counted as heavy rain -
     the rain amount used for the heavy-rain scenario when no real forecast

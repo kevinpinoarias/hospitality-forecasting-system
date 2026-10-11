@@ -89,6 +89,62 @@ def test_day_context_is_returned(client):
     assert future["day_context"]["recent_forecast_accuracy"] is None
 
 
+def ranking(client, **params) -> dict:
+    response = client.get("/errors/ranking", params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_error_ranking_defaults_to_the_ten_worst_days_by_gap(client):
+    body = ranking(client)
+    gaps = [d["gap_gbp"] for d in body["days"]]
+    assert body["forecast_judged"] == "model"
+    assert len(gaps) == 10
+    assert gaps == sorted(gaps, reverse=True)
+    assert all(d["day_of_week"] for d in body["days"])
+
+
+def test_error_ranking_leaves_out_closure_days(client):
+    for kind in ("worst", "over", "under"):
+        body = ranking(client, kind=kind, limit=20)
+        dates = {d["date"] for d in body["days"]}
+        assert not dates & {"2025-12-25", "2026-01-01"}
+    assert body["excluded"]["known_closure_days"] >= 2
+    assert "2025-12-25" in body["excluded"]["known_closure_dates"]
+
+
+def test_error_ranking_directions_match_the_kind(client):
+    over = ranking(client, kind="over", limit=20)["days"]
+    under = ranking(client, kind="under", limit=20)["days"]
+    assert over and under
+    assert all(d["direction"] == "over_forecast" and d["forecast"] > d["actual_sales"] for d in over)
+    assert all(d["direction"] == "under_forecast" and d["forecast"] < d["actual_sales"] for d in under)
+
+
+def test_error_ranking_covers_the_backtest_period_with_the_models_own_figures(client):
+    backtest = pd.read_csv(MODEL_DIR / "backtest_predictions.csv", parse_dates=["date"])
+    body = ranking(client)
+    assert body["period_start"] == backtest["date"].min().date().isoformat()
+    assert body["period_end"] == backtest["date"].max().date().isoformat()
+
+    top = body["days"][0]
+    saved = backtest.loc[backtest["date"].dt.date.astype(str) == top["date"], "final_model_prediction"].iloc[0]
+    assert top["forecast"] == pytest.approx(saved, abs=0.01)
+
+
+def test_error_ranking_judges_either_forecast(client):
+    model = ranking(client, kind="worst", forecast="model")
+    manager = ranking(client, kind="worst", forecast="manager")
+    assert manager["forecast_judged"] == "manager"
+    assert [d["date"] for d in model["days"]] != [d["date"] for d in manager["days"]]
+    assert model["period_start"] == manager["period_start"]  # both judged on the same days
+
+
+def test_error_ranking_rejects_bad_requests(client):
+    for params in ({"limit": 21}, {"limit": 0}, {"kind": "best"}, {"forecast": "robot"}):
+        assert client.get("/errors/ranking", params=params).status_code == 422
+
+
 def test_date_before_the_data_is_rejected(client):
     response = client.post("/predict", json={"requests": [{"date": "2020-01-01"}]})
     assert response.status_code == 422

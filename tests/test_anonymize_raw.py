@@ -11,7 +11,6 @@ evolves.
 
 from __future__ import annotations
 
-import json
 
 import pandas as pd
 import pytest
@@ -23,18 +22,6 @@ from src.ingestion.anonymize_raw import (
     has_raw_exports,
     normalise_department,
 )
-
-RAW_COLUMNS = [
-    "Site",
-    "Department",
-    "Metric",
-    "Subdivision",
-    "Date of business",
-    "UTC datetime",
-    "Stream",
-    "Value",
-]
-
 
 def make_raw_df(**overrides) -> pd.DataFrame:
     row = {
