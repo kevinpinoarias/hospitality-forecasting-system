@@ -197,7 +197,7 @@ def write_summary_markdown(
     best_overall = overall.iloc[0]
     best_wins = win_counts.iloc[0]
 
-    spike_rows = spike_comparison[spike_comparison["is_spike_day"] == True].sort_values("mean_absolute_error")
+    spike_rows = spike_comparison[spike_comparison["is_spike_day"]].sort_values("mean_absolute_error")
     best_on_spikes = spike_rows.iloc[0] if len(spike_rows) else None
 
     lines = [

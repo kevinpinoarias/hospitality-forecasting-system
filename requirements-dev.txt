@@ -20,6 +20,8 @@ notebook>=7.0
 wandb>=0.19
 torch>=2.2
 pytest>=8.0
+httpx2>=2.0        # FastAPI's TestClient (tests/test_api.py) needs it; it used to arrive by accident via gradio/jupyter
+ruff>=0.5           # linter - see ruff.toml; run `ruff check .`
 
 # Additional model families for the systematic experimentation sweep
 # (src/experiments/) - not needed for the core pipeline or API.

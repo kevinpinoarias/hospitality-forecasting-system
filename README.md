@@ -1,5 +1,7 @@
 # Hospitality Forecasting System
 
+[![CI](https://github.com/kevinpinoarias/hospitality-forecasting-system/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinpinoarias/hospitality-forecasting-system/actions/workflows/ci.yml)
+
 ## Overview
 
 This repository contains an end-to-end forecasting pipeline built around a real hospitality operations use case. The project was designed to investigate whether machine learning and time-series forecasting methods could improve on manual forecasting and provide more operationally useful demand predictions.
@@ -636,6 +638,8 @@ Install the pre-commit safety hook once, so a raw export can never be accidental
 ```bash
 git config core.hooksPath scripts/git-hooks
 ```
+
+Every push and pull request is also checked on GitHub (`.github/workflows/ci.yml`): `ruff check .` (lint), a gitleaks secret scan and `pytest`. Run the first and last locally with `ruff check .` and `pytest`.
 
 The anonymised dataset is already tracked in `data/raw/`, so on a fresh clone you can run the full pipeline straight away. New raw exports, if you have them, go in `data/raw_private/` (gitignored - never committed) first:
 
