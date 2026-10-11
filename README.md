@@ -639,7 +639,7 @@ Install the pre-commit safety hook once, so a raw export can never be accidental
 git config core.hooksPath scripts/git-hooks
 ```
 
-Every push and pull request is also checked on GitHub (`.github/workflows/ci.yml`): `ruff check .` (lint), a gitleaks secret scan and `pytest`. Run the first and last locally with `ruff check .` and `pytest`.
+Every push and pull request is also checked on GitHub (`.github/workflows/ci.yml`): `ruff check .` (lint), a gitleaks secret scan and `pytest`, run against a model CI rebuilds from the raw data (`rebuild_model.py`, about 85 s). It then checks the rebuilt model's error against `config/quality_gate.json` (`scripts/quality_gate.py`), builds the API image and smoke-tests the running container (`scripts/smoke_test.py`). Run lint and tests locally with `ruff check .` and `pytest`.
 
 The anonymised dataset is already tracked in `data/raw/`, so on a fresh clone you can run the full pipeline straight away. New raw exports, if you have them, go in `data/raw_private/` (gitignored - never committed) first:
 
