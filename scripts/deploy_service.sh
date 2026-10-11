@@ -41,3 +41,14 @@ fi
 echo "Test passed - sending live traffic to the new revision."
 gcloud_run services update-traffic "$service" --to-latest
 echo "$service is live."
+
+# Housekeeping: keep the newest few revisions (for rollback) and delete the
+# rest. Cloud Run refuses to delete a revision that is serving traffic, and a
+# failure here must never fail a deploy that already succeeded.
+keep=4
+gcloud_run revisions list --service "$service" --sort-by="~metadata.creationTimestamp" --format="value(metadata.name)" |
+  tail -n +"$((keep + 1))" |
+  while read -r revision; do
+    echo "Deleting old revision $revision"
+    gcloud_run revisions delete "$revision" || echo "Could not delete $revision - leaving it."
+  done || true

@@ -7,9 +7,9 @@ stored password or key file**: GitHub proves to Google, for each run, "I am the
 `main` branch of this repository", and Google lets it act as a small service
 account (Workload Identity Federation).
 
-Until the four GitHub variables at the bottom exist, the deploy job is skipped.
+Until the four GitHub variables below exist, the deploy job is skipped.
 
-Run these once, in PowerShell, logged in with `gcloud auth login`.
+Run these once, in **PowerShell** (the prompt starts with `PS`; not `cmd.exe`, not Git Bash), logged in with `gcloud auth login`. If PowerShell says running scripts is disabled, run `Set-Alias gcloud gcloud.cmd` first; it lasts for that window only and needs no security change. Keep one window open for the whole sequence, because the variables below disappear when it closes.
 
 ```powershell
 $PROJECT = "hospitality-forecasting-1"
@@ -78,3 +78,33 @@ yourself. Each deploy then waits for your click.
 Delete the `GCP_WIF_PROVIDER` variable and deploys stop at once. To remove
 the access entirely: `gcloud iam service-accounts delete $SA --project $PROJECT`
 and `gcloud iam workload-identity-pools delete github --location global --project $PROJECT`.
+
+## 9. Housekeeping: old images and revisions
+Both only ever grow, so both are cleaned automatically. The registry rule is set
+once (below); the revision cleanup is part of every deploy. Use the same
+PowerShell window as above (with the variables from the top).
+
+Registry images - set the cleanup rule (`config/registry_cleanup_policy.json`:
+delete versions older than 14 days, always keep the 12 newest of each image).
+Run from the project folder. First a dry run, which only reports:
+```powershell
+gcloud artifacts repositories set-cleanup-policies hospitality-repo --project $PROJECT --location $REGION --policy=config/registry_cleanup_policy.json --dry-run
+```
+Then switch it on for real - the same command with `--no-dry-run` (just leaving the flag out keeps the rule in dry-run mode). Google then applies the rule by itself, every day or so, with nothing more for you to do:
+```powershell
+gcloud artifacts repositories set-cleanup-policies hospitality-repo --project $PROJECT --location $REGION --policy=config/registry_cleanup_policy.json --no-dry-run
+```
+
+Cloud Run revisions - **automatic**: after every successful deploy,
+`scripts/deploy_service.sh` deletes all but the newest four revisions of that
+service. To clean by hand (Cloud Run refuses to delete a revision that is
+serving traffic), list them and delete the older ones by name:
+```powershell
+gcloud run revisions list --service hospitality-forecasting-api --region $REGION --project $PROJECT
+gcloud run revisions list --service hospitality-forecasting-assistant --region $REGION --project $PROJECT
+```
+Delete the older ones by name, for example:
+```powershell
+gcloud run revisions delete hospitality-forecasting-api-00001-sfl --region $REGION --project $PROJECT --quiet
+```
+Afterwards check `/health` on the live API still answers.
