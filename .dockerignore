@@ -2,6 +2,7 @@
 # to serve the API, and would make the image unnecessarily large.
 data/raw/
 data/raw_private/
+data/interim/
 data/Interim/
 data/processed/
 data_cache/

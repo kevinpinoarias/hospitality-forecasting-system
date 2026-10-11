@@ -5,8 +5,8 @@ Purpose
 -------
 Reads raw input files from data/raw/, detects the row where labour data begins,
 and writes two separate outputs per source file:
-- Sales data -> data/interim/Sales/
-- Labour data -> data/interim/Labour/
+- Sales data -> data/interim/sales/
+- Labour data -> data/interim/labour/
 
 Notes
 -----
