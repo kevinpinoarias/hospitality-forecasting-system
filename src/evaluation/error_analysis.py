@@ -34,6 +34,18 @@ def top_worst_days(
     return out.sort_values("absolute_error", ascending=False).head(n)
 
 
+def top_best_days(
+    df: pd.DataFrame,
+    actual_col: str,
+    pred_col: str,
+    n: int = 20,
+) -> pd.DataFrame:
+    """Return the n days the forecast came closest to the actual figure
+    (smallest absolute error first; ties keep date order)."""
+    out = add_error_columns(df, actual_col, pred_col)
+    return out.sort_values("absolute_error", ascending=True, kind="stable").head(n)
+
+
 def top_overpredictions(
     df: pd.DataFrame,
     actual_col: str,

@@ -2,6 +2,9 @@
 
 Notable changes, newest first. Dates are when the work was merged or finished.
 
+## Unreleased
+- Added `kind=best` to `GET /errors/ranking` and a fourth ranking tool, `get_top_best_days`, so the assistant can list the days the forecast came closest (before, it could only list misses and said it had no tool for the best ones). A forecast that matches to the penny is reported as `exact`.
+
 ## 2026-10-11 - CI/CD
 - Added GitHub Actions (`.github/workflows/ci.yml`): lint (ruff), secret scan
   (gitleaks), tests, a quality gate on a model rebuilt from the raw data,
