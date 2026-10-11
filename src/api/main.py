@@ -90,14 +90,14 @@ def predict(payload: PredictRequest) -> PredictResponse:
 
 @app.get("/errors/ranking", response_model=ErrorRankingResponse)
 def error_ranking(
-    kind: Literal["worst", "over", "under"] = "worst",
+    kind: Literal["worst", "over", "under", "best"] = "worst",
     forecast: Literal["model", "manager"] = "model",
     limit: int = Query(DEFAULT_RANKING_DAYS, ge=1, le=MAX_RANKING_DAYS),
 ) -> ErrorRankingResponse:
     """The days a forecast missed by the most: `kind` is the biggest misses
     in either direction (worst), the days it was too high (over) or too low
-    (under); `forecast` is whose forecast to judge - the model's or the
-    manager's own."""
+    (under), or the days it came closest (best); `forecast` is whose forecast
+    to judge - the model's or the manager's own."""
     if model_service is None:
         raise HTTPException(status_code=503, detail="Model not yet loaded")
 

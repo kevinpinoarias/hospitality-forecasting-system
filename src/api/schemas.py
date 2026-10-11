@@ -183,6 +183,7 @@ class RankedErrorDay(BaseModel):
     gap_gbp: float
     # "over_forecast": the forecast was too HIGH (actual sales fell short of it).
     # "under_forecast": the forecast was too LOW (actual sales beat it).
+    # "exact": the forecast matched to the penny.
     direction: str
     gap_percent_of_actual: float | None = None
 
