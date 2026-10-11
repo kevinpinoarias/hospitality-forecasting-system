@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The "Run workflow" button: also redeploys both services, whatever changed.
+  workflow_dispatch:
 
 # A newer push to the same branch cancels the older, still-running check.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} # never cancel a deploy half-way
 
 permissions:
   contents: read
@@ -140,3 +142,90 @@ jobs:
           tags: hospitality-assistant:ci
           cache-from: type=gha,scope=assistant
           cache-to: type=gha,mode=max,scope=assistant
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: [lint, secrets, tests, image]
+    # Only from main, and only once the Google settings below exist.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.GCP_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production # add a required reviewer in GitHub to approve each deploy
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # lets this job prove to Google who it is, with no stored key
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/hospitality-repo
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # so the last commit can be compared with the one before it
+
+      # Rebuild an image only when something that goes into it changed.
+      - name: Work out what needs deploying
+        id: changes
+        run: |
+          changed=$(git diff --name-only HEAD~1 HEAD)
+          echo "$changed"
+          api=false
+          assistant=false
+          if echo "$changed" | grep -v '^src/assistant/' | grep -qE '^(data/raw/|src/|Dockerfile$|requirements\.txt$|constraints-experiments\.txt$|rebuild_model\.py$)'; then api=true; fi
+          if echo "$changed" | grep -qE '^(src/assistant/|Dockerfile\.assistant$|requirements-assistant\.txt$)'; then assistant=true; fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then api=true; assistant=true; fi
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          echo "assistant=$assistant" >> "$GITHUB_OUTPUT"
+          echo "Deploy API: $api. Deploy assistant: $assistant."
+
+      - uses: google-github-actions/auth@v2
+        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.assistant == 'true'
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.assistant == 'true'
+      - name: Let Docker push to Artifact Registry
+        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.assistant == 'true'
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - uses: docker/setup-buildx-action@v3
+        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.assistant == 'true'
+
+      # The API goes first: the assistant calls it.
+      - name: Fetch the model the tests job rebuilt
+        if: steps.changes.outputs.api == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: rebuilt-model
+      - name: Build and push the API image
+        if: steps.changes.outputs.api == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/hospitality-forecasting-api:${{ github.sha }}
+            ${{ env.REGISTRY }}/hospitality-forecasting-api:latest
+          cache-from: type=gha,scope=api
+      - name: Deploy the API
+        if: steps.changes.outputs.api == 'true'
+        run: bash scripts/deploy_service.sh hospitality-forecasting-api "${REGISTRY}/hospitality-forecasting-api:${{ github.sha }}" api
+
+      - name: Build and push the assistant image
+        if: steps.changes.outputs.assistant == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.assistant
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/hospitality-forecasting-assistant:${{ github.sha }}
+            ${{ env.REGISTRY }}/hospitality-forecasting-assistant:latest
+          cache-from: type=gha,scope=assistant
+      - name: Deploy the assistant
+        if: steps.changes.outputs.assistant == 'true'
+        run: >
+          bash scripts/deploy_service.sh hospitality-forecasting-assistant "${REGISTRY}/hospitality-forecasting-assistant:${{ github.sha }}" page
