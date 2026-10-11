@@ -3,7 +3,7 @@ Builds daily labour totals from split weekly labour files.
 
 Purpose
 -------
-Reads weekly labour files from data/interim/Labour/, aggregates actual and
+Reads weekly labour files from data/interim/labour/, aggregates actual and
 forecast labour hours and wages by day, and writes both:
 - per-file daily outputs
 - a master combined daily labour dataset
@@ -28,7 +28,7 @@ from src.preprocessing.common import normalise_series, read_file
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "Labour"
+INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "labour"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "processed" / "labour"
 PER_FILE_DIR = OUTPUT_DIR / "per_file"
 

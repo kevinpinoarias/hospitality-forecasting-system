@@ -3,7 +3,7 @@ Builds daily sales totals from split weekly sales files.
 
 Purpose
 -------
-Reads weekly sales files from data/interim/Sales/, filters to food and beverage
+Reads weekly sales files from data/interim/sales/, filters to food and beverage
 streams, aggregates actual and forecast sales by day, and writes both:
 - per-file daily outputs
 - a master combined daily sales dataset
@@ -43,7 +43,7 @@ KNOWN_CLOSURE_MONTH_DAYS = {
 # ---------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "Sales"
+INPUT_DIR = PROJECT_ROOT / "data" / "interim" / "sales"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "processed" / "sales"
 PER_FILE_DIR = OUTPUT_DIR / "per_file"
 
