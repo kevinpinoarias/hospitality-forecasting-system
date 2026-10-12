@@ -42,11 +42,12 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.experiments.series19_21_common import SUFFIX
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments.series19_21_common import OUT_DIR, init_worker, load_protocol, read_done, run_parallel, test_days
 
 RESULTS_FRESH = OUT_DIR / "series24_fresh_seeds.jsonl"
-REPORT_DIR = CONFIG.path("experiments_dir") / "series24_weekend_correction"
+REPORT_DIR = CONFIG.path("experiments_dir") / f"series24_weekend_correction{SUFFIX}"
 FRESH_SEEDS = list(range(100, 125))
 HALF_LIVES = [4, 8, 16]
 STRENGTHS = [0.25, 0.5, 0.75]

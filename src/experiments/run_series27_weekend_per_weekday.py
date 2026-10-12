@@ -37,13 +37,14 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.experiments.series19_21_common import SUFFIX
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments import run_series24_weekend_correction as s24
 from src.experiments import run_series25_weekend_training as s25
 from src.experiments import run_series26_weekend_features as s26
 from src.experiments.series19_21_common import run_parallel, test_days
 
-REPORT_DIR = CONFIG.path("experiments_dir") / "series27_weekend_per_weekday"
+REPORT_DIR = CONFIG.path("experiments_dir") / f"series27_weekend_per_weekday{SUFFIX}"
 OPTIONS = ["none"] + list(s26.VARIANTS)
 DAY_TARGET = {"Friday": "log1p", "Saturday": "raw", "Sunday": "log1p"}
 SELECTION_BLOCKS = 5  # blocks 0-4 choose, blocks 5-9 judge

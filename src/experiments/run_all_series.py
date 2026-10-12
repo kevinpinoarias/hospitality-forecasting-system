@@ -64,6 +64,10 @@ LATER_SERIES = [
     ("26", "run_series26_weekend_features"),  # needs Series 23 and 24
     ("27", "run_series27_weekend_per_weekday"),  # needs Series 23, 24 and 26
     ("28", "run_series28_manager_diagnostic"),  # needs Series 23, 24, 26 and 27
+    ("29", "run_series29_school_calendar"),  # needs Series 23 and 24
+    ("30", "run_series30_transition_features"),  # needs Series 29
+    ("32", "run_series32_first_week_correction"),  # needs the package re-run on the verified calendar (SERIES_RESULTS_SUFFIX=_cal2, Series 31)
+    ("33", "run_series33_first_week_by_type"),  # needs Series 32
 ]
 
 # Series 1-4 were built with their own CLIs; run them as subprocesses with

@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.experiments.series19_21_common import SUFFIX
 from src.experiments import run_error_autopsy as autopsy
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments import run_series24_weekend_correction as s24
@@ -36,7 +37,7 @@ from src.experiments import run_series27_weekend_per_weekday as s27
 from src.experiments.report_series19_21 import CSS
 from src.experiments.series19_21_common import test_days
 
-REPORT_DIR = CONFIG.path("experiments_dir") / "series28_manager_diagnostic"
+REPORT_DIR = CONFIG.path("experiments_dir") / f"series28_manager_diagnostic{SUFFIX}"
 CHOSEN = {"Friday": "A_summary", "Saturday": "A_lags", "Sunday": "B"}  # Series 27, chosen on blocks 0-4
 WEEKDAYS = s23.WEEKDAYS
 BLENDS = (0.0, 0.1, 0.2, 0.3)

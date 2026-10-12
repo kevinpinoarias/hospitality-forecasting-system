@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.experiments.series19_21_common import SUFFIX
 from src.experiments.series19_21_common import (
     _STATE, FINAL_PARAMS, FINAL_SEEDS_25, OUT_DIR, bagged_log1p_predictions, init_worker, read_done, run_parallel,
     score, test_days,
@@ -43,7 +44,7 @@ from src.experiments.series19_21_common import (
 from src.models.final_model import DATE_COL, FINAL_FEATURES, TARGET_COL
 
 RESULTS = OUT_DIR / "series23_log_vs_raw.jsonl"
-REPORT_DIR = CONFIG.path("experiments_dir") / "series23_log_vs_raw_peaks"
+REPORT_DIR = CONFIG.path("experiments_dir") / f"series23_log_vs_raw_peaks{SUFFIX}"
 SEED_CHUNK = 5
 RAW_SERIES8_PARAMS = {**FINAL_PARAMS, "learning_rate": 0.03}
 VARIANTS = {
@@ -250,7 +251,8 @@ def analyse() -> None:
     overall = pd.DataFrame([{"model": VARIANTS[v]["label"], **{k: score(a, p, f)[k] for k in ("MAE", "MAE_fold_mean", "RMSE", "Bias")}}
                             for v, p in bags.items()])
     print("\nOverall (pooled over 585 days):\n", overall.round(2).to_string(index=False))
-    assert abs(overall.iloc[0]["MAE"] - 909.57) < 0.01, "the log model must reproduce the final model's £909.57"
+    if SUFFIX == "":  # the original results set (original school calendar) must reproduce the logged figure exactly
+        assert abs(overall.iloc[0]["MAE"] - 909.57) < 0.01, "the log model must reproduce the final model's £909.57"
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     seg, dec, wdt = segment_table(days, bags), decile_table(days, bags), weekday_table(days, bags)

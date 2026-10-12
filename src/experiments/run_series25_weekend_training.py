@@ -41,6 +41,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.experiments.series19_21_common import SUFFIX
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments import run_series24_weekend_correction as s24
 from src.experiments.series19_21_common import _STATE, FINAL_SEEDS_25, OUT_DIR, init_worker, load_protocol, read_done, run_parallel, test_days
@@ -48,7 +49,7 @@ from src.models.final_model import DATE_COL, FINAL_FEATURES, FINAL_PARAMS, TARGE
 
 RESULTS = OUT_DIR / "series25_weekend_training.jsonl"
 RESULTS_FRESH = OUT_DIR / "series25_fresh_seeds.jsonl"
-REPORT_DIR = CONFIG.path("experiments_dir") / "series25_weekend_training"
+REPORT_DIR = CONFIG.path("experiments_dir") / f"series25_weekend_training{SUFFIX}"
 FRESH_SEEDS = list(range(100, 125))
 FRI_SUN = ("Friday", "Saturday", "Sunday")
 WEEKEND_DOW = (4, 5, 6)  # pandas dayofweek: Friday, Saturday, Sunday

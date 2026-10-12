@@ -37,7 +37,7 @@ memory or scattered CSVs.
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
-python -m src.experiments.run_all_series     # Series 5-28 and business impact, in dependency order
+python -m src.experiments.run_all_series     # Series 5-30 and business impact, in dependency order
 python -m src.experiments.run_all_series --only 5 6 7   # a subset (Series 19-22 take about 3 hours together)
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
 ```
@@ -62,7 +62,7 @@ versions this log was produced with - install with it to reproduce the
 figures exactly. Every fit also uses a fixed seed, but different hardware
 or thread counts can still introduce tiny floating-point differences.
 
-**Series 19-28 write JSONL files, not CSVs.** Each of those series fits hundreds of
+**Series 19-30 write JSONL files, not CSVs.** Each of those series fits hundreds of
 models, so every finished task is appended to a JSONL file under
 `reports/experiments/series19_21/` and a re-run resumes where it stopped
 (`python -m src.experiments.report_series19_21` turns them into the tables and
@@ -2640,6 +2640,387 @@ Blending in the manager's forecast (all-day / Friday-to-Sunday MAE): 0% £865.0 
 
 **Caveats.** About 84 days per weekday; the correlations use the package's own residuals, so they say nothing about information
 the manager has that the package already uses; the lists are for the venue manager to annotate.
+
+## Series 29 — What Does the Corrected School Calendar Do to the Model?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series29_school_calendar.py` ·
+**Raw data**: `series19_21/series29_school_calendar_stage1.jsonl` and `series29_school_calendar_stage1/` (tables)
+
+### Context
+
+Track B, step one. The school-holiday flags came from a table that started at Christmas 2024 and had several wrong dates
+(`docs/SCHOOL_CALENDAR.md` lists every date, its sources and what the original got wrong): 2024's Easter and summer
+holidays and the Christmas holiday ending 7 January 2024 were term time, the first weekend of every holiday was term time
+(including Saturday 28 June 2025, the busiest day in the data at £20,067), and some starts and ends were days or a week
+off. 108 of the 979 days change their `is_school_holiday` flag; the model's 950 rows go from 145 holiday days to 227.
+Stage 1 covers Christmas, Easter and summer; stage 2 adds the October week and the February mid-term (2023 to 2027), which takes the
+model's holiday days from 145 (original) to 227 (stage 1) and 262 (stage 2).
+
+### Hypothesis
+
+**H29**: the verified calendar lowers the final model's MAE.
+
+### Method
+
+The final model (log1p, 38 features, 25 seeds, 10 folds, 585 test days) and the raw-£ Saturday model refit with only the
+four school columns replaced; compared with the Series 23 fits on the same days (and, as a check, on 25 different seeds,
+100-124), with a 95% moving-block bootstrap interval. The corrected calendar is kept whatever the result, because it is
+the correct input; the question is how much accuracy was riding on the wrong one.
+
+### Results
+
+| Seeds | Model | Original calendar | Verified calendar | Change (95% interval) |
+|---|---|---|---|---|
+| 0-24 | Final model | 909.57 | 908.98 | -0.59 [-4.22, +2.84] |
+| 0-24 | Raw-£ model | 916.75 | 916.34 | -0.41 [-3.28, +2.63] |
+| 0-24 | Hybrid | 893.35 | 891.25 | -2.10 [-5.48, +0.95] |
+| 100-124 | Final model | 909.06 | 910.13 | +1.07 [-3.00, +5.23] |
+| 100-124 | Raw-£ model | 917.27 | 917.95 | +0.68 [-2.87, +4.30] |
+| 100-124 | Hybrid | 893.03 | 893.15 | +0.12 [-3.57, +3.85] |
+
+Final model by place in a school break (verified calendar's phases; seeds 0-24, MAE original to verified): last week of term
+1,157 to 1,150; **first week of a break 1,433 to 1,433**; middle of a break 866 to 850; last week of a break 1,040 to 1,056;
+other term time 840 to 841. By weekday the changes are within about £13 (Tuesday +£12.8 [+4.7, +22.1] on seeds 0-24 and
++£12.2 on seeds 100-124, a consistent small worsening; Sunday -£10.6 on seeds 0-24 only).
+
+### Conclusion
+
+**H29 is not supported: the correction changes the MAE by about nothing** (within seed noise, in opposite directions on the two
+seed sets). The baseline is restated as £909.57 on the original seeds and £908.98 with the verified calendar.
+
+1. **The model was not leaning on the school flags.** Probably because the month, day-of-year, payday and bank-holiday columns already
+   carry most of the seasonal information (not tested), a flag that was wrong for a third of the data cost it nothing measurable.
+2. **The transition weeks are still the hard days.** The first week of a break is £1,433, 57% above the model's overall £910, and the
+   verified calendar does not move it. The autopsy's "39% more error" was measured with the original phase labels; with the correct
+   ones the first week is, if anything, harder. The gap is not a labelling problem, so it needs features that describe the
+   transition itself (days since the break started, days until it ends), which is the next step of Track B.
+3. **The corrected calendar is kept** (it is the correct input, and the live API flags 2026 and 2027 dates from it). The quality gate
+   (£909.57, plus or minus 1%) is unaffected. Series 1-28 used the original table (`SCHOOL_BREAKS_V1`); the Track A package of Series 23-28
+   has not been re-run on the verified calendar.
+
+**Stage 2 (October week and February mid-term added).** Same test, all five break types. Final model £909.57 to £908.21
+(-1.36 [-5.70, +2.34]) on seeds 0-24 and £909.06 to £908.92 (-0.14 [-4.19, +4.04]) on seeds 100-124; the raw-£ model -£0.75 and
+-£0.48; the hybrid -£1.73 and -£1.13, all with intervals including zero. The same pattern by place in a break: the first week of a
+break £1,433 to £1,434 (seeds 0-24) and £1,426 to £1,436 (seeds 100-124). Tuesday is again slightly worse (+£14.9 [+5.1, +24.7] and
++£13.6), a consistent small effect that is not explained and not large. **The conclusion is unchanged: the complete, verified calendar
+does not move the model's MAE**; the baseline restated with it is £908.21 (seeds 0-24) and £908.92 (seeds 100-124).
+
+**Caveats.** The council's own term-dates page sits behind a bot-check and could not be read automatically; the project owner supplied
+screenshots of its 2026-27 session, and every date shown matched (see `docs/SCHOOL_CALENDAR.md`). The earlier sessions are no longer on the
+page, so 2023-24, 2024-25 and 2025-26 rest on at least two independent sources each, and the summer closing days carry a one-day
+uncertainty. Stage 2's rows use the same sources.
+
+## Series 30 — Do Features That Describe Where a Day Sits in a School Break Help?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series30_transition_features.py` ·
+**Raw data**: `series19_21/series30_transition_features.jsonl` (seeds 0-24), `series30_fresh_seeds.jsonl` (the winner on seeds
+100-124) and `series30_transition_features/` (tables)
+
+### Context
+
+Track B, step two. With the school calendar verified (Series 29) the first week of a break is still the hardest stretch of
+the year: £1,434 on the 35 first-week days against £908 overall. The model only knows "is it a school holiday". These
+features tell it where in the break the day falls. All come from the calendar, so they are known months ahead.
+
+### Hypothesis
+
+**H30**: telling the model where a day sits in a school break lowers the error on the transition weeks (the last week of term,
+the first week of a break and the last week of a break, 105 days).
+
+### Method
+
+Counters (all five break types; blank when not applicable): `tf_days_since_start`, `tf_days_to_end`, `tf_days_to_start`.
+Flags (the three long holidays only): `tf_first_week`, `tf_last_week_term`, `tf_last_week_break`. Four variants, each appended
+to the final model's 38 features: `TF_all` (six), `TF_flags` (three flags), `TF_counters` (three), `TF_capped` (counters capped
+at 14). Both targets (log1p and raw £), 25 seeds, 10 folds, 585 test days, on the verified calendar (Series 29 stage 2 as the
+baseline). **Pre-registered** in the script: the winner is the variant with the lowest MAE on the 105 transition days (seeds 0-24);
+refit on 25 fresh seeds (100-124); kept only if the transition-days interval is entirely below zero, the overall MAE is not
+significantly worse and no phase (transition, middle of a break, ordinary term time) is significantly worse.
+
+### Results
+
+The final (log) model, seeds 0-24, MAE (£):
+
+| Variant | All 585 days | Transition weeks | Last week of term | First week of a break | Last week of a break |
+|---|---|---|---|---|---|
+| Baseline | 908.2 | 1,211.1 | 1,146.2 | 1,434.4 | 1,052.5 |
+| All six | 914.6 | 1,235.1 | 1,151.8 | 1,425.3 | 1,128.3 |
+| **Three flags** | 907.2 | 1,220.6 | 1,125.5 | 1,476.8 | 1,059.3 |
+| Three counters | 912.8 | 1,226.4 | 1,131.2 | 1,423.1 | 1,124.7 |
+| Counters capped at 14 | 912.0 | 1,222.7 | 1,131.8 | 1,465.3 | 1,071.0 |
+
+Every variant is worse than the baseline on the transition days (+£9.5 to +£24.1). The winner by the rule (the least bad) is the
+three flags. On the **fresh seeds**: overall +£2.8 [-2.3, +7.8]; transition weeks **+£11.7 [-8.9, +30.7]**; first week of a break
++£32.0 [-9.3, +71.4]; last week of term -£1.5; last week of a break +£4.7; middle of a break -£12.7 [-29.2, +2.0]; ordinary term
+time +£3.4. The raw-£ model (+£2.7 on the transition days) and the hybrid (+£5.3) show the same.
+
+### Conclusion
+
+**H30 is rejected. The bar fails** (the transition-days interval is not below zero; it is above it).
+
+1. **The model does not lack the information.** Telling it where in a break a day sits makes the transition weeks no better and
+   the first week slightly worse. With about 17 breaks in the data (five of them in the test period, 35 days per phase) there
+   are too few examples to learn a pattern from, and more columns mostly add noise, as in Series 4 and 26.
+2. **The excess error is concentrated in a few days, not spread across the week.** The eight worst first-week days include
+   Saturday 28 June 2025 (£20,067 against a forecast of £13,890), Boxing Day 2025 (£2,919 against £7,411), Tuesday 1 July 2025,
+   Tuesday 30 June 2026 and Sunday 28 June 2026. Without those eight days the first-week MAE is £886, close to ordinary term time (£839).
+   They are the start of the summer holidays and Boxing Day: event-like days, not a smooth function of the day count.
+3. **The direction is consistent where it matters.** In four of the five first weeks the model is under-forecasting
+   (Easter 2025 -£1,055, Easter 2026 -£600, summer 2025 -£1,558, summer 2026 -£558; Christmas 2025 is the exception at +£997,
+   driven by Boxing Day). A systematic level shift is something a feature with so few examples cannot find but a correction
+   learned from earlier breaks might; with five breaks the power is low.
+4. **Nothing is added to the model.** The transition features are not adopted. The three-flags variant is the only one that does
+   not raise the overall MAE (-£1.1 on seeds 0-24, +£2.8 on the fresh seeds), which is noise.
+
+**Caveats.** Five test-period breaks; the phase groups have 35 days each, so intervals are wide; four variants were tried on
+one set of seeds.
+
+## Series 31 — Re-Validating the Track A Package on the Verified Calendar
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_package_validation.py` (the re-run itself:
+`SERIES_RESULTS_SUFFIX=_cal2 python -m src.experiments.run_series23_log_vs_raw_peaks` and the same for Series 24, 26 and 27) ·
+**Raw data**: `series19_21_cal2/` (the re-run's fits), `series23_log_vs_raw_peaks_cal2/` and the other `_cal2` report folders,
+and `package_validation/package_validation.csv`
+
+### Context
+
+Series 23-28 (the Track A package) were run on the original school calendar. The calendar was then verified and completed
+(`docs/SCHOOL_CALENDAR.md`; Series 29 shows it changes the final model's MAE by about nothing). Re-running every series after
+every change is expensive, so each change is tested on its own against the baseline and the package is re-validated at
+milestones; this is that milestone check, run before any of the package is promoted.
+
+### Method
+
+Series 23, 24, 26 and 27 re-run end to end on the verified calendar (all five break types), **including every selection step**:
+the correction grid of Series 24, the feature variants of Series 26 and the per-weekday options of Series 27 are chosen again from
+scratch, on seeds 0-24 and then the winners on fresh seeds. The earlier results are untouched (a `SERIES_RESULTS_SUFFIX` sends a
+re-run to its own folders). Series 25 (rejected) and Series 28 (a diagnostic) are not part of the package and were not re-run.
+`run_package_validation.py` then rebuilds the package from both result sets and prints one table.
+
+### Results
+
+| Series | Original calendar | Verified calendar |
+|---|---|---|
+| 23: log minus raw MAE on Saturdays (95% interval) | +£113.0 (+23.8, +209.7) | +£115.5 (+22.0, +217.0) |
+| 24: grid winner | 8 weeks, strength 0.5 | 8 weeks, strength 0.5 |
+| 24: correction on fresh seeds, all scored days | -£11.7 (-24.4, -0.9) | -£11.0 (-23.2, -0.4) |
+| 24: Friday / Saturday / Sunday on fresh seeds | +9.4 / -79.5 / -11.9 | +13.8 / -80.7 / -10.3 |
+| 26: winner | sales 2 and 3 weeks ago | sales 2 and 3 weeks ago |
+| 26: Friday to Sunday on fresh seeds | -£35.8 (-63.1, -4.8) | -£29.9 (-56.7, +0.6) |
+| 26: Saturday / Monday to Thursday on fresh seeds | -97.1 / +12.9 | -93.5 / +12.2 (+1.5, +21.3) |
+| 27: options chosen on blocks 0-4 | Friday `A_summary`, Saturday `A_lags`, Sunday `B` | Friday `A_all`, Saturday `A_lags`, Sunday `B` |
+| 27: Friday to Sunday, blocks 5-9, fresh seeds | -£51.1 (-88.0, -19.7) | -£54.8 (-94.5, -21.0) |
+
+The package (log model Monday to Thursday, raw model on Saturday, each weekend day's chosen option, the Saturday and Sunday
+correction at 8 weeks and 0.5), MAE in £ and against the final model on the same days:
+
+| Window | Calendar | Seeds 0-24 | Fresh seeds 100-124 |
+|---|---|---|---|
+| All 585 days | original | 909.57 to 864.98 (-4.9%) | 909.06 to 864.67 (-4.9%) |
+| All 585 days | verified | 908.21 to 864.63 (-4.8%) | 908.92 to 865.23 (-4.8%) |
+| Blocks 5-9 (judging) | original | 889.22 to 858.86 (-3.4%) | 891.58 to 857.25 (-3.9%) |
+| Blocks 5-9 (judging) | verified | 889.49 to 860.05 (-3.3%) | 890.95 to 856.18 (-3.9%) |
+
+### Conclusion
+
+**The package holds on the verified calendar.** Every headline finding replicates: the log target costs about £115 on Saturdays;
+the same correction settings win; the same feature option wins in Series 26 and fails its bar for the same reason (Monday to
+Thursday +£12); the per-weekday choice passes its bar on days it never saw; and the package improves on the final model by 4.8% over
+all days (3.3% to 3.9% on the judging blocks), the same as before to within £1.
+
+1. **One thing moved: Friday's option.** Friday chose `A_summary` on the original calendar and `A_all` on the verified one, and both
+   gains are within noise (-£44.8 with an interval from -£127.1 to +£37.4). Friday's choice is unstable, which fits every earlier
+   look at Friday (its correction hurt in all 9 variants); the Saturday and Sunday choices did not move.
+2. **Series 26's weekend result is a little weaker:** the Friday-to-Sunday interval of the winner now just reaches zero (+£0.6)
+   where it was -£4.8 before. It failed its bar before and fails it again.
+3. **The restated numbers** for the package (verified calendar): £864.63 on seeds 0-24 and £865.23 on fresh seeds against the final
+   model's £908.21 and £908.92. Series 23-28 in this log keep their original-calendar figures; this entry is the check that they
+   carry over.
+4. **Still not promoted.** The package still needs confirmation on new venue days, the routing rule between near-term and
+   far-horizon forecasts, and the serving design.
+
+**Caveats.** The re-run reuses the same 585 test days, so it checks the calendar, not the days; the Friday choice rests on
+about 40 selection days.
+
+## Series 32 — A Correction for the First Week of the Easter and Summer Breaks
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series32_first_week_correction.py` ·
+**Raw data**: `series19_21/series32_leave_one_break_out.jsonl` (the leave-one-break-out fits) and
+`series32_first_week_correction/` (tables); it reads the Track A package re-run on the verified calendar (`series19_21_cal2/`, Series 31)
+
+### Context
+
+Series 30 found no feature that helps the transition weeks, and the first week of a break is still the hardest stretch of the
+year. Across all six Easter and summer breaks in the data (2024 to 2026) the first week sells above its usual level
+(+10% to +30% over the previous four same weekdays); the model under-forecasts it in all four breaks where it has an out-of-sample
+forecast. Christmas is left out: its first week is flat (+3% and -1%). A correction learned from earlier breaks, like the Saturday
+and Sunday one of Series 24, is the natural next step.
+
+### Hypothesis
+
+**H32**: shifting the forecasts for the first week of an Easter or summer break by a share of the gap learned from other breaks
+lowers the error on those days.
+
+### Method
+
+For the days in scope, learn the gap (forecast minus actual) from the days in scope of other breaks and move the forecasts by
+`strength` times it, in pounds (**additive**) or as a percentage of the forecast (**ratio**). 8 variants: form x strength
+{0.5, 1.0} x scope {the first week, the first week plus the last week of term}. **Pre-registered** in the script:
+
+- **Forward-chained (primary):** only earlier breaks, on the Track A package (verified calendar): summer 2025, Easter 2026 and
+  summer 2026 are scored (3 breaks, 21 days; 42 with the extra scope). Easter 2025 has no earlier break.
+- **Leave one break out (stability):** each of the six breaks, **including 2024, for which the backtest has no forecasts**,
+  forecast by the final model trained without a 42-day window around it (nothing from the break is in the training rows) and
+  corrected from the other five. Optimistic (it learns from later breaks) but it covers all six.
+- Bar: forward-chained, on 25 fresh seeds, the pooled MAE on the scored days falls with a 95% interval (7-day blocks) entirely
+  below zero and at least two of the three breaks improve; and on leave-one-break-out the same settings improve at least four of the
+  six breaks. Otherwise the result is parked for the 2027 breaks.
+
+### Results
+
+**The model never sees the first week coming** (the final model, leave one break out; forecast minus actual):
+
+| Break | MAE | Bias | Sales above forecast by |
+|---|---|---|---|
+| Easter 2024 | 1,003 | -38 | +2.2% |
+| Summer 2024 | 1,119 | -730 | +9.5% |
+| Easter 2025 | 872 | -748 | +8.6% |
+| Summer 2025 | 2,213 | -1,230 | +12.3% |
+| Easter 2026 | 1,139 | -782 | +12.1% |
+| Summer 2026 | 1,359 | -486 | +7.5% |
+
+The model under-forecasts the first week in all six breaks, 2024 included.
+
+**Forward-chained, the package, seeds 0-24** (change in MAE on the scored days, £; negative is better):
+
+| Form | Strength | Scope | Days | Change | Breaks improved |
+|---|---|---|---|---|---|
+| additive | 0.5 | first week | 21 | -132.0 | 2 of 3 |
+| additive | 1.0 | first week | 21 | -185.4 | 2 of 3 |
+| ratio | 0.5 | first week | 21 | -76.8 | 2 of 3 |
+| ratio | 1.0 | first week | 21 | -121.0 | 2 of 3 |
+| additive | 0.5 | first week + last week of term | 42 | -9.4 | 1 of 3 |
+| additive | 1.0 | first week + last week of term | 42 | +23.5 | 1 of 3 |
+| ratio | 0.5 | first week + last week of term | 42 | -2.3 | 1 of 3 |
+| ratio | 1.0 | first week + last week of term | 42 | +42.4 | 1 of 3 |
+
+**The rule as written picked a weak variant.** "Lowest MAE on the scored days" compares MAE across scopes that score different days
+(21 against 42), which favours the 42-day scope because its days are easier. The winner was additive, 0.5, first week plus last week
+of term. On the fresh seeds it changes the MAE by -£10.4 [-150.6, +145.6]: Summer 2025 -144.5, Easter 2026 +76.1, Summer 2026 +37.1.
+**The bar fails** (the interval is not below zero; one of three breaks improves).
+
+**Leave one break out, the final model, six breaks** (change in MAE on the scope days; interval from resampling whole breaks):
+
+| Form | Strength | Scope | Days | Change (95% interval) | Breaks improved |
+|---|---|---|---|---|---|
+| additive | 0.5 | first week | 42 | -105.0 (-165.9, -33.0) | 5 of 6 |
+| additive | 1.0 | first week | 42 | -178.2 (-285.5, -46.6) | 5 of 6 |
+| ratio | 0.5 | first week | 42 | -79.7 (-165.8, +5.9) | 4 of 6 |
+| ratio | 1.0 | first week | 42 | -111.5 (-231.4, +31.2) | 4 of 6 |
+| additive | 0.5 | first week + last week of term | 84 | -34.4 (-79.3, +10.4) | 4 of 6 |
+| additive | 1.0 | first week + last week of term | 84 | -45.9 (-136.6, +45.5) | 4 of 6 |
+| ratio | 0.5 | first week + last week of term | 84 | -20.3 (-77.3, +36.6) | 3 of 6 |
+| ratio | 1.0 | first week + last week of term | 84 | -17.6 (-131.7, +93.6) | 3 of 6 |
+
+**Post-hoc follow-up (not pre-registered): the first-week-only additive corrections, forward-chained, break by break.** Change in
+MAE, £, seeds 0-24 and (fresh seeds):
+
+| Strength | Summer 2025 | Easter 2026 | Summer 2026 | Pooled 21 days (95% interval) |
+|---|---|---|---|---|
+| 0.5 | -193 (-186) | -264 (-262) | +61 (+69) | -132 (-126) [-369, +72] |
+| 1.0 | -375 (-368) | -313 (-302) | +132 (+140) | -185 (-177) [-538, +162] |
+
+Two of three breaks improve under every first-week-only variant and the average MAE over all 585 days falls by £4.5 to £6.7. Summer 2026
+gets worse because the gap learned from three earlier breaks is dominated by summer 2025's -£1,560 (28 June 2025, the busiest day in the data,
+alone was £5,300 under-forecast) and overshoots 2026's -£635.
+
+### Conclusion
+
+**The pre-registered bar fails, so the correction is parked; but the first-week-only version is a real lead.**
+
+1. **The direction is consistent in all the data.** All six breaks are under-forecast by a model that never saw them, by 2% to 12% of
+   the forecast, and sales were above the model in all six.
+2. **First week only.** Adding the last week of term dilutes the effect in every form (its bias is mixed), so the useful scope is the
+   first week of Easter and summer.
+3. **Additive beats ratio** in both builds (leave one break out: -£105 to -£178 against -£80 to -£112), with five of six breaks improving.
+   The gap is closer to a fixed number of pounds than to a fixed share of the day's forecast.
+4. **The forward-chained test cannot settle it.** Three breaks give a 21-day sample with an interval from about -£370 to +£70 at best,
+   and the one break it makes worse (summer 2026) is the one learned from the record summer. An honest expectation for a conservative
+   correction (additive, 0.5, first week) is a gain of roughly £100 on each first-week day, about £700 a break, with a real chance of
+   overshooting.
+5. **Selection-rule flaw, recorded.** The step 1 rule compared MAE across scopes with different days. It was run as written; the follow-up
+   above is labelled post-hoc. Future rules in this log compare the change in MAE, not the level.
+6. **Pre-registered for the 2027 breaks.** When Easter 2027 (closing 2 April; the first week is 3 to 9 April) and summer 2027 (from 26 June)
+   arrive, apply, before looking at them: additive, strength 0.5, first week of Easter and summer only, learned from every earlier
+   break's first week on the package's out-of-sample forecasts. It is kept if it lowers the first-week MAE of both breaks together and
+   does not worsen either break by more than £100 a day (about the size of the expected gain). Until then nothing is added to the model.
+   (Series 33 replaced the mean in this rule with the median.)
+
+**Caveats.** Three scored breaks for the forward-chained test; the leave-one-break-out version uses later breaks to correct earlier ones
+and a model trained on mostly later data; 8 variants tried on one set of seeds.
+
+## Series 33 — The First-Week Correction on All Six Breaks: Pooled, Per Type or Median
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series33_first_week_by_type.py` ·
+**Raw data**: Series 32's leave-one-break-out forecasts (`series19_21/series32_leave_one_break_out.jsonl`) and
+`series33_first_week_by_type/` (tables)
+
+### Context
+
+Series 32 found the first week of the Easter and summer breaks under-forecast in all six breaks (2024 included) and a correction
+learned from other breaks helped, but its realistic test had only three scorable breaks and the summer-2026 correction overshot,
+because the shift learned from earlier breaks was dominated by the record summer of 2025. Two ideas to fix that: learn the correction
+separately for each kind of break, or learn it with a median so one record day cannot dominate. This series tests them together, with
+the correction **forward-chained on the leave-one-break-out forecasts**, which cover all six breaks including 2024, so the correction only
+ever learns from earlier breaks (the forecasts it corrects come from a model that saw later data, the optimism to remember).
+
+### Hypothesis
+
+**H33**: a per-type or median-based correction avoids the summer-2026 overshoot and beats the pooled mean correction.
+
+### Method
+
+Additive, strength 0.5, first week only (7 days). Three variants: **pooled mean** (the shift is the mean of forecast minus actual over the first
+weeks of all earlier Easter and summer breaks), **per type mean** (only earlier breaks of the same kind) and **pooled median** (the median over
+those days). **Pre-registered** in the script: scored on the four breaks every variant can correct (Easter 2025, summer 2025, Easter 2026,
+summer 2026; 28 days); the measure is the change in MAE (after minus before) and the number of breaks that improve, not the level of MAE; the
+variant with the largest improvement, provided it improves at least three of the four breaks, is the one pre-registered for the 2027 breaks.
+
+### Results
+
+The first week by break (forecast minus actual, from the leave-one-break-out forecasts): Easter 2024 -£38, summer 2024 -£730, Easter 2025 -£748,
+summer 2025 -£1,230, Easter 2026 -£782, summer 2026 -£486.
+
+Change in MAE after the correction, £ (negative is better), break by break and over the four common breaks (28 days; interval from resampling
+whole breaks):
+
+| Variant | Easter 2025 | Summer 2025 | Easter 2026 | Summer 2026 | Four breaks (95% interval) | Improved |
+|---|---|---|---|---|---|---|
+| Pooled mean | -137 | -108 | -147 | +46 | **-86.6** (-142.1, +0.2) | 3 of 4 |
+| Per type mean | -13 | -156 | -84 | +66 | -47.1 (-120.7, +28.2) | 3 of 4 |
+| **Pooled median** | -246 | -147 | -165 | +56 | **-125.5** (-221.3, +0.9) | 3 of 4 |
+
+Context: the pooled variants can also correct summer 2024 from Easter 2024 alone (mean -£8, median -£129).
+
+### Conclusion
+
+**H33 is partly supported: the median is best, per type is worst, and none removes the summer-2026 overshoot.**
+
+1. **The median helps.** It improves the four breaks by £125.5 a day, against £86.6 for the pooled mean, and every earlier break improves by more
+   (Easter 2025 -£246). A record day no longer dominates the learned shift.
+2. **Splitting by kind hurts.** Per type learns from half the breaks, improves the least (-£47.1) and still overshoots summer 2026. Easter and
+   summer behave alike (an uplift that grew from 10% to 30% over the three years), so the split costs data for no gain.
+3. **Summer 2026 is worse under every variant (+£46 to +£66)**, so the cause looks like more than one outlier: the model's own bias on the first
+   week appears to be shrinking as more first weeks enter its training (summer -£1,230 in 2025, -£486 in 2026; a likely explanation, not tested), so a
+   correction learned from the earlier, larger biases overshoots. It may matter less each year, and the 2027 test is where that will show.
+4. **A realistic size.** Pooled median improves the first-week MAE by about £125 a day (about £875 a break) on the four breaks, with intervals
+   whose upper edges just reach zero (+£0.9). That is the best estimate before 2027, not proof.
+5. **Pre-registered for the Easter and summer 2027 breaks** (this replaces the pooled-mean rule of Series 32): additive, strength 0.5, first week
+   of Easter and summer only, the shift being the **median** over the first-week days of every earlier break on the package's out-of-sample
+   forecasts. Kept if it lowers the first-week MAE of both breaks together and does not worsen either by more than £100 a day. Until then nothing
+   is added to the model.
+
+**Caveats.** Four scored breaks (28 days); the forecasts come from a model trained with later breaks in the data; three variants tried.
 
 ## Appendix: full candidate pool reference
 
