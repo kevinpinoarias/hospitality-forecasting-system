@@ -58,6 +58,12 @@ LATER_SERIES = [
     ("20", "run_series20_neural_v2"),
     ("21", "run_series21_catboost_depth_iterations"),
     ("22", "run_series22_neural_target_day"),  # needs Series 20
+    ("23", "run_series23_log_vs_raw_peaks"),
+    ("24", "run_series24_weekend_correction"),  # needs Series 23
+    ("25", "run_series25_weekend_training"),  # needs Series 23 and 24
+    ("26", "run_series26_weekend_features"),  # needs Series 23 and 24
+    ("27", "run_series27_weekend_per_weekday"),  # needs Series 23, 24 and 26
+    ("28", "run_series28_manager_diagnostic"),  # needs Series 23, 24, 26 and 27
 ]
 
 # Series 1-4 were built with their own CLIs; run them as subprocesses with

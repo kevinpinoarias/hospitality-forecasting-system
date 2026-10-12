@@ -37,7 +37,7 @@ memory or scattered CSVs.
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
-python -m src.experiments.run_all_series     # Series 5-22 and business impact, in dependency order
+python -m src.experiments.run_all_series     # Series 5-28 and business impact, in dependency order
 python -m src.experiments.run_all_series --only 5 6 7   # a subset (Series 19-22 take about 3 hours together)
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
 ```
@@ -62,7 +62,7 @@ versions this log was produced with - install with it to reproduce the
 figures exactly. Every fit also uses a fixed seed, but different hardware
 or thread counts can still introduce tiny floating-point differences.
 
-**Series 19-22 write JSONL files, not CSVs.** Each of those series fits hundreds of
+**Series 19-28 write JSONL files, not CSVs.** Each of those series fits hundreds of
 models, so every finished task is appended to a JSONL file under
 `reports/experiments/series19_21/` and a re-run resumes where it stopped
 (`python -m src.experiments.report_series19_21` turns them into the tables and
@@ -2100,6 +2100,546 @@ already summaries of recent history (`lag_7_sales`, rolling means) - adding
 redundancy and noise rather than information at about 500 training rows.
 The neural-network conclusion of Series 1 stands, now on firmer ground: the
 networks do not beat CatBoost on this data under any configuration tested.
+
+## Series 23 — Does the Log Transform Hold Back the Busy Days?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series23_log_vs_raw_peaks.py` ·
+**Raw data**: `series19_21/series23_log_vs_raw.jsonl` (per-seed predictions) and
+`series23_log_vs_raw_peaks/` (segment, decile and weekday tables, charts)
+
+### Context
+
+The error autopsy found Saturdays about £720 too low and the biggest misses on the busiest
+days. The final model predicts `log1p(sales)` and converts back with `expm1`, which aims at
+the typical day rather than the average one and can pull very busy days down. Series 14
+chose the log target because it beat the raw target overall, but it never asked whether it
+did so at the expense of the busy days. This series only measures that, as the first step
+of Track A of the improvement roadmap; nothing is changed in the model.
+
+### Hypothesis
+
+**H23**: the log target under-forecasts Saturdays and the busiest days more than a raw-£
+target does.
+
+### Method
+
+The final model's exact protocol (38 features, 10 rolling-origin folds, 585 test days,
+25 seeds 0-24) with only the target changed:
+
+- **log1p_final** - the final model (depth 4, 300 iterations, learning rate 0.05).
+- **raw_same_params** - the same settings on the raw-£ target.
+- **raw_series8_params** - the raw-£ target with the settings that won on the raw scale in
+  Series 1/2/8 (learning rate 0.03), so the raw side is not handicapped by log-tuned settings.
+
+Two segments were fixed in advance (the roadmap's wording: Saturdays, and the top 10% of
+days); the rest are context. Differences are log minus raw MAE, with a 95% moving-block
+bootstrap interval (10-day blocks, whole series resampled). A caution: picking the busiest
+days **by actual sales** makes any noisy model look under-forecast, and favours whichever
+model forecasts higher overall, so the same table is repeated with days picked by the
+**manager's forecast**, which is known in advance.
+
+### Results
+
+Pooled MAE over 585 days: **log £909.57** (reproduces the final model exactly), raw
+£916.75 (same settings) and £913.12 (Series 8 settings). Log minus raw: -£7.2
+[-42.1, +22.1] and -£3.5 [-34.6, +22.6]. Overall, no difference.
+
+| Segment | Days | Log MAE (bias) | Raw MAE (bias) | Log minus raw, 95% interval |
+|---|---|---|---|---|
+| **Saturdays** | 84 | 1,290.0 (-720.5) | 1,177.1 (-404.0) | **+113.0 [+23.8, +209.7]** |
+| Friday to Sunday | 251 | 1,162.0 (-117.4) | 1,146.3 (+33.0) | +15.7 [-28.4, +58.0] |
+| Monday to Thursday | 334 | 719.9 (-25.7) | 744.2 (+104.9) | -24.3 [-66.8, +11.8] |
+| **Top 10% by actual sales** | 59 | 1,354.8 (-1,329.3) | 1,125.8 (-1,061.2) | **+229.0 [+118.9, +336.1]** |
+| Top 20% by actual sales | 117 | 1,277.2 (-880.4) | 1,161.9 (-599.1) | +115.3 [+38.0, +202.1] |
+| Top 20% of Saturdays by actual | 17 | 2,060.1 (-2,060.1) | 1,967.9 (-1,967.9) | +92.2 [-87.4, +281.7] |
+| Top 10% by manager's forecast | 60 | 1,253.9 (-622.3) | 1,215.5 (-328.6) | +38.4 [-69.0, +156.2] |
+| Top 20% by manager's forecast | 117 | 1,266.7 (-465.8) | 1,231.6 (-117.2) | +35.1 [-69.1, +145.5] |
+
+The Series 8-settings raw model tells the same story (Saturdays +107.9 [+24.2, +199.2];
+top 10% by actual +181.7 [+82.3, +283.0]; top 10% by manager's forecast +44.6 [-49.0, +154.3]).
+
+By decile of actual sales, the log model is better at the quiet end and worse at the busy
+end: the quietest decile is over-forecast by £891 (log) against £1,075 (raw); the busiest
+decile is under-forecast by £1,329 against £1,061.
+
+**Slope of actual on forecast** (1.0 means no shrinkage, above 1.0 means forecasts are
+compressed towards the middle; no selection on the outcome): all days 1.048 (log) and 1.030
+(raw); Friday to Sunday 1.093 and 1.064; Monday to Thursday 1.079 and 1.004; **Saturdays 0.469
+and 0.447**.
+
+**One exploratory check, not planned in advance:** averaging the log and raw predictions 50/50
+gives £905.1 (log + raw) and £904.3 (log + raw Series 8), with a bias of about zero
+(+£4.5 and +£0.3), against £909.57; Saturdays £1,225 and £1,229, Monday to Thursday £725 and £723.
+
+### Conclusion
+
+**H23 is partly supported, and smaller than suspected.**
+
+1. **On Saturdays the log target costs about £113 of MAE** (interval excludes zero, same for
+   both raw settings) and about £240 to £316 of the £720 average under-forecast (a third to 44% of it,
+   depending on the raw settings). The rest, £400 to £480, is present with the raw target
+   too, so the transform does not explain it.
+2. **On the busiest days the direction is the same but the evidence is thinner.** Picked by
+   actual sales the gap is £229 [119, 336], but part of that is selection: the raw model
+   forecasts about £139 higher on average, which helps on days chosen for being high. Picked
+   by the manager's forecast the gap is £38 [-69, +156] and not distinguishable from zero.
+3. **The log target trades quiet days for busy days, with no net change.** It is better on
+   Monday to Thursday and at the quiet end, worse on Saturdays and the busy end, and the
+   overall difference is -£3.5 to -£7.2 with intervals that include zero. That is consistent
+   with Series 14 and with keeping the log target.
+4. **The "peak shrinkage" description in the autopsy was too strong.** A shrinking model would
+   have a slope above 1; Saturdays have a slope near 0.5, so Saturday forecasts vary *more*
+   than Saturday sales and still sit too low on average. Saturday is mostly a level offset plus
+   an inability to tell a £13,000 Saturday from a £17,000 one, not a compressed range. The
+   top Saturdays being under-forecast by about £2,000 under either target is largely
+   selection plus that unpredictability.
+5. **What this means for the roadmap.** Switching to a raw target is not worth it. A
+   back-transformation correction could recover at most the £240 to £316 attributable to the log;
+   the adaptive correction (Track A item 1) addresses the whole £720. The 50/50 log + raw
+   blend (-£4 to -£5, about twice the seed noise) is a lead to pre-register and confirm on
+   fresh seeds, not a result: it was looked at once after seeing the numbers.
+
+**Caveats.** 84 Saturdays in 10 blocks, so Saturday intervals are wide; the two segments
+named in advance are Saturdays and the top 10% of days, the others are context; the blend
+check is one extra comparison made after seeing the results.
+
+## Series 24 — An Adaptive Friday-to-Sunday Correction on the Raw-Saturday Hybrid
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series24_weekend_correction.py` ·
+**Raw data**: `series19_21/series24_fresh_seeds.jsonl` (fresh-seed fits) and
+`series24_weekend_correction/` (grid tables, winner tables, charts); the seeds 0-24
+predictions are Series 23's
+
+### Context
+
+Series 23 found the raw-£ target beats the log target on Saturdays only (£1,177 against
+£1,290), while the log target is as good or better on every other weekday. The autopsy had
+also found Saturday's bias changes over time (a full-strength weekday correction does nothing,
+a half-strength one gained about £16). This series combines the two as Track A item 1 of the
+improvement roadmap: start from the **hybrid** (raw model on Saturdays, the final log model on
+every other day) and add a correction learned from past misses.
+
+### Hypothesis
+
+**H24**: shifting each of Friday, Saturday and Sunday's forecasts by a recency-weighted share of
+that weekday's recent bias, learned only from earlier blocks, lowers the hybrid's MAE.
+
+### Method
+
+Before each 60-day test block, for each of Friday, Saturday and Sunday separately: the
+recency-weighted mean of (forecast minus actual) over that weekday's days in **earlier blocks
+only** (weight halves every `half_life` weeks of age, measured from the start of the block),
+and subtract `strength` times it from that weekday's forecasts in the block. Monday to Thursday
+are untouched. Block 0 has no history and is left as it is, so scoring is on blocks 1-9
+(540 days).
+
+**Pre-registered** in the script before any result was seen: a 9-variant grid (half-life 4, 8,
+16 weeks × strength 0.25, 0.5, 0.75; scope Friday to Sunday; the Saturday-only and all-days scopes
+of the roadmap's 27-variant grid were dropped by decision); the lowest pooled MAE on seeds 0-24
+picks the winner; the winner's exact settings are then applied to the hybrid rebuilt from **25
+fresh seeds (100-124)**; the bar is (a) a 95% moving-block bootstrap interval of the MAE change
+entirely below zero and (b) neither Friday nor Sunday significantly worse.
+
+### Results
+
+On the 540 scored days the MAE is £905.56 for the log model everywhere, £913.74 for raw
+everywhere and **£890.06 for the hybrid** before any correction.
+
+**Step 1: the 9 variants on seeds 0-24** (change in pooled MAE against the uncorrected hybrid, £):
+
+| Half-life | Strength 0.25 | Strength 0.5 | Strength 0.75 |
+|---|---|---|---|
+| 4 weeks | -7.76 | -8.60 | -1.85 |
+| 8 weeks | -7.97 | **-11.87** | -8.69 |
+| 16 weeks | -7.42 | -11.72 | -8.55 |
+
+Every variant improves on the uncorrected hybrid. The winner is half-life 8 weeks, strength 0.5
+(MAE £878.19), though 16 weeks at 0.5 is within £0.15.
+
+**Step 2: the winner on fresh seeds 100-124.** Log everywhere £905.63, hybrid £889.85,
+hybrid + winner **£878.14**.
+
+| Segment | Days | Uncorrected MAE | Corrected MAE | Change (95% interval) |
+|---|---|---|---|---|
+| All scored days | 540 | 889.8 | 878.1 | **-11.7 [-24.4, -0.9]** |
+| Friday | 77 | 1,091.9 | 1,101.3 | +9.4 [-27.3, +44.9] |
+| Saturday | 77 | 1,190.3 | 1,110.8 | -79.5 [-157.0, +1.0] |
+| Sunday | 78 | 1,093.9 | 1,082.0 | -11.9 [-65.7, +28.8] |
+| Monday to Thursday | 308 | unchanged | unchanged | 0 |
+
+Across all 9 variants on the fresh seeds (context, not a selection): Saturday improves in all
+9 (-£41 to -£83), Sunday is mixed (-£24 to +£12), and **Friday gets worse in all 9 (+£2 to
++£47)**.
+
+The bar passes: the overall interval is below zero, and neither Friday nor Sunday is
+significantly worse.
+
+### Conclusion
+
+**H24 is supported, narrowly and with caveats.**
+
+1. **The gains add.** The hybrid alone is worth £15.8 on these days (£905.63 to £889.85) and the
+   correction a further £11.7, for **£27.5 (3.0%) against the final model** on the same 540
+   days. The two do not overlap as much as expected.
+2. **The correction is small and its evidence thin.** The overall interval's upper edge is -£0.9,
+   and the Saturday interval just includes zero (+£1.0). All 9 variants gain £1.9 to £11.9 on
+   seeds 0-24, so the result does not depend on a fragile choice of settings, but the realistic
+   gain is about £8 to £12, not the best variant's figure.
+3. **Fresh seeds do not fully protect the choice.** They remove seed luck, but the predictions
+   are almost identical (seed noise is about £2) and are scored on the same 540 days the setting
+   was chosen on. Only days the settings never saw can test that, and none yet exist beyond
+   6 Sep 2026.
+4. **Friday should probably not be corrected.** Friday's change is positive in every variant, so
+   the Friday correction is at best useless and at worst harmful. The Saturday-only scope was
+   dropped by decision; this is a hypothesis for a pre-registered follow-up, not a change made
+   after the fact.
+5. **Not promoted.** It needs: the Saturday-scope follow-up, confirmation on new days from the
+   venue as they arrive, a serving design (two models, a stored bias table, fading the bias
+   for dates far ahead) and the staffing-cost view. The Saturday bias also flips sign in some
+   blocks (blocks 3 and 7), where the correction overshoots; the chart `bias_by_block.png` shows it.
+
+**Follow-up (decided after seeing the results, so a hypothesis, not a pre-registered test).**
+Because Friday's correction hurt in every variant, the correction was re-scored on Saturday and Sunday
+only, with the same settings (8 weeks, 0.5) and no re-choosing. On the fresh seeds: **£876.80**, a change
+of **-£13.1 [-25.4, -2.3]** against the uncorrected hybrid and **-£28.8 (3.2%) against the final model**.
+Saturday -£79.5 [-157, +1], Sunday -£11.9 [-66, +29]. Saturday only gives -£11.3 [-22.6, +0.1], so
+Sunday adds about £2 and its own interval includes zero. All 9 half-life and strength variants of the
+Saturday-plus-Sunday scope improve on the fresh seeds (-£7.2 to -£13.1). The scope was chosen with
+the 540 days in view, so it needs confirming on days the venue adds after 6 Sep 2026.
+
+**How strong a correction?** Scored afterwards as context (not part of the registered grid, which stopped
+at strength 0.75), Saturday plus Sunday, fresh seeds, change in MAE against the uncorrected hybrid:
+
+| Strength | 4 weeks | 8 weeks | 16 weeks |
+|---|---|---|---|
+| 0.25 | -8.8 | -8.0 | -7.2 |
+| **0.5** | -12.4 | **-13.1** | -11.8 |
+| 0.75 | -7.3 | -10.8 | -9.5 |
+| 1.0 | +6.0 | -2.7 | -2.1 |
+| 1.25 | +24.2 | +9.6 | +9.0 |
+| 1.5 | +44.8 | +26.7 | +23.4 |
+
+The gain peaks near half strength, a full correction barely helps (the Saturday bias flips sign between
+blocks, so it chases a bias that has already moved), and above 1.0 the correction overshoots and harms
+(Saturdays +£95 to +£189 at 1.5). Memory length matters little (4 to 16 weeks within £1.3 at 0.5). The
+useful range is roughly 0.4 to 0.6.
+
+**Caveats.** 9 variants were tried on one base. The scored days differ slightly from the
+autopsy's 583-day frame, so compare changes rather than levels with its £892.5 reference. Each
+weekday has about 77 scored days.
+
+## Series 25 — Training the Model With the Weekends in Mind
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series25_weekend_training.py` ·
+**Raw data**: `series19_21/series25_weekend_training.jsonl` (seeds 0-24),
+`series25_fresh_seeds.jsonl` (the winner on seeds 100-124) and
+`series25_weekend_training/` (tables)
+
+### Context
+
+Series 23-24 changed the forecasts after the model made them (a raw-£ Saturday model, then an adaptive
+correction). This series, Track A item 3 of the accuracy roadmap, changes what the model learns from, to see
+whether paying more attention to Friday-to-Sunday during training sharpens the weekend forecasts.
+
+### Hypothesis
+
+**H25**: giving the weekends more weight, or training on them alone, lowers the Friday-to-Sunday MAE below the
+current weekend setup (the Series 23 hybrid: log model on Friday and Sunday, raw model on Saturday).
+
+### Method
+
+The final model's recipe unchanged (38 features, depth 4, 300 iterations, learning rate 0.05, 25 seeds, 10 folds,
+585 test days), on both the log1p and the raw-£ target, with only the training rows or their weights changed:
+
+- **w1.5, w2, w3**: one model on all days, Friday/Saturday/Sunday rows weighted 1.5, 2 or 3 times.
+- **sepFS**: a separate model trained only on Friday-to-Sunday rows (about 156 in the first fold, about 400 in the last).
+- **sepSat**: a separate model trained only on Saturday rows (about 52 to 120).
+
+10 runs. The separate models were not retuned for their smaller training sets. Variants a model does not cover
+are filled from the hybrid so every one is scored on the same 251 Friday-to-Sunday days. **Pre-registered** in the
+script: the winner is the lowest Friday-to-Sunday MAE on seeds 0-24; it is refit on 25 fresh seeds (100-124) and
+kept only if the bootstrap interval of the Friday-to-Sunday change against the hybrid is entirely below zero, no
+weekend day is significantly worse and Monday to Thursday is not significantly worse.
+
+### Results
+
+MAE (£) on seeds 0-24. The hybrid is Friday £1,087.7, Saturday £1,177.1, Sunday £1,107.3, Friday to Sunday £1,124.2.
+For reference, the unweighted log model is £1,162.0 and the raw model £1,146.3 on Friday to Sunday.
+
+| Variant | Target | Friday | Saturday | Sunday | Fri to Sun | Change vs hybrid | Mon to Thu |
+|---|---|---|---|---|---|---|---|
+| Weekends x1.5 | log | 1,086.5 | 1,273.0 | 1,092.9 | 1,151.0 | +26.9 | 720.0 |
+| Weekends x1.5 | raw | 1,123.4 | 1,178.0 | 1,137.8 | 1,146.5 | +22.3 | 748.5 |
+| Weekends x2 | log | 1,101.4 | 1,280.6 | 1,100.8 | 1,161.2 | +37.0 | 719.3 |
+| Weekends x2 | raw | 1,126.4 | 1,180.5 | 1,136.4 | 1,147.8 | +23.7 | 748.8 |
+| Weekends x3 | log | 1,131.5 | 1,291.4 | 1,095.5 | 1,172.9 | +48.8 | 725.2 |
+| Weekends x3 | raw | 1,128.8 | 1,187.7 | 1,136.5 | 1,151.1 | +27.0 | 756.7 |
+| Separate Fri-Sun | log | 1,159.6 | 1,243.4 | 1,159.0 | 1,187.5 | +63.3 | - |
+| Separate Fri-Sun | raw | 1,190.6 | 1,200.8 | 1,187.9 | 1,193.1 | +68.9 | - |
+| Separate Saturday | log | 1,087.7 | 1,237.9 | 1,107.3 | 1,144.5 | +20.4 | - |
+| **Separate Saturday** | **raw** | 1,087.7 | 1,198.3 | 1,107.3 | **1,131.2** | **+7.1** | - |
+
+Every one of the 10 variants is worse than the hybrid on Friday to Sunday. The winner by the rule (the least
+bad) is the separate Saturday model on the raw target. On the **fresh seeds** its Friday-to-Sunday change is
+**+£7.4 [-27.7, +47.5]** (Saturday £1,204.0 against the hybrid's £1,181.9, +£22.1 [-82.6, +142.3]; Friday and Sunday
+are the hybrid's own). With the Series 24 correction on top, the winner scores £891.07 on the scored days against
+£876.80 for the hybrid with the correction.
+
+### Conclusion
+
+**H25 is rejected. The bar fails** (the Friday-to-Sunday interval is not below zero; it is not an improvement).
+
+1. **More weight on the weekends does not help.** For the weighted log models Friday is unchanged or worse
+   (£1,086.5 at x1.5, £1,101.4 at x2, £1,131.5 at x3 against £1,087.7 unweighted), Sunday improves by £7 to £14
+   (within noise), and Saturday stays at £1,273 to £1,291 against the unweighted log model's £1,290, nowhere near the raw
+   model's £1,177. The weighted raw models are equal to or a little worse than the plain raw model on Saturday
+   (£1,178 to £1,188 against £1,177). Heavier weights are no better than lighter ones.
+2. **Separate models are worse, as the roadmap warned.** Training only on Friday to Sunday loses £25 to £47 against
+   the unweighted model on the same target, and a Saturday-only model loses £21 on the raw target
+   (£1,198 against £1,177): the models need the weekday rows to learn the seasonal and weather patterns. The
+   settings were not retuned, so a smaller model is a possible follow-up, but the direction is clear.
+3. **Why weighting is not the lever.** The model already separates weekends through its day-of-week and
+   weekend features, so counting those rows more adds nothing; what limits the weekend forecasts is the
+   information available, not the attention paid to them.
+4. **Nothing is added to the model.** The current weekend setup stays: the log model on Friday and Sunday, the raw model
+   on Saturday, and the Series 24 correction on Saturday and Sunday. Track A items 4 (weekend-specific features) and 5
+   (is the manager's forecast better on weekends?) are the remaining routes.
+
+**Possible follow-up (not run, low priority).** Retune the separate Saturday and Friday-to-Sunday models for their
+smaller training sets, since depth 4 with 300 iterations on 52 to 400 rows is likely to overfit: a small pre-registered
+grid (depth 2 or 3, 50 to 150 iterations, learning rate 0.03 to 0.1) on the raw target, judged by the same bar and
+confirmed on fresh seeds. The expectation is low: even the full-size models lost by £21 to £47, and the weighted models,
+which keep all the rows, gained nothing, so it is only worth running if item 4 (weekend-specific features) or the new venue
+data change the picture.
+
+**Caveats.** The separate models were not retuned (depth 4, 300 iterations on 52 to 400 rows); 10 variants were tried
+on one set of seeds; the Friday-to-Sunday intervals use about 250 days in 10 blocks.
+
+## Series 26 — Features Chosen for the Weekends
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series26_weekend_features.py` ·
+**Raw data**: `series19_21/series26_weekend_features.jsonl` (seeds 0-24),
+`series26_fresh_seeds.jsonl` (the winner on seeds 100-124) and `series26_weekend_features/` (tables)
+
+### Context
+
+Track A item 4 of the accuracy roadmap. The final model sees only three recent-sales inputs (sales 7 days ago and
+the 7- and 14-day averages). Series 25 showed that weighting the weekends or training on them alone does not help,
+so this series gives the model inputs that matter on a Friday to Sunday.
+
+### Hypothesis
+
+**H26**: weekend-specific features lower the Friday-to-Sunday MAE below the current weekend setup (the hybrid: raw
+model on Saturday, log model elsewhere).
+
+### Method
+
+Each variant appends its columns to the final model's 38 (the original order unchanged), is fit on both targets
+(log1p and raw £) with the final recipe (depth 4, 300 iterations, learning rate 0.05, 25 seeds, 10 folds, 585 test days)
+and is assembled into its own hybrid. 10 runs.
+
+- **Family A, same-weekday memory** (matched by calendar date, only earlier days): `lag_14_sales`, `lag_21_sales`,
+  `same_wd_mean4` and `same_wd_max4` (average and highest of the last 4 same weekdays).
+- **Family B, weekend interactions** (Friday to Sunday x condition): `wk_payday`, `wk_dry`, `wk_temp`, `wk_bh_near`
+  (within 3 days of a bank holiday). School-holiday interactions were left out because the school calendar has gaps.
+- Variants: `A_all` (4 features), `A_summary` (mean and max), `A_lags` (14 and 21 days ago), `B` (4), `AB` (8).
+
+**Pre-registered** in the script: the winner is the variant whose hybrid has the lowest Friday-to-Sunday MAE on
+seeds 0-24; it is refit on 25 fresh seeds (100-124); kept only if (a) the 95% bootstrap interval of the
+Friday-to-Sunday change is below zero, (b) none of Friday, Saturday, Sunday is significantly worse and (c) Monday to
+Thursday is not significantly worse. Family A uses recent sales, which the live API does not have for dates weeks ahead
+(Series 18), so a family A gain is a near-term gain.
+
+### Results
+
+MAE (£), seeds 0-24, each variant's hybrid:
+
+| Variant | Friday | Saturday | Sunday | Fri to Sun | Mon to Thu | All days | Fri to Sun change |
+|---|---|---|---|---|---|---|---|
+| Current hybrid | 1,087.7 | 1,177.1 | 1,107.3 | 1,124.2 | 719.9 | 893.4 | - |
+| A: same-weekday memory (4) | 1,075.4 | 1,102.8 | 1,115.4 | 1,098.0 | 732.7 | 889.4 | -26.2 |
+| A: mean and max of last 4 (2) | 1,073.1 | 1,134.5 | 1,121.6 | 1,109.9 | 724.3 | 889.7 | -14.3 |
+| **A: sales 2 and 3 weeks ago (2)** | 1,076.4 | 1,085.4 | 1,117.0 | **1,093.0** | 729.8 | 885.6 | **-31.2** |
+| B: weekend interactions (4) | 1,101.2 | 1,172.8 | 1,084.1 | 1,119.4 | 720.5 | 891.7 | -4.7 |
+| A + B (8) | 1,080.6 | 1,094.1 | 1,120.3 | 1,098.4 | 733.7 | 890.2 | -25.7 |
+
+The winner is `A_lags`. On the **fresh seeds** (hybrid minus winner, 95% interval):
+
+| Segment | Days | Hybrid MAE | Winner MAE | Change |
+|---|---|---|---|---|
+| Friday to Sunday | 251 | 1,129.1 | 1,093.3 | **-35.8 [-63.1, -4.8]** |
+| Friday | 83 | 1,096.7 | 1,082.9 | -13.8 [-55.9, +35.9] |
+| Saturday | 84 | 1,181.9 | 1,084.8 | **-97.1 [-151.3, -35.7]** |
+| Sunday | 84 | 1,108.5 | 1,112.2 | +3.7 [-42.4, +47.1] |
+| Monday to Thursday | 334 | 715.6 | 728.5 | **+12.9 [+2.5, +21.4]** |
+
+### Conclusion
+
+**H26 is supported for the weekends, but the pre-registered bar fails on condition (c): Monday to Thursday gets
+significantly worse (+£12.9).**
+
+1. **Family A helps the weekends, family B does not.** Every family A variant gains £14 to £31 on Friday to Sunday and
+   Saturday gains most (£97 on the fresh seeds); the interactions gain £4.7, which is noise, as expected for a tree that
+   already finds weekend combinations on its own.
+2. **Fewer features win.** Sales 2 and 3 weeks ago (2 features) beats the full set of four (-£31 against -£26), which
+   beats adding the interactions as well. That matches Series 4, where extra lag features hurt at about 950 rows.
+3. **Monday to Thursday pays for it.** All family A variants worsen Monday to Thursday (+£4 to +£14), the usual price
+   of extra lag columns at this sample size.
+4. **Post-hoc follow-up (not pre-registered, so a hypothesis).** Using the `A_lags` models for Friday to Sunday only and
+   the current hybrid on Monday to Thursday leaves the weekend gain as it is and Monday to Thursday unchanged by
+   construction. On the fresh seeds, over all 585 days: log model £909.1, hybrid £893.0, `A_lags` on every day £885.0,
+   **`A_lags` on Friday to Sunday only £877.7** (£15.3 below the hybrid, £31.4 or 3.5% below the final model). On the
+   540 scored days with the Series 24 correction (Saturday and Sunday, 8 weeks, 0.5): hybrid £876.80, `A_lags` on Friday
+   to Sunday only £866.43, against £905.63 for the final model (4.3% below). The gains mostly add (the correction is
+   worth £9.6 on top of the weekend features, £13.1 on top of the plain hybrid).
+5. **Serving caveat.** `A_lags` uses recent sales, which the API does not have for dates weeks ahead; Series 18 shows
+   the seasonal fill costs accuracy there. This gain applies to near-term forecasts (the next week's rota, with data up
+   to yesterday) and needs a routing rule with the far-horizon track of the roadmap before it can reach the live
+   service.
+6. **Not promoted.** It needs a pre-registered weekend-only confirmation, confirmation on new days, and the routing rule.
+
+**Caveats.** 5 variants were tried; the weekend-only assembly is a post-hoc choice; all scoring uses the same 585 days
+that the earlier series used, only fresh seeds separate the winner from its selection; weekday intervals use about 84
+days each.
+
+## Series 27 — Each Weekend Day Gets Its Own Feature Set
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series27_weekend_per_weekday.py` ·
+**Raw data**: the Series 26 predictions (`series26_weekend_features.jsonl`, `series26_fresh_seeds.jsonl`) and
+`series27_weekend_per_weekday/` (tables)
+
+### Context
+
+Series 26 found the same-weekday features help the weekend and hurt Monday to Thursday. This follow-up leaves Monday to
+Thursday as the current hybrid and lets each of Friday, Saturday and Sunday choose the feature option that suits it best.
+With about 84 test days per weekday, choosing among six options is noisy, so the choice is tested on days it never saw.
+
+### Hypothesis
+
+**H27**: choosing the feature option separately for each of Friday, Saturday and Sunday lowers the weekend MAE below the
+current hybrid, on days not used for the choice.
+
+### Method
+
+Options per weekday: none, `A_all`, `A_summary`, `A_lags`, `B`, `AB` (the Series 26 variants), each on the day's own target
+as in the current hybrid (log for Friday and Sunday, raw for Saturday). **Pre-registered** in the script: the 10 test blocks
+are cut into blocks 0-4 (285 days, selection) and blocks 5-9 (300 days, evaluation); each weekday takes the option with the
+lowest MAE on its selection days (ties to "none"); the assembled weekend is scored against the current hybrid on the
+evaluation blocks, on seeds 0-24 and on 25 fresh seeds (100-124, refitting only the options chosen); kept only if the
+Friday-to-Sunday interval is entirely below zero and no weekend day is significantly worse.
+
+### Results
+
+MAE (£) on the selection blocks (seeds 0-24):
+
+| Option | Friday | Saturday | Sunday |
+|---|---|---|---|
+| none (current) | 1,042.9 | 1,085.7 | 1,238.6 |
+| A_all | 1,052.4 | 1,064.7 | 1,244.8 |
+| A_summary | **1,038.6** | 1,087.8 | 1,266.5 |
+| A_lags | 1,052.9 | **997.5** | 1,247.0 |
+| B | 1,073.7 | 1,091.4 | **1,208.0** |
+| AB | 1,072.6 | 1,053.9 | 1,244.7 |
+
+Chosen: **Friday `A_summary`** (mean and max of the last 4 Fridays), **Saturday `A_lags`** (sales 2 and 3 weeks ago),
+**Sunday `B`** (the weekend interactions).
+
+On the evaluation blocks 5-9, fresh seeds (assembled weekend minus the current hybrid, 95% interval):
+
+| Segment | Days | Hybrid MAE | Assembled MAE | Change |
+|---|---|---|---|---|
+| Friday to Sunday | 129 | 1,132.9 | 1,081.8 | **-51.1 [-88.0, -19.7]** |
+| Friday | 43 | 1,139.7 | 1,110.7 | -29.1 [-88.3, +25.5] |
+| Saturday | 43 | 1,274.4 | 1,173.8 | **-100.6 [-187.8, -23.0]** |
+| Sunday | 43 | 984.7 | 960.9 | -23.8 [-53.1, +1.1] |
+
+On the original seeds the same blocks give -£45.1 (Friday -24.1, Saturday -95.0, Sunday -16.3). Choosing on all 585 days
+instead gives the same three options and -£43.3 on Friday to Sunday (Friday -14.6, Saturday -91.7, Sunday -23.2).
+
+With the Series 24 correction (Saturday and Sunday, 8 weeks, 0.5) on top, on blocks 5-9: current hybrid £876.29,
+chosen weekend £857.25 (uncorrected £883.94 and £861.95). On the scored blocks 1-9: £862.45 against £876.80 for the
+hybrid and £905.63 for the final model (4.8% below it).
+
+### Conclusion
+
+**H27 is supported. The pre-registered bar passes** (Friday-to-Sunday interval below zero, no weekend day significantly
+worse).
+
+1. **Saturday carries the result.** Its gain (£101, interval clear of zero) is the same lesson as Series 26: knowing how
+   the last Saturdays went tells the model where this one will land. Friday (-£29) and Sunday (-£24) could each be noise on
+   their own; Sunday's interval just reaches zero.
+2. **Different weekdays want different things.** Friday preferred the summary of recent same days, Saturday the two raw
+   lags, Sunday the calendar-and-weather interactions. Only Sunday's choice (`B`) avoids recent sales.
+3. **The choice was made on days it was not judged on,** so within this experiment the options were not selected on
+   the days they were scored on. It is not a clean test: Series 26 had already shown `A_lags` best on Saturday over all 585 days,
+   so the broad family was chosen with those days in view, and the evaluation blocks lie inside the 585 days every series has used.
+   Choosing on all 585 days gives the same three options, which is reassuring, not independent.
+4. **The correction adds less on top.** It is worth £4.7 on the chosen weekend (£861.95 to £857.25) against £7.7 on the
+   plain hybrid, so the two overlap partly.
+5. **Serving caveat.** Friday's and Saturday's options use recent sales, which the live API does not have for dates weeks
+   ahead (Series 18), so those gains are near-term; Sunday's option uses only calendar and weather. Reaching the live
+   service needs a routing rule with the far-horizon track of the roadmap.
+6. **Not promoted.** It needs confirmation on new venue days, the routing rule and the serving design (four models, a
+   per-weekday lookup, the bias table).
+
+**Caveats.** 6 options were chosen per weekday on about 40 days each; the evaluation has 43 days per weekday, so single-day
+intervals are wide; the evaluation days are not independent of the earlier series.
+
+## Series 28 — Does the Manager's Forecast Know More Than the Weekend Package?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series28_manager_diagnostic.py` ·
+**Raw data**: `series28_manager_diagnostic/` (`by_weekday.csv`, `blend.csv`, `manager_wins_weekend.csv`,
+`manager_wins_all_days.csv`, `manager_diagnostic.html`); the predictions are those of Series 23-27
+
+### Context
+
+Track A item 5 of the accuracy roadmap, run after items 1-4. A diagnostic with no bar: the manager's forecast is already a
+model input (`forecast_sales`), and the roadmap asked whether it carries weekend information the model is missing. The
+"package" is everything Series 23-27 built (log model Monday to Thursday, raw model on Saturday, the per-weekday weekend
+features of Series 27, the Saturday and Sunday correction), seeds 0-24, 585 test days.
+
+### Method
+
+Per weekday: the manager's MAE against the package's, the share of days the package is closer, and the correlation between
+the package's miss (actual minus package) and the manager's disagreement with it (manager minus package), with a 95%
+block-bootstrap interval (blocks of 4 consecutive weeks). Near zero means the manager knows nothing extra. Then the MAE when
+0, 10, 20 and 30% of the manager's forecast is blended in, and the 20 weekend days and 20 days overall on which the manager
+beat the package by the most, with a blank "What happened?" column.
+
+### Results
+
+| Weekday | Manager MAE | Package MAE | Package closer | Correlation (95% interval) |
+|---|---|---|---|---|
+| Monday | 950 | 725 | 67% | +0.25 (-0.05, +0.50) |
+| Tuesday | 890 | 755 | 63% | +0.22 (-0.07, +0.41) |
+| Wednesday | 872 | 704 | 67% | +0.08 (-0.18, +0.29) |
+| Thursday | 858 | 695 | 58% | **+0.24 (+0.07, +0.45)** |
+| Friday | 1,168 | 1,073 | 55% | +0.15 (-0.16, +0.40) |
+| Saturday | 1,304 | 1,030 | 61% | -0.03 (-0.28, +0.23) |
+| Sunday | 1,476 | 1,071 | 73% | -0.08 (-0.20, +0.10) |
+
+Blending in the manager's forecast (all-day / Friday-to-Sunday MAE): 0% £865.0 / £1,058.0; 10% £864.9 / £1,062.6; 20% £871.1 /
+£1,075.3; 30% £882.7 / £1,091.6.
+
+### Conclusion
+
+1. **The package beats the manager on every weekday**, by £95 (Friday) to £405 (Sunday), and is closer on 55% to 73% of days.
+2. **On Saturday and Sunday the manager adds nothing the package lacks** (correlations -0.03 and -0.08, intervals centred
+   on zero), and blending the manager in does not help (10% leaves the overall MAE unchanged and raises Friday to Sunday; 20%
+   or more makes both worse). Whatever limits the weekend forecasts now is not in the manager's forecast either.
+3. **Monday to Thursday and Friday show a weak signal:** the correlations are positive (+0.08 to +0.25) but only Thursday's
+   interval excludes zero. A correction toward the manager's forecast might gain a few pounds on those days; it was not
+   tested, since they were never the problem.
+4. **The manager-wins lists point at special days, not at a feature.** The largest weekend advantage is Boxing Day 2025
+   (actual £2,919; package £7,567; manager £4,700). Mothering Sunday 2025 and Valentine's Day 2025 were large surges the package
+   missed (£3,034 and £3,191 too low), but the same occasions a year later were not (Mothering Sunday 2026 £460, Valentine's 2026
+   £314 too low; Father's Day small in both years), so there are one or two examples of each and no reliable named-day effect to model.
+   They are what the venue's own notes (the "What happened?" column) or an events and bookings log would explain.
+5. **Track A is complete.** The remaining routes to better weekends are new information (events, bookings), the Track B
+   calendar work and, for the live service, the forecasting-at-a-distance track.
+
+**Caveats.** About 84 days per weekday; the correlations use the package's own residuals, so they say nothing about information
+the manager has that the package already uses; the lists are for the venue manager to annotate.
 
 ## Appendix: full candidate pool reference
 
