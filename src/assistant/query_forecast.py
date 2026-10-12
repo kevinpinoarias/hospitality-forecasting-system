@@ -186,8 +186,8 @@ How to use the tool's response:
   - `bank_holidays`: name holidays using the names given. A long weekend
     is the weekend next to a Monday or Friday bank holiday.
   - `school_holiday`: only mention it when it names a break. Only the
-    Christmas, Easter and summer breaks are tracked, so never say a date
-    is NOT in the school holidays.
+    Christmas, Easter, summer, October week and February mid-term breaks
+    are tracked, so never say a date is NOT in the school holidays.
   - `recent_sales` (only present for past dates): the real average daily
     sales over the previous week and fortnight.
   - `recent_forecast_accuracy` (only present for past dates): how far

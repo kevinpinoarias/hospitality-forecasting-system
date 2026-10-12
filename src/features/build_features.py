@@ -319,18 +319,60 @@ def add_bank_holiday_features(
 # School holiday features
 # ---------------------------------------------------------------------
 
+# Glasgow City Council school holidays, verified against independent sources
+# (see docs/SCHOOL_CALENDAR.md for every date, its sources and its confidence).
+#
+# Convention: a break runs from the first day WITHOUT pupils after the last
+# school day (the closing day itself is a school day) to the last day before
+# pupils return, so the weekends on either side of a break are inside it.
+# Staff in-service days that sit next to a break are pupil-free days and are
+# part of it. The October week and the February mid-term (Monday and Tuesday
+# plus the in-service day) are included. Not included: single-day closures and
+# the September and May long weekends. The 2027 rows follow the council's
+# published dates and
+# change no training row; they exist so the API flags school holidays on the
+# dates it forecasts. Dates after the last break here get no flag.
 SCHOOL_BREAKS = pd.DataFrame([
+    {"council": "Glasgow", "break_type": "october",   "start": "2023-10-13", "end": "2023-10-22"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2023-12-23", "end": "2024-01-07"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2024-02-10", "end": "2024-02-14"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2024-03-29", "end": "2024-04-14"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2024-06-27", "end": "2024-08-13"},
+    {"council": "Glasgow", "break_type": "october",   "start": "2024-10-11", "end": "2024-10-20"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2024-12-21", "end": "2025-01-05"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2025-02-15", "end": "2025-02-19"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2025-04-05", "end": "2025-04-21"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2025-06-26", "end": "2025-08-13"},
+    {"council": "Glasgow", "break_type": "october",   "start": "2025-10-10", "end": "2025-10-19"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2025-12-20", "end": "2026-01-04"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2026-02-14", "end": "2026-02-18"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2026-04-03", "end": "2026-04-19"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2026-06-26", "end": "2026-08-11"},
+    {"council": "Glasgow", "break_type": "october",   "start": "2026-10-09", "end": "2026-10-18"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2026-12-19", "end": "2027-01-04"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2027-02-13", "end": "2027-02-17"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2027-04-03", "end": "2027-04-18"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2027-06-26", "end": "2027-08-17"},
+])
+
+# The break types the pipeline, the API and the experiments all flag. The three
+# long holidays came first; the October week and February mid-term were added
+# once the calendar was verified (docs/SCHOOL_CALENDAR.md).
+LONG_BREAK_TYPES = ("christmas", "summer", "easter")
+SCHOOL_BREAK_TYPES = LONG_BREAK_TYPES + ("october", "february")
+
+# The calendar used by Series 1-28 (and the model in production until the
+# calendar was verified): covers only Christmas 2024 onwards, with weekday-only
+# spans and several wrong start and end dates. Kept so those results stay
+# reproducible and so the effect of the correction can be measured
+# (src/experiments/run_series29_school_calendar.py).
+SCHOOL_BREAKS_V1 = pd.DataFrame([
     {"council": "Glasgow", "break_type": "christmas", "start": "2024-12-23", "end": "2025-01-03"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2025-04-07", "end": "2025-04-18"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2025-06-30", "end": "2025-08-15"},
     {"council": "Glasgow", "break_type": "christmas", "start": "2025-12-22", "end": "2026-01-05"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2026-03-30", "end": "2026-04-10"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2026-06-29", "end": "2026-08-14"},
-    # 2026-27, from Glasgow City Council's published term dates. These fall
-    # after the end of the current data, so they change no training row -
-    # they exist so the API flags school holidays on the dates it forecasts.
-    # Dates after the last break here get no school-holiday flag; add each
-    # year's dates as the council publishes them.
     {"council": "Glasgow", "break_type": "christmas", "start": "2026-12-21", "end": "2027-01-04"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2027-04-05", "end": "2027-04-16"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2027-06-28", "end": "2027-08-10"},
@@ -342,7 +384,7 @@ def add_school_holiday_features(
     date_col: str = DATE_COL,
     breaks_df: pd.DataFrame | None = None,
     council: str = CONFIG.project.council,
-    break_types: tuple[str, ...] = ("christmas", "summer", "easter"),
+    break_types: tuple[str, ...] = SCHOOL_BREAK_TYPES,
 ) -> pd.DataFrame:
     """Add school holiday flags from a council-specific break table."""
     if breaks_df is None:
@@ -763,7 +805,7 @@ def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
         date_col=DATE_COL,
         breaks_df=SCHOOL_BREAKS,
         council=CONFIG.project.council,
-        break_types=("christmas", "summer", "easter"),
+        break_types=SCHOOL_BREAK_TYPES,
     )
     df = add_christmas_period_feature(df, date_col=DATE_COL)  # is_christmas_period: DEPRECATED, see function docstring
     df = add_december_intensity_feature(df, date_col=DATE_COL, target_col=TARGET_COL)  # december_intensity_index: DEPRECATED, see function docstring

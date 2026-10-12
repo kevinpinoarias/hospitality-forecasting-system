@@ -35,7 +35,8 @@ from src.api.schemas import (
 
 UK_SUBDIVISION = CONFIG.project.uk_subdivision  # the calendar add_bank_holiday_features / add_payday_features use
 PAYDAY_WINDOW_DAYS = 3
-SCHOOL_BREAK_NAMES = {"christmas": "Christmas holidays", "easter": "Easter holidays", "summer": "summer holidays"}
+SCHOOL_BREAK_NAMES = {"christmas": "Christmas holidays", "easter": "Easter holidays", "summer": "summer holidays",
+                       "october": "October week", "february": "February mid-term break"}
 
 
 def _as_date(value) -> dt.date:
