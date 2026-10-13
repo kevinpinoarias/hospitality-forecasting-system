@@ -68,6 +68,7 @@ LATER_SERIES = [
     ("30", "run_series30_transition_features"),  # needs Series 29
     ("32", "run_series32_first_week_correction"),  # needs the package re-run on the verified calendar (SERIES_RESULTS_SUFFIX=_cal2, Series 31)
     ("33", "run_series33_first_week_by_type"),  # needs Series 32
+    ("34", "run_series34_recency_weights"),  # needs the package re-run on the verified calendar (SERIES_RESULTS_SUFFIX=_cal2, Series 31)
 ]
 
 # Series 1-4 were built with their own CLIs; run them as subprocesses with

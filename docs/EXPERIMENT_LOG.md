@@ -37,7 +37,7 @@ memory or scattered CSVs.
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
-python -m src.experiments.run_all_series     # Series 5-30 and business impact, in dependency order
+python -m src.experiments.run_all_series     # Series 5-34 and business impact, in dependency order
 python -m src.experiments.run_all_series --only 5 6 7   # a subset (Series 19-22 take about 3 hours together)
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
 ```
@@ -62,7 +62,7 @@ versions this log was produced with - install with it to reproduce the
 figures exactly. Every fit also uses a fixed seed, but different hardware
 or thread counts can still introduce tiny floating-point differences.
 
-**Series 19-30 write JSONL files, not CSVs.** Each of those series fits hundreds of
+**Series 19-34 write JSONL files, not CSVs.** Each of those series fits hundreds of
 models, so every finished task is appended to a JSONL file under
 `reports/experiments/series19_21/` and a re-run resumes where it stopped
 (`python -m src.experiments.report_series19_21` turns them into the tables and
@@ -3021,6 +3021,71 @@ Context: the pooled variants can also correct summer 2024 from Easter 2024 alone
    is added to the model.
 
 **Caveats.** Four scored breaks (28 days); the forecasts come from a model trained with later breaks in the data; three variants tried.
+
+## Series 34 — Recency Weighting: Should Recent Days Have More Say?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series34_recency_weights.py` ·
+**Raw data**: `series19_21/series34_recency_weights.jsonl` (seeds 0-24 and the floor variant), `series34_fresh_seeds.jsonl` (the winner on
+seeds 100-124) and `series34_recency_weights/` (tables)
+
+### Context
+
+Track C, step one. A boosted-tree model counts a day from 18 months ago exactly like yesterday and adapts to change only through its
+features. The Saturday and first-week biases both drift, so a model that listens more to recent days might follow them. A hard cut-off
+was tested in Series 7 (a sliding 365-day window: £924 against £908) and was worse, because dropping old days loses information. Here old
+days fade instead of disappearing.
+
+### Hypothesis
+
+**H34**: weighting recent training days more lowers the final model's MAE.
+
+### Method
+
+Inside each rolling-origin fold, a training day `age` days older than the last training day gets the weight `0.5 ** (age / half_life)`,
+passed to CatBoost as `sample_weight`. Half-lives of 45 (added at the project owner's request), 90, 180, 365 and 730 days, then the winner
+with a floor of 0.2, both targets (log1p and raw £), the final recipe (25 seeds, 10 folds, 585 test days), verified calendar. The control is
+the unweighted fits of Series 31. **Pre-registered** in the script: the winner is the largest improvement of the final (log) model's MAE;
+re-run on 25 fresh seeds (100-124); kept only if the overall interval is entirely below zero and no weekday, weekday group or school phase
+is significantly worse. The effective sample size, (sum of weights) squared over the sum of squared weights, is reported (the unweighted
+training sets average about 635 rows).
+
+### Results
+
+Change in MAE against the unweighted control on the same 585 days, seeds 0-24 (£; negative is better):
+
+| Half-life | Effective sample size | Final (log) model (95% interval) | Raw-£ model | Hybrid (95% interval) |
+|---|---|---|---|---|
+| 45 days | 126 | **+158.0 (+95.2, +231.7)** | +35.0 | +88.9 (+35.3, +151.9) |
+| 90 days | 245 | **+30.6 (+1.6, +62.3)** | +4.4 | +18.3 (-11.1, +50.2) |
+| 180 days | 412 | +11.6 (-4.6, +27.9) | -4.1 | +3.8 (-12.1, +20.1) |
+| 365 days | 544 | +7.4 (-2.2, +16.9) | -7.0 | +1.6 (-7.8, +10.6) |
+| 730 days | 599 | +1.5 (-5.0, +8.1) | -5.9 | -3.2 (-9.3, +2.5) |
+
+The final model gets worse in a straight line as the weighting sharpens. The least bad is the 730-day half-life, which is barely a
+weighting at all. Its floor variant is identical (+1.47): no weight falls below 0.2 within the data's span at that half-life.
+
+On the **fresh seeds**, 730-day half-life, final model: overall **+3.4 (-2.7, +9.7)**; Friday **+20.0 (+1.8, +40.7)**; last week of term +17.3
+(-0.4, +34.0); last week of a break +17.3 (-1.1, +41.3); middle of a break -13.2 (-28.5, +3.0); Saturday +0.2; Sunday -4.6. **The bar fails** (the
+overall interval is not below zero, and Friday is significantly worse).
+
+Context, the raw-£ model on the fresh seeds: overall -3.7 (-10.5, +2.6); **Saturday -18.0 (-33.7, -1.9)**; Thursday -12.7 (-23.1, -1.4);
+first week of a break -40.7 (-99.4, +10.5). The hybrid overall: +0.8 (-4.7, +6.3).
+
+### Conclusion
+
+**H34 is rejected for the final model: the more it listens to recent days, the worse it does.**
+
+1. **The cost is the lost rows, not the age.** The half-life that keeps most of the data (730 days, 599 effective rows) does nothing, and the one that
+   keeps the fewest (45 days, 126 effective rows) adds £158 to the MAE. With about 635 training rows on average, the seasonal repeats and
+   the weekday patterns need every row; a model that can only see the last six weeks cannot find them. This agrees with Series 7.
+2. **Friday is the day it hurts most** (+£20 on the fresh seeds), so the weekend features and corrections already built are not helped by it.
+3. **A faint lead, not a result:** the raw-£ model improves slightly under mild weighting (£4 to £7 on seeds 0-24; on Saturdays -£18 on the fresh
+   seeds, interval below zero). It is one of 14 segments on one weighting, was not the pre-registered measure, and the Saturday correction of
+   Series 24 already chases the same drift, so it is recorded and not pursued.
+4. **Track C step two (weights together with the Saturday and Sunday correction) is not run.** It was conditional on this passing or coming
+   close, and the final model is worse with every weighting that changes anything.
+
+**Caveats.** Five half-lives tried on one set of seeds, then one winner on fresh seeds; the winner is the least bad, not a good one.
 
 ## Appendix: full candidate pool reference
 
