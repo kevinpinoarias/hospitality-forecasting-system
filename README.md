@@ -541,6 +541,8 @@ https://hospitality-forecasting-assistant-56220375160.us-central1.run.app
 
 > Same cold-start note as the API above: this also scales to zero when idle, so the first message can take 20-45 seconds.
 
+> Messages are sent to Google's Gemini API to write the answers, so please don't type personal data - see [Data and privacy](#data-and-privacy).
+
 It has eight tools, all grounded in real, already-computed data - it never invents a figure:
 
 - **`get_forecast`** and **`get_forecast_range`** - the same `/predict` API above, in plain language, for one date or a period of up to 31 days: a forecast, what's special about the day (payday, bank and school holidays, weekend trading, the weather), "what if it rains", and how a forecast compares to what actually happened (it knows the venue is closed on Christmas Day and New Year's Day, so it won't present those as real forecasting misses).
@@ -580,6 +582,25 @@ Login to Google uses short-lived tokens (Workload Identity Federation), not a st
 Settings that used to be repeated across the code now live in [`config/config.yaml`](config/config.yaml), loaded and validated by `src/config.py`: file paths, the train/validation split dates, the weather thresholds and coordinates, the XGBoost, SARIMAX and CatBoost settings, and which feature set each model uses. Validation is strict - a misspelt key, a wrong type, a bad date, an unknown feature set or an absolute path stops the program at start-up with a message saying what is wrong, instead of being quietly ignored.
 
 Changing a model or feature setting changes the model's results, so re-run the pipeline afterwards. CI does it for you: `config/config.yaml` is part of the fingerprint that decides whether the model is retrained, and a change to it redeploys the API. The coordinates are the ones every figure in the experiment log was produced with; changing them changes the weather features and so every result.
+
+---
+
+## Data and privacy
+
+This is a portfolio project, not a regulated service. It is built so that no personal data is needed, and this section says what is and isn't collected.
+
+**The dataset.** The tracked files in `data/raw/` hold daily sales, labour hours and labour wages, by department (front of house, kitchen, KPs/cleaners) and stream, with manual forecasts and the venue's own predictions alongside. There are no names, employee IDs, contact details or per-person rows; wages are department totals. `src/ingestion/anonymize_raw.py` strips the venue-identifying fields before anything else runs. Real, unanonymised exports go in `data/raw_private/`, which is gitignored and guarded by a pre-commit hook so it cannot be committed by accident.
+
+**The live API and chat assistant.**
+
+- There are no accounts and no sign-in. The application does not store questions or answers; the chat's memory lives in the running process, keyed to one browser session.
+- Messages typed into the assistant are sent to Google's Gemini API to write the answers. Please do not type personal data into the chat.
+- The hosting platform (Google Cloud Run) keeps its standard request logs, which can include IP addresses and are under Google Cloud's own retention settings, not the application's.
+- Credentials are never committed: the Gemini key lives in Google Secret Manager, `.env` is gitignored and excluded from the container images, and deployment uses short-lived tokens, not a stored cloud key.
+
+**Experiment tracking.** The public Weights & Biases project holds model metrics and plots only.
+
+If you think the repository contains personal data that should not be there, please open an issue and it will be removed.
 
 ---
 
