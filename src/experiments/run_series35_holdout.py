@@ -221,6 +221,33 @@ def prepare() -> None:
     print(diff[diff > 1e-9].round(4).to_string() if (diff > 1e-9).any() else "  none: identical")
 
 
+def overlay_frozen_weather(holdout: pd.DataFrame, frozen: pd.DataFrame) -> pd.DataFrame:
+    """The holdout's days with every weather value that existed when the models were frozen put back as the models saw it.
+
+    The weather service revises old days from time to time (against the frozen file: about 0.5 mm of rain on a third of the old days, up to
+    5 mm; about 0.2 degrees on one day in nine, up to 2). Using the revised values would quietly change the history the models were frozen
+    against, so old days keep their frozen weather and only the new days take the new weather. Every feature is then recomputed over the
+    whole run of days with the pipeline's own functions, so the new days' 14-day weather features read a consistent series. The result is
+    checked against the frozen file on the old days: it must reproduce it."""
+    daily = holdout[[DATE_COL, TARGET_COL, "forecast_sales"] + WEATHER_COLS].copy()
+    old = frozen.set_index(DATE_COL)
+    is_old = daily[DATE_COL].isin(old.index)
+    for col in WEATHER_COLS:
+        daily.loc[is_old, col] = old.loc[daily.loc[is_old, DATE_COL], col].to_numpy()
+    for col in (TARGET_COL, "forecast_sales"):  # the raw sales and forecasts of the old days never change; if they did, something is wrong
+        a = daily.loc[is_old, col].to_numpy(float)
+        b = old.loc[daily.loc[is_old, DATE_COL], col].to_numpy(float)
+        if not np.allclose(a, b, equal_nan=True):
+            raise RuntimeError(f"{col} of the old days differs between the holdout copy and the frozen file")
+    frame = build_feature_frame(daily)
+    mine = frame[frame[DATE_COL].isin(old.index)].set_index(DATE_COL)
+    cols = [c for c in FINAL_FEATURES if c in old.columns]
+    worst = float((mine[cols] - old.loc[mine.index, cols]).abs().max().max())
+    if worst > 1e-6:
+        raise RuntimeError(f"rebuilt features differ from the frozen file on the old days by up to {worst}")
+    return frame
+
+
 # --------------------------------------------------------------------------- stage 2: fit
 
 
@@ -412,9 +439,10 @@ def baselines(full: pd.DataFrame, pred_frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def score(cutoff: pd.Timestamp, models_dir: Path, out_dir: Path, features_path: Path) -> pd.DataFrame:
+def score(cutoff: pd.Timestamp, models_dir: Path, out_dir: Path, holdout_features_path: Path | None) -> pd.DataFrame:
     arms = load_arms(cutoff, models_dir)
-    full = load_engineered(features_path)
+    frozen = load_engineered(frozen_features_path())
+    full = frozen if holdout_features_path is None else overlay_frozen_weather(load_engineered(holdout_features_path), frozen)
     last_actual = full.dropna(subset=[TARGET_COL])[DATE_COL].max()
     hist_days, hist_pred = package_history(cutoff)
     holdout_days = list(full[(full[DATE_COL] >= cutoff) & (full[DATE_COL] <= last_actual)][DATE_COL])
@@ -608,8 +636,7 @@ def main() -> None:
     elif args.stage == "fit":
         fit(cutoff, models_dir)
     else:
-        features = frozen_features_path() if rehearsal else HOLDOUT_DIR / "features" / "engineered_features.csv"
-        pred = score(cutoff, models_dir, out_dir, features)
+        pred = score(cutoff, models_dir, out_dir, None if rehearsal else HOLDOUT_DIR / "features" / "engineered_features.csv")
         (out_dir / "results_simple.md").write_text(simple_report(pred, out_dir, rehearsal), encoding="utf-8")
         (out_dir / "results_full.md").write_text(full_report(pred), encoding="utf-8")
         draw_chart(pred, out_dir / "weekly_miss.png")

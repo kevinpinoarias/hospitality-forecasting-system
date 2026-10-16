@@ -136,3 +136,16 @@ A forecast made before the week happens cannot be influenced by hindsight, so fr
 - The new days include whatever the autumn brought, any school break and any unusual event included. None of it is corrected for or excluded after the fact.
 - The manager's forecast for the following week is assumed to have been on record by the Monday.
 - Mode A uses observed weather and known recent sales, as the project's backtest always has; B and C are the honest far-ahead conditions.
+
+## 12. Addendum, Friday 16 October 2026 — revised weather on old days (written before any new day was scored)
+
+Rebuilding the features in the isolated copy re-downloaded the weather for the whole period, and the weather service had revised
+old days since the frozen file was made: on 979 old days, `max_temp` differs on 110 (up to 2.0 degrees), `rain_mm` on 379 (up to
+5.0 mm), `sun_hours` on 1 (1.18 hours, 29 Jul 2026). Sales, the manager's forecast and everything else on the old days are identical
+(checked in code: the run stops if they are not). Only weather columns and features derived from them were affected. No new-day
+sales figure or score had been read.
+
+**Rule.** For every day on or before 6 September 2026 the weather is the value in the frozen file (the weather the models were
+fitted on). Only the 39 new days take the newly downloaded weather. All features are then recomputed over the combined series with
+the pipeline's own functions. The code checks that doing this reproduces the frozen features on the 979 old days to within 1e-6, and
+stops otherwise (`overlay_frozen_weather` in `src/experiments/run_series35_holdout.py`). Nothing else in this document changes.
