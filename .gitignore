@@ -206,3 +206,6 @@ data/raw_private/
 # Local W&B run cache - the actual experiment records live on wandb.ai,
 # this is just local metadata/logs from each run.
 wandb/
+
+# The isolated copy of the pipeline used for the holdout test (real, unanonymised-derived data)
+data/holdout/
