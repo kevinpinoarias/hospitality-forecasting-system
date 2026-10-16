@@ -596,6 +596,7 @@ This is a portfolio project, not a regulated service. It is built so that no per
 - There are no accounts and no sign-in. The application does not store questions or answers; the chat's memory lives in the running process, keyed to one browser session.
 - Messages typed into the assistant are sent to Google's Gemini API to write the answers. Please do not type personal data into the chat.
 - The hosting platform (Google Cloud Run) keeps its standard request logs, which can include IP addresses and are under Google Cloud's own retention settings, not the application's.
+- The chat page loads its fonts from Google Fonts, so Google can see a visitor's IP address when the page opens, as with any web font.
 - Credentials are never committed: the Gemini key lives in Google Secret Manager, `.env` is gitignored and excluded from the container images, and deployment uses short-lived tokens, not a stored cloud key.
 
 **Experiment tracking.** The public Weights & Biases project holds model metrics and plots only.
