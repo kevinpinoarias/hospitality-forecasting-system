@@ -42,6 +42,10 @@ demo = gr.ChatInterface(
         "Ask about the sales forecast in plain language - e.g. \"what's the forecast for next Saturday?\", "
         "\"is anything special about this weekend?\", \"what if it rains?\", or \"how accurate was last "
         "week's forecast?\". Answers are grounded in a real, live forecasting API - never invented."
+        "\n\n**Privacy:** please don't type personal data. Your messages are sent to Google's Gemini API to "
+        "write the answers, and this app keeps them only in the running chat's memory. The hosting service "
+        "(Google Cloud Run) keeps standard request logs, which can include IP addresses. See \"Data and "
+        "privacy\" in the project README."
     ),
     examples=[
         ["What's the forecast for next Saturday?"],
