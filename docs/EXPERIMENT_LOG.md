@@ -3087,6 +3087,9 @@ first week of a break -40.7 (-99.4, +10.5). The hybrid overall: +0.8 (-4.7, +6.3
 
 **Caveats.** Five half-lives tried on one set of seeds, then one winner on fresh seeds; the winner is the least bad, not a good one.
 
+> **Naming from 18 October 2026 (Series 35 onward).** *Log model* = the final model on the log-sales target; *post model* = the Track A package. Entries
+> up to Series 38 keep the names they were written with.
+
 ## Series 35 — Holdout Test on the New Venue Days (7 September to 15 October 2026)
 
 **Run**: 2026-10-16 · **Script**: `src/experiments/run_series35_holdout.py` · **Pre-registration**: `docs/HOLDOUT_2026_10_PREREGISTRATION.md`
@@ -3210,6 +3213,36 @@ Pooled change **−3.3 (−17.9, +10.0)** on seeds 0-24 and **−1.9 (−15.5, +
 3. **An untested idea:** a Hydro-days-only additive correction in the style of Series 24, instead of a model feature. It is a new hypothesis chosen after this result and needs its own rules.
 4. **Caveats:** the idea came from five days chosen after their errors and the flag from a residual check on the same backtest days; the list is Songkick's (music and comedy only, one sampled month checked
    for completeness).
+
+## Series 38 — A Hydro-Day Correction Instead of a Hydro Feature
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py hydrocorr` · **Rules** (committed before any code, `2b84830`) and results:
+`docs/EVENTS_EXPLORATION_2026_10.md`, sections 10 and 10.1 · no new model fits (bases from the Series 37 bags and the verified-calendar package results)
+
+### Context
+
+Series 37's `hydro_show` flag helped on Hydro days (−£34 to −£45) but cost about £10 a day on the other 432 days. A correction applied after the forecast, to Hydro days only, cannot touch the other days.
+
+### Hypothesis
+
+**H38**: moving Hydro-day forecasts by −0.5 × the recency-weighted mean forecast error on earlier Hydro days (half-life 8 weeks, the Series 24 package settings, untuned) lowers the error on Hydro days.
+
+### Method
+
+Walk-forward over the ten 60-day blocks (block 0 unchanged), on the log final model (primary) and the Track A package (secondary); seeds 0-24 and the replicate 100-124; a shuffled-flag placebo; four pass rules
+(Hydro-day interval below zero on both seed sets, pooled point estimate at or below zero, placebo not clearly helped, correction positive in 8 of 9 blocks). Chosen after seeing Series 37, on the same 585 days.
+
+### Results
+
+Hydro days: **−18.4 (−59.1, +16.4)** and **−16.4 (−57.4, +19.2)**; pooled −4.8 (−15.1, +4.5) and −4.3 (−14.7, +5.4). Package: −11.7 and −13.3 on Hydro days. Placebo −4.1 on its own flagged days. Correction positive in 9 of 9
+blocks but falling from about £330 to about £100. On the 39 new days (context): 905 → 888. Rule 1 fails; 2, 3 and 4 pass.
+
+### Conclusion
+
+1. **H38 is rejected under the pre-registered rule:** the direction is right every block, but the Hydro-day gain (about £17) is a third of the flag's and cannot be told from zero.
+2. **The shrinking correction** (£349 in block 1, £75 and £125 in blocks 8 and 9) says the Hydro effect has weakened in 2026 or is now partly in the manager's forecast; it argues against building anything automatic on the early average.
+3. **A hand rule, not a model input:** a Hydro night has averaged about £350 above the forecasts, less recently. The weekly log records Hydro nights so it can be re-estimated on clean days.
+4. **Caveats:** both ideas came from the same 585 days and the same residual check; the shuffled flags also helped on Friday to Sunday, so part of any weekend gain is the base model's general weekend under-forecast.
 
 ## Appendix: full candidate pool reference
 

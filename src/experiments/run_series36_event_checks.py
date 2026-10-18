@@ -11,6 +11,9 @@ in src/features/events.py):
   scotland    The Scotland national team flags (scotland_home, scotland_away, scotland_tournament) added to the final model, rules in section 7 of the write-up.
   hydro       The pre-registered Hydro test (section 9 of the write-up, committed before the run): hydro_show added to the final model, log1p and raw-pound,
               seeds 0-24 and 100-124, plus a shuffled-flag placebo on seeds 0-24 and a verdict against the four rules.
+  hydrocorr   The pre-registered Hydro-day correction (section 10 of the write-up, committed before this code): after the forecast, Hydro-show days are moved
+              by -0.5 x the recency-weighted (half-life 8 weeks) mean forecast error on earlier Hydro days. No model is refitted: the bases are the log final model's
+              bags from the `hydro` stage and the Track A package rebuilt from the verified-calendar results. Verdict against the four rules.
   saturday    The pre-registered Saturday test: one flag, sat_big_home (a Saturday with Celtic or Rangers at home), on the raw-pound and log1p models,
               seeds 0-24 and a replicate on 100-124. Rules in docs/EVENTS_EXPLORATION_2026_10.md, section 4 (written before the run).
 
@@ -19,6 +22,7 @@ Run:  python -m src.experiments.run_series36_event_checks residuals
       python -m src.experiments.run_series36_event_checks saturday [--workers 11]
       python -m src.experiments.run_series36_event_checks scotland [--workers 11]
       python -m src.experiments.run_series36_event_checks hydro [--workers 11]
+      python -m src.experiments.run_series36_event_checks hydrocorr
 """
 
 from __future__ import annotations
@@ -267,6 +271,93 @@ def run_hydro(workers: int) -> None:
     print("  => " + ("PASS: supported on the backtest; enters the weekly log as a candidate, not promoted" if all(rules.values()) else "FAIL: not pursued; record as Series 37"))
 
 
+CORRECTION_HALF_LIFE_WEEKS, CORRECTION_STRENGTH, CORRECTION_MIN_HISTORY = 8, 0.5, 4
+
+
+def hydro_correct(days: pd.DataFrame, pred: np.ndarray, flag: np.ndarray, half_life_weeks: float = CORRECTION_HALF_LIFE_WEEKS,
+                  strength: float = CORRECTION_STRENGTH, min_history: int = CORRECTION_MIN_HISTORY) -> tuple[np.ndarray, dict[int, float]]:
+    """Block k's flagged days move by -strength x the recency-weighted mean of (forecast - actual) over flagged days in blocks BEFORE k.
+    Block 0, unflagged days and blocks with too little history are unchanged. Returns the new forecasts and the amount added per block."""
+    out = pred.astype(float).copy()
+    fold = days["fold_id"].to_numpy()
+    dates = pd.to_datetime(days["date"]).to_numpy()
+    error = pred - days["actual"].to_numpy()
+    amounts: dict[int, float] = {}
+    for k in sorted(set(fold.tolist()))[1:]:
+        block = fold == k
+        history = (fold < k) & flag
+        if history.sum() < min_history:
+            continue
+        age_weeks = (dates[block].min() - dates[history]) / np.timedelta64(7, "D")
+        weights = 0.5 ** (age_weeks / half_life_weeks)
+        bias = float(np.sum(weights * error[history]) / np.sum(weights))
+        out[block & flag] = pred[block & flag] - strength * bias
+        amounts[int(k)] = -strength * bias
+    return out, amounts
+
+
+def run_hydrocorr() -> None:
+    from src.experiments import run_package_validation as pv
+
+    df, folds = load_protocol()
+    frame = df.merge(event_calendar(), on="date", how="left")
+    frame["hydro_placebo"] = placebo_flag(frame["date"], frame["hydro_show"], PLACEBO_SEED)
+    days = _protocol_days()
+    days = days.merge(frame[["date", "hydro_placebo"]], on="date", how="left")
+    days["weekday"] = days["date"].dt.day_name()
+    days["date"] = days["date"].dt.strftime("%Y-%m-%d")  # test_days' own form, which the package code expects
+    a, m = days["actual"].to_numpy(), days["manual"].to_numpy()
+    hydro, placebo = (days["hydro_show"] == 1).to_numpy(), (days["hydro_placebo"] == 1).to_numpy()
+    wd = pd.to_datetime(days["date"]).dt.dayofweek.to_numpy()
+    segments = {"all 585 days": np.ones(len(a), bool), "Hydro days": hydro, "non-Hydro days": ~hydro,
+                "Hydro Mon-Thu": hydro & (wd <= 3), "Hydro Fri-Sun": hydro & (wd >= 4)}
+
+    hydro_bags = _bags(RESULTS_HYDRO)
+    data = pv.load_set("_cal2")
+    chosen = pv.choose_on_first_blocks(days, data["log_raw_0_24"], data["features_0_24"])
+    bases = {
+        ("log final model", "s0_24"): hydro_bags[("log_base", "s0_24")], ("log final model", "s100_124"): hydro_bags[("log_base", "s100_124")],
+        ("Track A package", "s0_24"): pv.package_steps(days, data["log_raw_0_24"], data["features_0_24"], chosen)[pv.STEPS[-1]],
+        ("Track A package", "s100_124"): pv.package_steps(days, data["log_raw_fresh"], data["features_fresh"], chosen)[pv.STEPS[-1]],
+    }
+    print(f"585 test days; Hydro days {int(hydro.sum())}; weekday options chosen for the package: {chosen}")
+    print(f"log base MAE (hydro stage) {np.abs(bases[('log final model', 's0_24')] - a).mean():.1f} | package MAE "
+          f"{np.abs(bases[('Track A package', 's0_24')] - a).mean():.1f} | manager {np.abs(m - a).mean():.1f}")
+    rows, result, amounts_primary = [], {}, {}
+    runs = [(f"{name} {st}", base, hydro, name, st) for (name, st), base in bases.items()]
+    runs += [("PLACEBO log final model s0_24", bases[("log final model", "s0_24")], placebo, "placebo", "s0_24"),
+             ("manager's forecast (descriptive)", m.astype(float), hydro, "manager", "-")]
+    for label, base, flag, name, st in runs:
+        new, amounts = hydro_correct(days, base, flag)
+        if name == "log final model" and st == "s0_24":
+            amounts_primary = amounts
+        assert np.array_equal(new[~flag], base[~flag]), "unflagged days must be unchanged"
+        diff = np.abs(new - a) - np.abs(base - a)
+        for seg, mask in segments.items():
+            if name == "placebo":  # the placebo is judged on its own (shuffled) flagged days
+                mask = flag if seg == "Hydro days" else mask
+            mean, lo, hi = masked_block_bootstrap(diff, mask.astype(float))
+            result[(label, seg)] = (mean, lo, hi)
+            rows.append({"run": label, "segment": seg, "days": int(mask.sum()), "base MAE": np.abs(base - a)[mask].mean(),
+                         "new MAE": np.abs(new - a)[mask].mean(), "change": mean, "lo": lo, "hi": hi})
+    pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
+    print(pd.DataFrame(rows).round(1).to_string(index=False))
+    print("\nCorrection added to Hydro days per block (log final model, seeds 0-24), GBP:", {k: round(v) for k, v in amounts_primary.items()})
+
+    p0, p1 = result[("log final model s0_24", "Hydro days")], result[("log final model s100_124", "Hydro days")]
+    q0, q1 = result[("log final model s0_24", "all 585 days")], result[("log final model s100_124", "all 585 days")]
+    pl = result[("PLACEBO log final model s0_24", "Hydro days")]
+    positive = sum(v > 0 for v in amounts_primary.values())
+    rules = {"1 Hydro days: interval entirely below zero on both seed sets": p0[2] < 0 and p1[2] < 0,
+             "2 pooled point estimate at or below zero on both seed sets": q0[0] <= 0 and q1[0] <= 0,
+             "3 placebo: interval NOT entirely below zero": not (pl[2] < 0),
+             f"4 stability: correction positive in at least 8 of 9 blocks ({positive} of {len(amounts_primary)})": positive >= 8 and len(amounts_primary) == 9}
+    print("\nVERDICT against the pre-registered rules (primary base):")
+    for k, v in rules.items():
+        print(f"  [{'PASS' if v else 'FAIL'}] {k}")
+    print("  => " + ("PASS: a candidate for the weekly log, not promoted" if all(rules.values()) else "FAIL: not pursued; record as Series 38"))
+
+
 def run_saturday(workers: int) -> None:
     run_parallel(_tasks(SATURDAY_VARIANTS, SEEDS), fit_task, RESULTS_SATURDAY, workers, init_worker36, "series36-saturday")
     bags = _bags(RESULTS_SATURDAY)
@@ -291,8 +382,8 @@ def run_saturday(workers: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro"])
+    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro", "hydrocorr"])
     parser.add_argument("--workers", type=int, default=11)
     args = parser.parse_args()
     {"residuals": run_residuals, "football": lambda: run_football(args.workers), "saturday": lambda: run_saturday(args.workers),
-     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers)}[args.stage]()
+     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers), "hydrocorr": run_hydrocorr}[args.stage]()

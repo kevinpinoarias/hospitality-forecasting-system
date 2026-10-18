@@ -1,5 +1,9 @@
 # Events exploration (Series 36) — football and concerts, October 2026
 
+> **Naming (from 18 October 2026).** *Log model* is the final model on the log-sales target (earlier text: "log final model", "final model"). *Post model* is the
+> Track A package (earlier text: "Track A", "the package"): the log model plus the raw-£ Saturday model, the Friday-to-Sunday inputs and the Saturday and Sunday
+> correction. The sections below keep the names they were written with, including the rules committed before each run, so that those texts are unchanged.
+
 **Written:** Sunday 18 October 2026. **Branch:** `Product-branch` (private). **Status:** exploratory; nothing here is in the model, the
 feature pipeline or the API. Code: `src/features/events.py`, `src/experiments/run_series36_event_checks.py`, `tests/test_events.py`.
 Curated lists: `config/events/football_matches.csv`, `config/events/concert_days.csv`.
@@ -318,3 +322,39 @@ venue.
 
 **Expectation, stated in advance.** If the Hydro-day under-forecast is as steady as the residual check says (about £350 a day), the correction should remove most of it and the Hydro-day change should
 be of the order of −£30 to −£45; if the effect drifts from block to block the correction will lag it and the gain will shrink.
+
+### 10.1 Result (run 18 October 2026, after the rules were committed in `2b84830`)
+
+Average miss in £/day, 585 backtest days; change = with the correction minus without (95% interval). Days without a Hydro show are unchanged by construction (checked in the code).
+
+| Base | Seeds | All days (585) | Hydro days (153) |
+|---|---|---|---|
+| **Log final model (primary)** | 0-24 | 908.2 → 903.4; **−4.8 (−15.1 to +4.5)** | 958.8 → 940.4; **−18.4 (−59.1 to +16.4)** |
+| | 100-124 | **−4.3 (−14.7 to +5.4)** | **−16.4 (−57.4 to +19.2)** |
+| Track A package (secondary) | 0-24 | 864.6 → 861.6; −3.1 (−11.5 to +4.9) | −11.7 (−45.5 to +17.7) |
+| | 100-124 | −3.5 (−12.0 to +4.5) | −13.3 (−47.4 to +16.5) |
+| **Placebo** (shuffled flags, log final model) | 0-24 | −1.1 (−10.7 to +7.6) | −4.1 (−37.9 to +28.2) on its 161 days |
+| Manager's forecast (descriptive) | | −0.5 (−7.3 to +6.5) | −1.9 (−28.3 to +24.3) |
+
+Hydro Monday-Thursday −16 (−69 to +34) and Friday-Sunday −21 (−82 to +38) on the primary base: the same size in both. The correction added to Hydro days, by block (log final model, seeds 0-24): £349, 223, 327,
+326, 192, 138, 225, 75, 125.
+
+**Verdict against the rules: FAIL.**
+
+| Rule | Result |
+|---|---|
+| 1. Hydro-day interval entirely below zero on both seed sets | **FAIL** (intervals −59 to +16 and −57 to +19) |
+| 2. Pooled point estimate at or below zero on both seed sets | PASS (−4.8, −4.3) |
+| 3. Placebo interval not entirely below zero | PASS |
+| 4. Correction positive in at least 8 of 9 blocks | PASS (9 of 9) |
+
+**Reading.** The correction moves the forecasts the right way every block and the pooled change is a few pounds below zero, as expected in advance, but on the Hydro days themselves the gain is about £16 to £18 (about
+a third of the flag's £45) and its interval spans zero, so it cannot be told from nothing. Two things weaken it: the correction **shrinks over time** (about £330 early, about £100 in the last two blocks), so
+either the Hydro effect is fading in 2026 or the model has partly learned it through the manager's forecast; and the shuffled-flag placebo also helps on Friday to Sunday (−27, −64 to +3), which means part of any
+weekend gain is the base model's general weekend under-forecast and not the Hydro. The package base gains slightly less than the plain model (−12 to −13), as it should once its weekend correction is in place.
+
+**Context only, the 39 new days:** a correction of +£92 per Hydro day (the amount the method would add from 7 September, from the 585 days' history), applied to the D forecasts: MAE 905 → 888; Hydro days 1,232 → 1,182;
+other days unchanged.
+
+**Decision.** Not pursued; logged as Series 38. The Hydro effect is recorded as a fact about the venue and a hand rule for the rota planner (a Hydro night has averaged about £350 above what the models and the manager expect;
+the last two blocks suggest less), not as a model input or an automatic correction. Hydro nights are recorded in the weekly log so the effect can be re-estimated on clean days.
