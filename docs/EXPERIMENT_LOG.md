@@ -3244,6 +3244,37 @@ blocks but falling from about £330 to about £100. On the 39 new days (context)
 3. **A hand rule, not a model input:** a Hydro night has averaged about £350 above the forecasts, less recently. The weekly log records Hydro nights so it can be re-estimated on clean days.
 4. **Caveats:** both ideas came from the same 585 days and the same residual check; the shuffled flags also helped on Friday to Sunday, so part of any weekend gain is the base model's general weekend under-forecast.
 
+## Series 39 — The Hydro Flag Inside the Post Model
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py postflag` · **Rules** (committed before any code, `29e23eb`) and results: `docs/EVENTS_EXPLORATION_2026_10.md`, sections 11 and 11.1
+
+### Context
+
+Series 37 tested the Hydro flag in a plain log model and a plain raw-£ model; Series 38 tested a Hydro-day correction on the log model and the post model. The one combination not run was the flag as an input to the post model's own
+models (Friday log + `A_all`, Saturday raw + `A_lags`, Sunday log + `B`, Monday-Thursday the log model), with its Saturday and Sunday correction recomputed.
+
+### Hypothesis
+
+**H39**: adding `hydro_show` to every model in the post model lowers the post model's error on Hydro days.
+
+### Method
+
+Pre-registered: the weekday options of Series 27 / 31 fixed, not re-chosen; 585-day rolling-origin backtest; seeds 0-24 and the replicate 100-124; a sanity refit without the flag (must reproduce the stored post model to £0.05); a
+shuffled-flag placebo; four rules (Hydro-day interval below zero on both seed sets; pooled point estimate at or below zero; other days not clearly hurt; placebo not clearly helped). Third look at the same days.
+
+### Results
+
+Hydro days **−26.1 (−67.8, +10.0)** and **−33.6 (−71.6, +0.1)**; pooled −0.5 (−13.6, +10.5) and −7.6 (−19.9, +2.7); other days +8.6 and +1.6. Placebo +4.0 on its flagged days. By Hydro day-type: Monday-Thursday −33, Friday −33 to −52,
+Saturday −63 to −78, **Sunday +62 and +39**. Sanity refit identical (difference 0.000). Rule 1 fails; 2, 3 and 4 pass.
+
+### Conclusion
+
+1. **H39 is rejected under the pre-registered rule, narrowly:** the replicate's Hydro-day interval ends at +£0.1, the first set's at +£10.
+2. **The same picture in every test:** a small, consistent gain on Hydro days (about £12 to £45 depending on method), a small loss elsewhere or on Sundays, nothing that separates from zero. Hydro Sundays are over-forecast by the models and
+   the manager, and every Hydro input makes that worse.
+3. **For the weekly log:** record Hydro nights and re-estimate on clean days; consider a Saturday-only version only after the log has a season of Hydro Saturdays.
+4. **Caveats:** third look at the same 585 days for one idea; the post-model version was proposed after a weekday slice showed Saturday; the 39 new days were not run for this test.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final

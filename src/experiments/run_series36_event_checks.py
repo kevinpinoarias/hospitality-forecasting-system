@@ -14,6 +14,9 @@ in src/features/events.py):
   hydrocorr   The pre-registered Hydro-day correction (section 10 of the write-up, committed before this code): after the forecast, Hydro-show days are moved
               by -0.5 x the recency-weighted (half-life 8 weeks) mean forecast error on earlier Hydro days. No model is refitted: the bases are the log final model's
               bags from the `hydro` stage and the Track A package rebuilt from the verified-calendar results. Verdict against the four rules.
+  postflag    The pre-registered test of hydro_show inside the post model (section 11 of the write-up, committed before this code): the Friday (A_all), Saturday (A_lags)
+              and Sunday (B) models of the post model refitted with the flag, Monday-Thursday from the log model with the flag, the Saturday and Sunday correction recomputed,
+              against the stored post model; seeds 0-24 and 100-124, a shuffled-flag placebo and a sanity refit without the flag. Verdict against four rules.
   saturday    The pre-registered Saturday test: one flag, sat_big_home (a Saturday with Celtic or Rangers at home), on the raw-pound and log1p models,
               seeds 0-24 and a replicate on 100-124. Rules in docs/EVENTS_EXPLORATION_2026_10.md, section 4 (written before the run).
 
@@ -23,6 +26,7 @@ Run:  python -m src.experiments.run_series36_event_checks residuals
       python -m src.experiments.run_series36_event_checks scotland [--workers 11]
       python -m src.experiments.run_series36_event_checks hydro [--workers 11]
       python -m src.experiments.run_series36_event_checks hydrocorr
+      python -m src.experiments.run_series36_event_checks postflag [--workers 11]
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ RESULTS_FOOTBALL = OUT_DIR / "series36_football.jsonl"
 RESULTS_SATURDAY = OUT_DIR / "series36_saturday.jsonl"
 RESULTS_SCOTLAND = OUT_DIR / "series36_scotland.jsonl"
 RESULTS_HYDRO = OUT_DIR / "series36_hydro.jsonl"
+RESULTS_POSTFLAG = OUT_DIR / "series36_postflag.jsonl"
 PLACEBO_SEED = 20261018
 SEED_CHUNK = 5
 SEEDS = {"s0_24": list(range(25)), "s100_124": list(range(100, 125))}
@@ -358,6 +363,104 @@ def run_hydrocorr() -> None:
     print("  => " + ("PASS: a candidate for the weekly log, not promoted" if all(rules.values()) else "FAIL: not pursued; record as Series 38"))
 
 
+POST_OPTIONS = {"Friday": ("fri", "log1p", "A_all"), "Saturday": ("sat", "raw", "A_lags"), "Sunday": ("sun", "log1p", "B")}
+
+
+def init_worker_post() -> None:
+    from src.experiments import run_series26_weekend_features as s26
+
+    df, folds = s26.load_frame()
+    df = df.merge(event_calendar(), on="date", how="left")
+    df["hydro_placebo"] = placebo_flag(df["date"], df["hydro_show"], PLACEBO_SEED)
+    _STATE["df"], _STATE["folds"] = df, folds
+
+
+def fit_task_post(task: dict) -> dict:
+    started = time.time()
+    features = list(FINAL_FEATURES) + task["extra"]
+    predict = raw_predictions if task["target"] == "raw" else bagged_log1p_predictions
+    per_seed = predict(_STATE["df"], _STATE["folds"], features, dict(FINAL_PARAMS), task["seeds"])
+    return {"id": task["id"], "variant": task["variant"], "set": task["set"], "per_seed": [[round(float(x), 2) for x in r] for r in per_seed],
+            "seconds": round(time.time() - started, 1)}
+
+
+def run_postflag(workers: int) -> None:
+    from src.experiments import run_package_validation as pv
+    from src.experiments import run_series24_weekend_correction as s24
+    from src.experiments import run_series26_weekend_features as s26
+
+    tasks = []
+    for tag, flag_col, sets in (("flag", "hydro_show", ("s0_24", "s100_124")), ("placebo", "hydro_placebo", ("s0_24",)), ("base", None, ("s0_24",))):
+        for day, (short, target, option) in POST_OPTIONS.items():
+            extra = list(s26.VARIANTS[option]["extra"]) + ([flag_col] if flag_col else [])
+            for st in sets:
+                for i in range(0, 25, SEED_CHUNK):
+                    tasks.append({"id": f"{short}_{tag}_{st}_{i}", "variant": f"{short}_{tag}", "set": st, "target": target, "extra": extra, "seeds": SEEDS[st][i:i + SEED_CHUNK]})
+    run_parallel(tasks, fit_task_post, RESULTS_POSTFLAG, workers, init_worker_post, "series36-postflag")
+    bags = _bags(RESULTS_POSTFLAG)
+    hydro_bags = _bags(RESULTS_HYDRO)
+
+    days = _protocol_days()
+    df, folds = load_protocol()
+    frame = df.merge(event_calendar(), on="date", how="left")
+    frame["hydro_placebo"] = placebo_flag(frame["date"], frame["hydro_show"], PLACEBO_SEED)
+    days = days.merge(frame[["date", "hydro_placebo"]], on="date", how="left")
+    days["weekday"] = days["date"].dt.day_name()
+    wd = days["weekday"].to_numpy()
+    days["date"] = days["date"].dt.strftime("%Y-%m-%d")
+    a, m = days["actual"].to_numpy(), days["manual"].to_numpy()
+    hydro, placebo = (days["hydro_show"] == 1).to_numpy(), (days["hydro_placebo"] == 1).to_numpy()
+    data = pv.load_set("_cal2")
+    chosen = pv.choose_on_first_blocks(days, data["log_raw_0_24"], data["features_0_24"])
+    expected = {d: o for d, (_, _, o) in POST_OPTIONS.items()}
+    assert chosen == expected, (chosen, expected)
+    stored = {"s0_24": pv.package_steps(days, data["log_raw_0_24"], data["features_0_24"], chosen)[pv.STEPS[-1]],
+              "s100_124": pv.package_steps(days, data["log_raw_fresh"], data["features_fresh"], chosen)[pv.STEPS[-1]]}
+    raw_stored = {"s0_24": data["log_raw_0_24"]["raw_same_params"], "s100_124": data["log_raw_fresh"]["raw_same_params"]}
+
+    def assemble(log_pred: np.ndarray, tag: str, st: str, raw: np.ndarray) -> np.ndarray:
+        weekend = s24.hybrid(wd, log_pred, raw)
+        for day, (short, _, _) in POST_OPTIONS.items():
+            weekend = np.where(wd == day, bags[(f"{short}_{tag}", st)], weekend)
+        return s24.correct(days, weekend, 8, 0.5, scope=("Saturday", "Sunday"))
+
+    rebuilt_base = assemble(hydro_bags[("log_base", "s0_24")], "base", "s0_24", raw_stored["s0_24"])
+    sanity = abs(np.abs(rebuilt_base - a).mean() - np.abs(stored["s0_24"] - a).mean())
+    print(f"SANITY: refit post model without the flag MAE {np.abs(rebuilt_base - a).mean():.3f} vs stored {np.abs(stored['s0_24'] - a).mean():.3f} "
+          f"(difference {sanity:.3f}; largest single-day difference {np.abs(rebuilt_base - stored['s0_24']).max():.3f}); must be below 0.05 -> {'OK' if sanity < 0.05 else 'VOID'}")
+
+    runs = {"post model + flag, seeds 0-24": (assemble(hydro_bags[("log_flag", "s0_24")], "flag", "s0_24", raw_stored["s0_24"]), stored["s0_24"], hydro),
+            "post model + flag, seeds 100-124": (assemble(hydro_bags[("log_flag", "s100_124")], "flag", "s100_124", raw_stored["s100_124"]), stored["s100_124"], hydro),
+            "PLACEBO post model, seeds 0-24": (assemble(hydro_bags[("log_placebo", "s0_24")], "placebo", "s0_24", raw_stored["s0_24"]), stored["s0_24"], placebo)}
+    segments = {"all 585 days": lambda f: np.ones(len(a), bool), "Hydro days": lambda f: f, "non-Hydro days": lambda f: ~f}
+    day_types = {"Hydro Mon-Thu": np.isin(wd, ["Monday", "Tuesday", "Wednesday", "Thursday"]), "Hydro Friday": wd == "Friday",
+                 "Hydro Saturday": wd == "Saturday", "Hydro Sunday": wd == "Sunday"}
+    rows, result = [], {}
+    for label, (new, base, flag) in runs.items():
+        diff = np.abs(new - a) - np.abs(base - a)
+        masks = {name: fn(flag) for name, fn in segments.items()}
+        masks.update({k: flag & v for k, v in day_types.items()})
+        for seg, mask in masks.items():
+            mean, lo, hi = masked_block_bootstrap(diff, mask.astype(float))
+            result[(label, seg)] = (mean, lo, hi)
+            rows.append({"run": label, "segment": seg, "days": int(mask.sum()), "base MAE": np.abs(base - a)[mask].mean(), "new MAE": np.abs(new - a)[mask].mean(),
+                         "change": mean, "lo": lo, "hi": hi, "base bias": (base - a)[mask].mean(), "new bias": (new - a)[mask].mean()})
+    pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
+    print(f"585 test days; Hydro days {int(hydro.sum())}; stored post model MAE {np.abs(stored['s0_24'] - a).mean():.1f}; manager {np.abs(m - a).mean():.1f}")
+    print(pd.DataFrame(rows).round(1).to_string(index=False))
+
+    r0, r1 = "post model + flag, seeds 0-24", "post model + flag, seeds 100-124"
+    pl = result[("PLACEBO post model, seeds 0-24", "Hydro days")]
+    rules = {"1 Hydro days: interval entirely below zero on both seed sets": result[(r0, "Hydro days")][2] < 0 and result[(r1, "Hydro days")][2] < 0,
+             "2 pooled point estimate at or below zero on both seed sets": result[(r0, "all 585 days")][0] <= 0 and result[(r1, "all 585 days")][0] <= 0,
+             "3 other days: interval not entirely above zero on both seed sets": not (result[(r0, "non-Hydro days")][1] > 0) and not (result[(r1, "non-Hydro days")][1] > 0),
+             "4 placebo: interval NOT entirely below zero": not (pl[2] < 0)}
+    print("\nVERDICT against the pre-registered rules:")
+    for k, v in rules.items():
+        print(f"  [{'PASS' if v else 'FAIL'}] {k}")
+    print("  => " + ("PASS: a candidate for the weekly log, not promoted" if all(rules.values()) and sanity < 0.05 else "FAIL (or void): not pursued; record as Series 39"))
+
+
 def run_saturday(workers: int) -> None:
     run_parallel(_tasks(SATURDAY_VARIANTS, SEEDS), fit_task, RESULTS_SATURDAY, workers, init_worker36, "series36-saturday")
     bags = _bags(RESULTS_SATURDAY)
@@ -382,8 +485,8 @@ def run_saturday(workers: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro", "hydrocorr"])
+    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro", "hydrocorr", "postflag"])
     parser.add_argument("--workers", type=int, default=11)
     args = parser.parse_args()
     {"residuals": run_residuals, "football": lambda: run_football(args.workers), "saturday": lambda: run_saturday(args.workers),
-     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers), "hydrocorr": run_hydrocorr}[args.stage]()
+     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers), "hydrocorr": run_hydrocorr, "postflag": lambda: run_postflag(args.workers)}[args.stage]()

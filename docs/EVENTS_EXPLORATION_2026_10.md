@@ -394,3 +394,45 @@ therefore be weaker evidence than the numbers suggest; the weekly log is the cle
 
 **Expectation, stated in advance.** The post model already lifts Saturday forecasts (its Saturday bias on Hydro nights is −£530 against −£1,191 for the plain log model), so the room for the flag is smaller than in Series 37. Gains
 of a few pounds on Hydro days, intervals spanning zero, are the likely outcome.
+
+### 11.1 Result (run 18 October 2026, after the rules were committed in `29e23eb`)
+
+**Sanity check passed:** the three weekend options refitted without the flag reproduce the stored post model exactly (MAE 864.630 against 864.630, largest single-day difference 0.000).
+
+Average miss in £/day on the 585 backtest days; change = post model with the flag minus the post model without it (95% interval). 153 Hydro days, 432 others.
+
+| | All days | Hydro days | Other days |
+|---|---|---|---|
+| Seeds 0-24 | 864.6 → 864.1; **−0.5 (−13.6 to +10.5)** | 907.1 → 881.0; **−26.1 (−67.8 to +10.0)** | +8.6 (−4.3 to +20.4) |
+| Seeds 100-124 | **−7.6 (−19.9 to +2.7)** | **−33.6 (−71.6 to +0.1)** | +1.6 (−10.5 to +12.8) |
+| **Placebo** (shuffled flags), seeds 0-24 | +4.6 (+1.2 to +8.2) | +4.0 (−3.3 to +12.1) on its 161 days | +4.8 |
+
+By Hydro day-type (change; descriptive):
+
+| Hydro days | n | Seeds 0-24 | Seeds 100-124 |
+|---|---|---|---|
+| Monday-Thursday | 79 | −32.7 (−89.1 to +21.7) | −29.7 (−80.7 to +20.4) |
+| Friday | 29 | −32.9 (−124.9 to +51.6) | −52.4 (−157.1 to +38.5) |
+| Saturday | 26 | −62.6 (−149.4 to +36.0) | −77.7 (−162.7 to +19.5) |
+| Sunday | 19 | **+61.6** (−54.1 to +174.8) | **+39.4** (−74.3 to +149.9) |
+
+Bias on Hydro days (forecast minus actual): −£278 without the flag, −£59 with it (seeds 0-24); Hydro Sundays go from +£371 to +£609.
+
+**Verdict against the rules: FAIL.**
+
+| Rule | Result |
+|---|---|
+| 1. Hydro-day interval entirely below zero on both seed sets | **FAIL** (−67.8 to +10.0 and −71.6 to +0.1: the replicate misses by 10p, the first set by £10) |
+| 2. Pooled point estimate at or below zero on both seed sets | PASS (−0.5, −7.6) |
+| 3. Other days: interval not entirely above zero | PASS |
+| 4. Placebo not clearly helped | PASS (it is slightly worse) |
+
+**Reading.** The flag inside the post model does about what the correction did and a little more on Hydro days (−£26 to −£34 against the correction's −£12 to −£13), with a similar pooled result (−£0.5 and −£7.6 against −£3.1 and
+−£3.5). It is the closest of the Hydro attempts to clearing the bar, and still does not clear it. The gain is spread over Monday-Thursday, Friday and Saturday (−£30 to −£78, none individually clear) and **Sunday gets worse**, as in every
+earlier run: the models over-forecast Hydro Sundays and the flag pushes them higher still. The post model's Saturday gain (−£63 to −£78) is smaller than the plain models' (−£111 to −£177) because the post model already forecasts
+Hydro Saturdays higher.
+
+**Not run:** the 39 new days, which the rules listed as context only; the post model's served path (as it would run on the new days) is not rebuilt with the flag.
+
+**Decision.** Not pursued; logged as Series 39. Of the four tests asked for, the flag in a plain model (Series 37), the correction on the log model and on the post model (Series 38) and the flag in the post model (this one) all point the same
+way: a small gain on Hydro days that never separates from zero, and a loss on Sundays.
