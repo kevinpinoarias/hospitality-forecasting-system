@@ -3087,6 +3087,57 @@ first week of a break -40.7 (-99.4, +10.5). The hybrid overall: +0.8 (-4.7, +6.3
 
 **Caveats.** Five half-lives tried on one set of seeds, then one winner on fresh seeds; the winner is the least bad, not a good one.
 
+## Series 35 — Holdout Test on the New Venue Days (7 September to 15 October 2026)
+
+**Run**: 2026-10-16 · **Script**: `src/experiments/run_series35_holdout.py` · **Pre-registration**: `docs/HOLDOUT_2026_10_PREREGISTRATION.md`
+(committed before any new sales figure was read) · **Fingerprints**: `docs/holdout_log/fit_fingerprints.json` · **Results** (local, gitignored):
+`data/holdout/reports/results/` (`results_simple.md`, `results_full.md`, `holdout_predictions.csv`, `weekly_miss.png`)
+
+### Context
+
+Six new weekly exports covered 39 days the models had never seen. Every model was fitted on rows up to 6 September and fingerprinted before the
+new days were processed, in an isolated copy of the pipeline. Question 1, the only decision: is the deployed model still better than the manager's
+forecast in daily (operational) use?
+
+### Method
+
+Arms: M (manager), S (seasonal baseline), P (deployed model, original school calendar), D (final model on the verified calendar), K (the Track A
+package). Modes: A daily, B blind from 6 September, C a Monday run forecasting the following week (issues 7, 14, 21, 28 September and 5 October;
+32 scored target days); each with and without the manager's forecast as an input. 7-day moving-block bootstrap. **Addendum written before
+scoring**: the weather service had revised old days since the models were frozen, so days up to 6 September keep their frozen weather and only the
+new days take new weather (the code checks the rebuilt features reproduce the frozen file on the old days to 1e-6).
+
+### Results
+
+Mode A, with the manager's forecast, 39 days (£ average miss per day):
+
+| | Average miss | Bias |
+|---|---|---|
+| Manager | 958 | −296 |
+| Deployed model (P) | 915 | −437 |
+| Final model, verified calendar (D) | 905 | −439 |
+| Track A package (K) | 880 | −413 |
+
+**Q1: the deployed model beats the manager by +£43 a day (95% interval −155 to +247). Verdict by the pre-registered rule: Consistent** (better on
+average, interval includes zero; not a drift alarm, the model's MAE of 915 is far below 1,333). On the Monday run, with the manager's forecast, the deployed
+model scored 990 against the manager's 954 and the package 945. Without the manager's forecast the models lose almost nothing (929 daily). The
+package against D: −£24 on all days, −£64 on Friday to Sunday, "directionally consistent", **not promoted** (rule: 26 weeks and an interval
+excluding zero). D against P: £10, the calendar fix makes no visible difference in this window.
+
+Week by week (daily, with manager): the models won four of six weeks; the manager was far better in the week of 21 September (532 against ~900) and
+the four days of 12 October; the week of 28 September was the manager's worst (1,666) and the models lost less (1,271).
+
+### Conclusion
+
+1. The result is what 39 days can show: consistent with the earlier gain, not a confirmation (the interval is about ±£200 against an expected gain of £166).
+   The manager's window was ordinary, slightly better than its history (958 against 1,070 overall).
+2. **The large misses were one day at a time** and shared with the manager: Sunday 27 September (model £8,097, manager £10,300, actual £10,511), Wednesday 30 September
+   and Thursday 1 October (about £2,000 low for both), Sunday 4 October, Wednesday 14 October. A look-up afterwards found a concert or race nearby on four of the five
+   (Series 36). Everyone's forecasts also ran low on average (the models more than the manager), and the models' Sunday bias (−£730 against the manager's −£31) is a lead.
+3. **Over-forecast days** (7-9 October, 7-8 September) were mostly rainy and shared with the manager; no event explains them.
+4. **The 39 days are now training data.** They are a valid holdout for the frozen models, not clean evidence for anything designed after looking at them. The
+   weekly forecast log from Monday 19 October is the next honest test; it is not set up yet.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
