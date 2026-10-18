@@ -284,3 +284,37 @@ same pattern as the backtest, which says the pattern is real and not that the mo
 learns it as one more feature loses a little on ordinary days. A separate, additive correction on Hydro days only (the way Series 24 handles weekends), instead of a new model input, might keep the
 Hydro-day gain without the ordinary-day cost. That is a new hypothesis, chosen after seeing this result, so it needs its own rules and a replicate before it is tried, and it would not be a clean test on
 these 585 days either. It is recorded here and nowhere else.
+
+## 10. The Hydro-day correction — test rules (written 18 October 2026, before any code or run)
+
+**Why.** Section 9.4: the `hydro_show` flag helps on Hydro days (£34 to £45 off the average miss) but, as a model input, costs about £10 a day on the other 432 days. A correction applied after the
+forecast, to Hydro days only, cannot touch the other days. **This hypothesis was chosen after seeing the section 9.4 result and uses the same 585 days**, so it is not a clean test; the weekly log is
+the clean one.
+
+**The correction** (a Hydro twin of `run_series24_weekend_correction.correct`, using its untuned package settings: half-life 8 weeks, strength 0.5, at least 4 days of history). For block *k* ≥ 1 of
+the 60-day rolling-origin blocks, every day with a Hydro show gets its forecast **moved by −0.5 × the recency-weighted mean of (forecast − actual) over the Hydro days in blocks before *k***. Weights are
+0.5 ^ (age in weeks ÷ 8). Block 0, and every day without a Hydro show, is unchanged. A flat £ amount: no split by weekday, show size, music or comedy. No grid and no settings are tried.
+
+**Bases.** The correction is added to (1) **primary: the log final model**, bagged over 25 seeds, the same forecasts as the `hydro_show` test (seeds 0-24 and the replicate 100-124); (2) **secondary: the Track
+A package** on the verified calendar, rebuilt by `run_package_validation.package_steps` with its weekend correction already applied, the error history for the Hydro correction taken from the package's own
+forecasts so a weekend Hydro night is not corrected twice. No new model is fitted; both sets of bases already exist.
+
+**Metric.** Mean change in absolute error against the same base without the correction, on all 585 days, on the 153 Hydro days, and on Monday-Thursday and Friday-Sunday Hydro days; 95% interval from
+`masked_block_bootstrap` (7-day-equivalent blocks as before). Days without a Hydro show are unchanged by construction.
+
+**It passes only if all of these hold, on the primary base.**
+1. *Hydro days*: the change on Hydro days has a 95% interval entirely below zero on seeds 0-24 **and** on seeds 100-124.
+2. *Pooled*: the change over all 585 days has a point estimate at or below zero on both seed sets. (The interval will probably span zero: Hydro days are a quarter of the days, so even a correction as good as
+   the flag's £45 would move the pooled average by only about £11 against an interval of roughly ±£14. The pooled interval is therefore not a rule.)
+3. *Placebo*: the same correction applied to the shuffled flags (the section 9.3 shuffle, seed 20261018) shows a change on those days whose 95% interval is **not** entirely below zero.
+4. *Stability*: the correction amount is positive (sales above the forecast) in at least 8 of the 9 corrected blocks on seeds 0-24.
+
+**Reported, not rules.** The secondary base (the package) with the same four numbers; the raw size of the correction in £ per block; the same correction applied to the manager's own forecast; the 39 new days
+(context only, seen).
+
+**Decision.** *Pass*: the correction is a candidate for the weekly log, **not** added to the product model; promotion needs the log to reach 26 weeks on Hydro nights with an interval excluding zero, and
+a source for the Hydro programme at forecast time. It would also be a plain rule the rota planner can apply by hand. *Fail*: logged as Series 38 and not pursued; the Hydro effect stays a fact about the
+venue.
+
+**Expectation, stated in advance.** If the Hydro-day under-forecast is as steady as the residual check says (about £350 a day), the correction should remove most of it and the Hydro-day change should
+be of the order of −£30 to −£45; if the effect drifts from block to block the correction will lag it and the gain will shrink.
