@@ -8,12 +8,14 @@ in src/features/events.py):
               least-squares fit of (actual - forecast) on the event flags, with a 7-day moving-block bootstrap interval. Football, then concerts.
   football    The 585-day rolling backtest (365-day start, 60-day blocks, seeds 0-24, the final model's recipe) with Celtic / Rangers features
               added to FINAL_FEATURES: "plays" (celtic_plays, rangers_plays, old_firm) and "home_away" (home and away flags per club + old_firm).
+  scotland    The Scotland national team flags (scotland_home, scotland_away, scotland_tournament) added to the final model, rules in section 7 of the write-up.
   saturday    The pre-registered Saturday test: one flag, sat_big_home (a Saturday with Celtic or Rangers at home), on the raw-pound and log1p models,
               seeds 0-24 and a replicate on 100-124. Rules in docs/EVENTS_EXPLORATION_2026_10.md, section 4 (written before the run).
 
 Run:  python -m src.experiments.run_series36_event_checks residuals
       python -m src.experiments.run_series36_event_checks football [--workers 11]
       python -m src.experiments.run_series36_event_checks saturday [--workers 11]
+      python -m src.experiments.run_series36_event_checks scotland [--workers 11]
 """
 
 from __future__ import annotations
@@ -30,13 +32,14 @@ from src.experiments.run_series23_log_vs_raw_peaks import WEEKDAYS, masked_block
 from src.experiments.series19_21_common import (
     _STATE, FINAL_PARAMS, OUT_DIR, bagged_log1p_predictions, load_protocol, run_parallel, test_days,
 )
-from src.features.events import event_calendar, football_calendar
+from src.features.events import event_calendar
 from src.models.final_model import FINAL_FEATURES
 
 BACKTEST_PREDICTIONS = PROJECT_ROOT / "reports" / "results" / "final_model_backtest_predictions.csv"
 HOLDOUT_PREDICTIONS = PROJECT_ROOT / "data" / "holdout" / "reports" / "results" / "holdout_predictions.csv"
 RESULTS_FOOTBALL = OUT_DIR / "series36_football.jsonl"
 RESULTS_SATURDAY = OUT_DIR / "series36_saturday.jsonl"
+RESULTS_SCOTLAND = OUT_DIR / "series36_scotland.jsonl"
 SEED_CHUNK = 5
 SEEDS = {"s0_24": list(range(25)), "s100_124": list(range(100, 125))}
 
@@ -45,6 +48,8 @@ FOOTBALL_VARIANTS = {
     "plays": ["celtic_plays", "rangers_plays", "old_firm"],
     "home_away": ["celtic_home", "celtic_away", "rangers_home", "rangers_away", "old_firm"],
 }
+SCOTLAND_FLAGS = ["scotland_home", "scotland_away", "scotland_tournament"]
+SCOTLAND_VARIANTS = {"baseline": ("log1p", []), "scotland": ("log1p", SCOTLAND_FLAGS)}
 SATURDAY_VARIANTS = {  # name -> (target, extra features)
     "raw_base": ("raw", []), "raw_flag": ("raw", ["sat_big_home"]),
     "log_base": ("log1p", []), "log_flag": ("log1p", ["sat_big_home"]),
@@ -96,6 +101,7 @@ def run_residuals() -> None:
     _print_effects(backtest, ["any_home_big"], "backtest: any Celtic or Rangers home match")
     _print_effects(backtest, ["celtic_home", "rangers_home", "old_firm"], "backtest: separate football flags")
     _print_effects(backtest, ["celtic_away", "rangers_away"], "backtest: away matches")
+    _print_effects(backtest, SCOTLAND_FLAGS, "backtest: Scotland national team (home, away or neutral, tournament)")
     _print_effects(backtest, ["any_show"], "backtest: any show at the Hydro, Armadillo or O2 Academy")
     _print_effects(backtest, ["hydro_show", "o2_show", "armadillo_show"], "backtest: by venue")
     _print_effects(backtest, ["concert_capacity_k"], "backtest: summed capacity, per 1,000 seats")
@@ -113,7 +119,7 @@ def run_residuals() -> None:
 
 def init_worker36() -> None:
     df, folds = load_protocol()
-    _STATE["df"], _STATE["folds"] = df.merge(football_calendar(), on="date", how="left"), folds
+    _STATE["df"], _STATE["folds"] = df.merge(event_calendar(), on="date", how="left"), folds
     assert _STATE["df"]["sat_big_home"].notna().all()
 
 
@@ -149,7 +155,7 @@ def _protocol_days() -> pd.DataFrame:
     df, folds = load_protocol()
     d = test_days(df, folds)
     d["date"] = pd.to_datetime(d["date"])
-    return d.merge(football_calendar(), on="date", how="left")
+    return d.merge(event_calendar(), on="date", how="left")
 
 
 def run_football(workers: int) -> None:
@@ -181,6 +187,26 @@ def run_football(workers: int) -> None:
     print(pd.DataFrame(seg_rows).round(0).to_string(index=False))
 
 
+def run_scotland(workers: int) -> None:
+    run_parallel(_tasks(SCOTLAND_VARIANTS, {"s0_24": SEEDS["s0_24"]}), fit_task, RESULTS_SCOTLAND, workers, init_worker36, "series36-scotland")
+    bags = _bags(RESULTS_SCOTLAND)
+    days = _protocol_days()
+    a, m = days["actual"].to_numpy(), days["manual"].to_numpy()
+    base, new = bags[("baseline", "s0_24")], bags[("scotland", "s0_24")]
+    diff = np.abs(new - a) - np.abs(base - a)
+    mean, lo, hi = masked_block_bootstrap(diff, np.ones(len(a)))
+    print(f"585 test days: baseline MAE {np.abs(base - a).mean():.1f}, with Scotland flags {np.abs(new - a).mean():.1f}; change {mean:+.1f} (95% interval {lo:+.1f} to {hi:+.1f}); "
+          f"manager {np.abs(m - a).mean():.1f}")
+    rows = []
+    for flag in SCOTLAND_FLAGS + ["scotland_plays"]:
+        mask = (days[flag] == 1).to_numpy()
+        if mask.sum():
+            mean, lo, hi = masked_block_bootstrap(diff, mask.astype(float))
+            rows.append({"segment": flag, "days": int(mask.sum()), "baseline MAE": np.abs(base - a)[mask].mean(), "new MAE": np.abs(new - a)[mask].mean(),
+                         "change": mean, "lo": lo, "hi": hi, "baseline bias": (base - a)[mask].mean(), "new bias": (new - a)[mask].mean()})
+    print(pd.DataFrame(rows).round(0).to_string(index=False))
+
+
 def run_saturday(workers: int) -> None:
     run_parallel(_tasks(SATURDAY_VARIANTS, SEEDS), fit_task, RESULTS_SATURDAY, workers, init_worker36, "series36-saturday")
     bags = _bags(RESULTS_SATURDAY)
@@ -205,7 +231,8 @@ def run_saturday(workers: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["residuals", "football", "saturday"])
+    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland"])
     parser.add_argument("--workers", type=int, default=11)
     args = parser.parse_args()
-    {"residuals": run_residuals, "football": lambda: run_football(args.workers), "saturday": lambda: run_saturday(args.workers)}[args.stage]()
+    {"residuals": run_residuals, "football": lambda: run_football(args.workers), "saturday": lambda: run_saturday(args.workers),
+     "scotland": lambda: run_scotland(args.workers)}[args.stage]()

@@ -74,3 +74,25 @@ def test_a_known_hydro_night_is_flagged(concerts):
 def test_days_without_any_show_have_zero_capacity(concerts):
     quiet = concerts[concerts["any_show"] == 0]
     assert len(quiet) > 0 and (quiet["concert_capacity_k"] == 0).all()
+
+
+def test_scotland_flags_split_home_away_neutral_and_tournament():
+    sc = events.scotland_calendar().set_index("date")
+    assert sc.loc["2026-09-29", "scotland_home"] == 1 and sc.loc["2026-09-29", "scotland_away"] == 0         # Switzerland at Hampden
+    assert sc.loc["2025-09-08", "scotland_away"] == 1 and sc.loc["2025-09-08", "scotland_home"] == 0         # Belarus, neutral venue in Hungary
+    assert sc.loc["2026-06-14", "scotland_tournament"] == 1 and sc.loc["2026-06-14", "scotland_away"] == 0   # World Cup opener, 2am UK
+    assert sc.loc["2024-06-14", "scotland_tournament"] == 1                                                  # Euro 2024 opener
+
+
+def test_a_scotland_game_sets_exactly_one_kind_and_the_plays_flag():
+    sc = events.scotland_calendar()
+    kinds = sc[["scotland_home", "scotland_away", "scotland_tournament"]].sum(axis=1)
+    assert kinds.max() == 1
+    assert ((kinds > 0).astype(int) == sc["scotland_plays"]).all()
+    assert sc["scotland_plays"].sum() == 34  # 36 listed matches, the two scheduled for November 2026 are beyond the calendar's end
+
+
+def test_the_event_calendar_carries_every_flag_once_per_day():
+    cal = events.event_calendar()
+    assert cal["date"].is_unique and len(cal) == len(events.football_calendar())
+    assert {"scotland_home", "sat_big_home", "hydro_show"} <= set(cal.columns)

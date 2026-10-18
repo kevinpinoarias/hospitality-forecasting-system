@@ -5,6 +5,7 @@ EXPLORATORY (Series 36). Nothing here is wired into the feature pipeline or the 
 checks in src/experiments/run_series36_event_checks.py. The curated lists live in config/events/:
 
   football_matches.csv   team, date, opponent, venue (H home, A away, N neutral) - Celtic and Rangers, all competitions
+  scotland_matches.csv   date (UK date of kick-off), opponent, place, competition, side (H Hampden/home, A away, N neutral), kind (friendly, competitive, tournament)
   concert_days.csv       venue, date, capacity - one row per venue per day with a show (OVO Hydro, O2 Academy, SEC Armadillo)
 
 Sources and their limits are in docs/EVENTS_EXPLORATION_2026_10.md (the football list is incomplete in places; the concert
@@ -46,6 +47,25 @@ def football_calendar(first: str = FIRST_DAY, last: str = LAST_DAY) -> pd.DataFr
     return days
 
 
+def scotland_calendar(first: str = FIRST_DAY, last: str = LAST_DAY) -> pd.DataFrame:
+    """One row per day: the Scotland national team plays at home (Hampden), away or on neutral ground, or at a tournament.
+
+    `scotland_away` covers away and neutral-ground games that are not tournament games (friendlies abroad, qualifiers in neutral venues);
+    tournament games (Euro 2024, the 2026 World Cup group) are `scotland_tournament` only."""
+    matches = pd.read_csv(EVENTS_DIR / "scotland_matches.csv", parse_dates=["date"])
+    days = pd.DataFrame({"date": pd.date_range(first, last)})
+
+    def has(mask: pd.Series) -> pd.Series:
+        return days["date"].isin(matches[mask]["date"]).astype(int)
+
+    tournament = matches["kind"] == "tournament"
+    days["scotland_home"] = has(matches["side"] == "H")
+    days["scotland_away"] = has(matches["side"].isin(["A", "N"]) & ~tournament)
+    days["scotland_tournament"] = has(tournament)
+    days["scotland_plays"] = (days[["scotland_home", "scotland_away", "scotland_tournament"]].sum(axis=1) > 0).astype(int)
+    return days
+
+
 def concert_calendar(first: str = FIRST_DAY, last: str = LAST_DAY) -> pd.DataFrame:
     """One row per day: a show at each venue, whether there is any, and the summed capacity (each venue counted once a day)."""
     shows = pd.read_csv(EVENTS_DIR / "concert_days.csv", parse_dates=["date"]).drop_duplicates(["venue", "date"])
@@ -59,5 +79,5 @@ def concert_calendar(first: str = FIRST_DAY, last: str = LAST_DAY) -> pd.DataFra
 
 
 def event_calendar(first: str = FIRST_DAY, last: str = LAST_DAY) -> pd.DataFrame:
-    """Football and concert flags side by side, one row per day."""
-    return football_calendar(first, last).merge(concert_calendar(first, last), on="date")
+    """Club football, Scotland national team and concert flags side by side, one row per day."""
+    return football_calendar(first, last).merge(scotland_calendar(first, last), on="date").merge(concert_calendar(first, last), on="date")

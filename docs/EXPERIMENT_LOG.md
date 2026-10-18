@@ -3163,12 +3163,15 @@ write-up for the gaps.
 - **Football features in the model:** all days, MAE 908.2 → 899.3 (3 features) and 899.5 (5 features), changes −8.9 and −8.7 with intervals
   spanning zero; on the 39 new days both were worse (916 and 914 against 905).
 - **Saturday flag (pre-registered):** primary change −2 (−13, +10), replicate +4 (−10, +18). The rules fail. The earlier Saturday gain was chance.
+- **Scotland national team** (36 matches, 2024-2026; flags home, away, tournament; rules written before the run): nothing clear in the residual check
+  (7 home, 7 away, 3 World Cup days; the World Cup days ran £550 to £890 below the forecasts, interval spanning zero); the model with the three flags was
+  slightly worse, +3.8 (−2.0, +9.8) on MAE 908.2.
 - **Concerts:** a show at the **OVO Hydro** lifts sales by **+£324 (+63, +602)** a day over the manager's forecast and **+£366 (+167, +587)** over
   the model's, on 153 days; the O2 Academy and the Armadillo show nothing. The 39 new days agree (13 Hydro days, +£1,095 over the model against +£107).
 
 ### Conclusion
 
-1. **Football is not pursued as a model input** on this evidence. It is recorded in the weekly log for a later check with complete fixtures and kick-off times.
+1. **Football, club and national team, is not pursued as a model input** on this evidence. It is recorded in the weekly log for a later check with complete fixtures and kick-off times.
 2. **The Hydro is the one clear event signal.** A Hydro flag is the next test and needs its rules written down first; nothing event-related is
    in the model.
 3. **Caveats:** the idea came from five days chosen after their errors; the football list is incomplete (Rangers' European legs, kick-off times);
