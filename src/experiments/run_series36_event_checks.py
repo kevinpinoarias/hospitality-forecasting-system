@@ -9,6 +9,8 @@ in src/features/events.py):
   football    The 585-day rolling backtest (365-day start, 60-day blocks, seeds 0-24, the final model's recipe) with Celtic / Rangers features
               added to FINAL_FEATURES: "plays" (celtic_plays, rangers_plays, old_firm) and "home_away" (home and away flags per club + old_firm).
   scotland    The Scotland national team flags (scotland_home, scotland_away, scotland_tournament) added to the final model, rules in section 7 of the write-up.
+  hydro       The pre-registered Hydro test (section 9 of the write-up, committed before the run): hydro_show added to the final model, log1p and raw-pound,
+              seeds 0-24 and 100-124, plus a shuffled-flag placebo on seeds 0-24 and a verdict against the four rules.
   saturday    The pre-registered Saturday test: one flag, sat_big_home (a Saturday with Celtic or Rangers at home), on the raw-pound and log1p models,
               seeds 0-24 and a replicate on 100-124. Rules in docs/EVENTS_EXPLORATION_2026_10.md, section 4 (written before the run).
 
@@ -16,6 +18,7 @@ Run:  python -m src.experiments.run_series36_event_checks residuals
       python -m src.experiments.run_series36_event_checks football [--workers 11]
       python -m src.experiments.run_series36_event_checks saturday [--workers 11]
       python -m src.experiments.run_series36_event_checks scotland [--workers 11]
+      python -m src.experiments.run_series36_event_checks hydro [--workers 11]
 """
 
 from __future__ import annotations
@@ -40,6 +43,8 @@ HOLDOUT_PREDICTIONS = PROJECT_ROOT / "data" / "holdout" / "reports" / "results" 
 RESULTS_FOOTBALL = OUT_DIR / "series36_football.jsonl"
 RESULTS_SATURDAY = OUT_DIR / "series36_saturday.jsonl"
 RESULTS_SCOTLAND = OUT_DIR / "series36_scotland.jsonl"
+RESULTS_HYDRO = OUT_DIR / "series36_hydro.jsonl"
+PLACEBO_SEED = 20261018
 SEED_CHUNK = 5
 SEEDS = {"s0_24": list(range(25)), "s100_124": list(range(100, 125))}
 
@@ -50,6 +55,11 @@ FOOTBALL_VARIANTS = {
 }
 SCOTLAND_FLAGS = ["scotland_home", "scotland_away", "scotland_tournament"]
 SCOTLAND_VARIANTS = {"baseline": ("log1p", []), "scotland": ("log1p", SCOTLAND_FLAGS)}
+HYDRO_VARIANTS = {  # name -> (target, extra features, seed sets)
+    "log_base": ("log1p", [], ("s0_24", "s100_124")), "log_flag": ("log1p", ["hydro_show"], ("s0_24", "s100_124")),
+    "raw_base": ("raw", [], ("s0_24", "s100_124")), "raw_flag": ("raw", ["hydro_show"], ("s0_24", "s100_124")),
+    "log_placebo": ("log1p", ["hydro_placebo"], ("s0_24",)),
+}
 SATURDAY_VARIANTS = {  # name -> (target, extra features)
     "raw_base": ("raw", []), "raw_flag": ("raw", ["sat_big_home"]),
     "log_base": ("log1p", []), "log_flag": ("log1p", ["sat_big_home"]),
@@ -117,10 +127,23 @@ def run_residuals() -> None:
 # --------------------------------------------------------------------------- backtests
 
 
+def placebo_flag(dates: pd.Series, flag: pd.Series, seed: int) -> np.ndarray:
+    """The flags shuffled among the days of the same weekday (the count of flagged days per weekday is unchanged)."""
+    rng = np.random.default_rng(seed)
+    out = np.zeros(len(flag), dtype=int)
+    weekday = pd.to_datetime(dates).dt.dayofweek.to_numpy()
+    values = flag.to_numpy()
+    for d in range(7):
+        idx = np.where(weekday == d)[0]
+        out[idx] = rng.permutation(values[idx])
+    return out
+
+
 def init_worker36() -> None:
     df, folds = load_protocol()
     _STATE["df"], _STATE["folds"] = df.merge(event_calendar(), on="date", how="left"), folds
     assert _STATE["df"]["sat_big_home"].notna().all()
+    _STATE["df"]["hydro_placebo"] = placebo_flag(_STATE["df"]["date"], _STATE["df"]["hydro_show"], PLACEBO_SEED)
 
 
 def fit_task(task: dict) -> dict:
@@ -207,6 +230,43 @@ def run_scotland(workers: int) -> None:
     print(pd.DataFrame(rows).round(0).to_string(index=False))
 
 
+def run_hydro(workers: int) -> None:
+    tasks = [{"id": f"{v}_{st}_{i}", "variant": v, "set": st, "target": target, "extra": extra, "seeds": SEEDS[st][i:i + SEED_CHUNK]}
+             for v, (target, extra, sets) in HYDRO_VARIANTS.items() for st in sets for i in range(0, 25, SEED_CHUNK)]
+    run_parallel(tasks, fit_task, RESULTS_HYDRO, workers, init_worker36, "series36-hydro")
+    bags = _bags(RESULTS_HYDRO)
+    days = _protocol_days()
+    a, m = days["actual"].to_numpy(), days["manual"].to_numpy()
+    hydro = (days["hydro_show"] == 1).to_numpy()
+    wd = days["date"].dt.dayofweek.to_numpy()
+    segments = {"all days": np.ones(len(a), bool), "Hydro days": hydro, "non-Hydro days": ~hydro, "Mon-Thu": wd <= 3, "Fri-Sun": wd >= 4,
+                "Hydro Mon-Thu": hydro & (wd <= 3), "Hydro Fri-Sun": hydro & (wd >= 4)}
+    print(f"585 test days; Hydro days {int(hydro.sum())}; manager MAE {np.abs(m - a).mean():.1f}")
+    rows, result = [], {}
+    for label, base_key, new_key, st in (("log1p seeds 0-24", "log_base", "log_flag", "s0_24"), ("log1p seeds 100-124", "log_base", "log_flag", "s100_124"),
+                                         ("raw-GBP seeds 0-24", "raw_base", "raw_flag", "s0_24"), ("raw-GBP seeds 100-124", "raw_base", "raw_flag", "s100_124"),
+                                         ("PLACEBO log1p seeds 0-24", "log_base", "log_placebo", "s0_24")):
+        base, new = bags[(base_key, st)], bags[(new_key, st)]
+        diff = np.abs(new - a) - np.abs(base - a)
+        for name, mask in segments.items():
+            mean, lo, hi = masked_block_bootstrap(diff, mask.astype(float))
+            result[(label, name)] = (mean, lo, hi)
+            rows.append({"run": label, "segment": name, "days": int(mask.sum()), "base MAE": np.abs(base - a)[mask].mean(), "new MAE": np.abs(new - a)[mask].mean(),
+                         "change": mean, "lo": lo, "hi": hi, "base bias": (base - a)[mask].mean(), "new bias": (new - a)[mask].mean()})
+    pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
+    print(pd.DataFrame(rows).round(1).to_string(index=False))
+    log0, log1, plc = result[("log1p seeds 0-24", "all days")], result[("log1p seeds 100-124", "all days")], result[("PLACEBO log1p seeds 0-24", "all days")]
+    h, u = result[("log1p seeds 0-24", "Hydro days")], result[("log1p seeds 0-24", "non-Hydro days")]
+    rules = {"1 primary: pooled interval entirely below zero (seeds 0-24)": log0[2] < 0,
+             "2 replicate: pooled interval entirely below zero (seeds 100-124)": log1[2] < 0,
+             "3 gain comes from Hydro days, non-Hydro days not clearly hurt": h[0] < 0 and h[0] < u[0] and not u[1] > 0,
+             "4 placebo: pooled interval NOT entirely below zero": not (plc[2] < 0)}
+    print("\nVERDICT against the pre-registered rules:")
+    for k, v in rules.items():
+        print(f"  [{'PASS' if v else 'FAIL'}] {k}")
+    print("  => " + ("PASS: supported on the backtest; enters the weekly log as a candidate, not promoted" if all(rules.values()) else "FAIL: not pursued; record as Series 37"))
+
+
 def run_saturday(workers: int) -> None:
     run_parallel(_tasks(SATURDAY_VARIANTS, SEEDS), fit_task, RESULTS_SATURDAY, workers, init_worker36, "series36-saturday")
     bags = _bags(RESULTS_SATURDAY)
@@ -231,8 +291,8 @@ def run_saturday(workers: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland"])
+    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro"])
     parser.add_argument("--workers", type=int, default=11)
     args = parser.parse_args()
     {"residuals": run_residuals, "football": lambda: run_football(args.workers), "saturday": lambda: run_saturday(args.workers),
-     "scotland": lambda: run_scotland(args.workers)}[args.stage]()
+     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers)}[args.stage]()

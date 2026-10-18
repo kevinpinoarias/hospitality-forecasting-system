@@ -249,3 +249,38 @@ ahead). *Fail*: the result is logged as Series 37, the flag is not pursued, and 
 
 **Expectation, stated in advance.** If the effect is as large as the residual check suggests and the model can learn it, the pooled gain is a few tens of pounds a day. If the model already
 captures it through the manager's forecast and the weekday, the change will be near zero.
+
+### 9.4 Result (run 18 October 2026, after the rules were committed in `96e3ed2`)
+
+Average miss in £/day on the 585 backtest days (change = with the flag minus without; 95% interval); 153 Hydro days, 432 others. Manager MAE 1,074.5.
+
+| Run | All days | Hydro days | Other days |
+|---|---|---|---|
+| log1p, seeds 0-24 | 908.2 → 904.9; **−3.3 (−17.9 to +10.0)** | 958.8 → 913.8; **−45.0 (−89.5 to −5.5)** | +11.4 (−1.0 to +23.7) |
+| log1p, seeds 100-124 | 908.9 → 907.0; **−1.9 (−15.5 to +10.9)** | −34.4 (−75.4 to +2.3) | +9.7 (−3.8 to +22.7) |
+| raw-£, seeds 0-24 (secondary) | 916.0 → 908.2; −7.8 (−23.6 to +5.1) | −16.8 (−58.8 to +18.7) | −4.7 |
+| raw-£, seeds 100-124 (secondary) | −9.5 (−24.6 to +4.3) | −21.1 (−63.5 to +15.3) | −5.4 |
+| **Placebo** (shuffled flags), log1p, seeds 0-24 | +0.4 (−4.1 to +4.4) | −4.5 (−12.7 to +2.5) | +2.2 |
+
+Bias on Hydro days (forecast minus actual, log1p): −£352 without the flag, −£109 with it. On the other days: +£19 without, −£62 with.
+
+**Verdict against the rules: FAIL.**
+
+| Rule | Result |
+|---|---|
+| 1. Primary: pooled interval entirely below zero | **FAIL** (−3.3, interval −17.9 to +10.0) |
+| 2. Replicate: pooled interval entirely below zero | **FAIL** (−1.9, interval −15.5 to +10.9) |
+| 3. Gain comes from Hydro days and the other days are not clearly hurt | PASS |
+| 4. Placebo does not show a clear gain | PASS (+0.4) |
+
+The shuffled flag does nothing, so the test is sound, and the flag really does help on Hydro days: the average miss on those days falls by about £34 to £45, the bias there shrinks from −£352 to −£109, and the
+gain is far larger than the placebo's. But the model pays for it on the other 432 days (+£10 to +£11 a day, nearly clear), so the pooled change is a few pounds and well inside the noise. The flag is
+not added to the model and is not pursued as an input, under the pre-registered rule.
+
+**Context only, the 39 new days** (seen before the rules were written): one fit on the 950 rows, with and without the flag. MAE 905 → 872 (−£33); Hydro days 1,232 → 1,072; other days 741 → 771. The
+same pattern as the backtest, which says the pattern is real and not that the model has become better overall.
+
+**Reading, and an idea that is NOT tested.** The flag carries real information about Hydro days (consistent in the residual check, the model fits, the replicate and the new days), but a tree model that
+learns it as one more feature loses a little on ordinary days. A separate, additive correction on Hydro days only (the way Series 24 handles weekends), instead of a new model input, might keep the
+Hydro-day gain without the ordinary-day cost. That is a new hypothesis, chosen after seeing this result, so it needs its own rules and a replicate before it is tried, and it would not be a clean test on
+these 585 days either. It is recorded here and nowhere else.

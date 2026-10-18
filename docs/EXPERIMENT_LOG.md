@@ -3177,6 +3177,40 @@ write-up for the gaps.
 3. **Caveats:** the idea came from five days chosen after their errors; the football list is incomplete (Rangers' European legs, kick-off times);
    the concert list is about 6-12% short for the Hydro and has no non-music events.
 
+## Series 37 — A Hydro-Show Flag as a Model Input
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py hydro` · **Rules** (committed before the run, `96e3ed2`) and full results:
+`docs/EVENTS_EXPLORATION_2026_10.md`, sections 9.1-9.4 · **Raw data**: `series19_21/series36_hydro.jsonl`
+
+### Context
+
+Series 36's residual check found that a show at the OVO Hydro lifts sales by about £324 against the manager's forecast and £366 against the model's (153 flagged days of 585). This tests whether the
+final model does better when it is told about the show.
+
+### Hypothesis
+
+**H37**: adding `hydro_show` (a music or comedy show listed at the Hydro that day) lowers the final model's MAE.
+
+### Method
+
+Pre-registered: log1p final recipe with and without the flag, 585-day rolling-origin backtest (expanding training window, ten 60-day blocks), seeds 0-24 and a replicate on 100-124, the raw-£ model as a
+secondary result, a placebo with the flags shuffled among days of the same weekday, and four pass conditions (pooled interval entirely below zero on both seed sets; gain from Hydro days without clearly
+hurting the others; placebo shows no clear gain). Disclosed in advance: the Hydro was chosen from a residual check on these same days.
+
+### Results
+
+Pooled change **−3.3 (−17.9, +10.0)** on seeds 0-24 and **−1.9 (−15.5, +10.9)** on seeds 100-124. On Hydro days **−45.0 (−89.5, −5.5)** and −34.4 (−75.4, +2.3); on the other days +11.4 (−1.0, +23.7) and
++9.7 (−3.8, +22.7). Placebo +0.4 (−4.1, +4.4). Raw-£ pooled −7.8 (−23.6, +5.1) and −9.5 (−24.6, +4.3). Rules 1 and 2 fail, 3 and 4 pass. On the 39 new days (context): 905 → 872.
+
+### Conclusion
+
+1. **H37 is rejected under the pre-registered rule.** The flag helps on the Hydro days (bias there −£352 → −£109) and the placebo shows the test is sound, but the model gives the gain back on the other
+   432 days, so the overall change is inside the noise.
+2. **The Hydro effect itself stands** as a fact about the venue (residual check, model fits, replicate, new days). It is not a model input on this evidence.
+3. **An untested idea:** a Hydro-days-only additive correction in the style of Series 24, instead of a model feature. It is a new hypothesis chosen after this result and needs its own rules.
+4. **Caveats:** the idea came from five days chosen after their errors and the flag from a residual check on the same backtest days; the list is Songkick's (music and comedy only, one sampled month checked
+   for completeness).
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
