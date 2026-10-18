@@ -358,3 +358,39 @@ other days unchanged.
 
 **Decision.** Not pursued; logged as Series 38. The Hydro effect is recorded as a fact about the venue and a hand rule for the rota planner (a Hydro night has averaged about £350 above what the models and the manager expect;
 the last two blocks suggest less), not as a model input or an automatic correction. Hydro nights are recorded in the weekly log so the effect can be re-estimated on clean days.
+
+## 11. The Hydro flag inside the post model — test rules (written 18 October 2026, before any code or run)
+
+**Where this stands.** Four combinations were asked for. (1) A plain raw-£ model, Monday to Sunday, with the Hydro flag and nothing else: done in section 9.4 (secondary run; pooled −7.8 and −9.5, Hydro days −16.8 and −21.1, intervals
+spanning zero). (2) The log model plus the Hydro correction on every day: done in section 10.1 (primary base). (4) The post model plus the Hydro correction: done in section 10.1 (secondary base). **(3) the post model with the Hydro
+flag as an input to its own models has not been run.** It is the only new test here.
+
+**What is built.** The post model is the log model on Monday to Thursday; on Friday the log model with `A_all` (sales on the same weekday 1-4 weeks ago); on Saturday the raw-£ model with `A_lags` (sales 2 and 3 weeks ago); on
+Sunday the log model with option `B` (weekend interactions); and the Saturday and Sunday correction (half-life 8 weeks, strength 0.5). The weekday options are those chosen in Series 27 / 31 (Friday A_all, Saturday A_lags, Sunday
+B) and are **not re-chosen**. The flagged post model adds `hydro_show` to the inputs of every one of these models (Monday-Thursday: the log model with the flag, already fitted in section 9; Friday, Saturday, Sunday: the same
+options fitted again with the flag) and leaves everything else, including the correction, unchanged. The correction is computed from the flagged post model's own errors. No Hydro correction is added on top.
+
+**Comparison.** The same post model without the flag (the forecasts used as the secondary base in section 10.1). Seeds 0-24 and a replicate on 100-124. A sanity refit of the three weekend options without the flag (seeds 0-24)
+must reproduce the stored post model to within £0.05 a day, or the comparison is not like for like and the result is void.
+
+**Placebo.** The same fits with the shuffled flag of section 9.3 (seed 20261018), seeds 0-24.
+
+**Metric.** Change in MAE (with the flag minus without), 95% moving-block bootstrap, on all 585 days, on the 153 Hydro days, on the 432 other days, and by Hydro day-type (Monday-Thursday, Friday, Saturday, Sunday; the last
+three are descriptive).
+
+**It passes only if all of these hold.**
+1. *Hydro days*: the change on Hydro days has a 95% interval entirely below zero on seeds 0-24 **and** on seeds 100-124.
+2. *Pooled*: the point estimate over all 585 days is at or below zero on both seed sets. (Pooled intervals are not a rule: Hydro days are a quarter of the days.)
+3. *Other days*: the change on non-Hydro days has an interval that is not entirely above zero on both seed sets (the flag must not clearly hurt them, as in section 9).
+4. *Placebo*: the shuffled flag's change on its own flagged days has an interval that is not entirely below zero.
+
+**Reported, not rules.** The weekday table; the comparison with the Hydro correction (section 10.1) on the same base; the 39 new days (context only).
+
+**Decision.** *Pass*: a candidate for the weekly log, **not** added to the product model (promotion needs 26 weeks on Hydro nights with an interval excluding zero and a source for the Hydro programme at forecast time). *Fail*: logged as
+Series 39 and not pursued.
+
+**Disclosure.** This is the third look at the same 585 days for the same idea, and the post-model version was proposed after the weekday table showed the effect concentrated on Saturday (26 Hydro Saturdays). A pass would
+therefore be weaker evidence than the numbers suggest; the weekly log is the clean test.
+
+**Expectation, stated in advance.** The post model already lifts Saturday forecasts (its Saturday bias on Hydro nights is −£530 against −£1,191 for the plain log model), so the room for the flag is smaller than in Series 37. Gains
+of a few pounds on Hydro days, intervals spanning zero, are the likely outcome.
