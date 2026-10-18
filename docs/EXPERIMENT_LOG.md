@@ -3275,6 +3275,35 @@ Saturday −63 to −78, **Sunday +62 and +39**. Sanity refit identical (differe
 3. **For the weekly log:** record Hydro nights and re-estimate on clean days; consider a Saturday-only version only after the log has a season of Hydro Saturdays.
 4. **Caveats:** third look at the same 585 days for one idea; the post-model version was proposed after a weekday slice showed Saturday; the 39 new days were not run for this test.
 
+## Series 40 — A Thursday-Only Hydro Flag
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py hydrothu` · **Rules** (committed before any code, `7d827e0`) and results: `docs/EVENTS_EXPLORATION_2026_10.md`, sections 12 and 12.1
+
+### Context
+
+Series 37 to 39: every Hydro input gained a little on Hydro days, never clearly, and lost on Sundays and Mondays. The weekday tables put the gain on Thursday (17 Hydro Thursdays, plain log model bias −£824). Thursday was the best of seven weekdays in results already seen, so this is a post-hoc slice.
+
+### Hypothesis
+
+**H40**: a flag for a Hydro show on a Thursday lowers the log model's error on those Thursdays without hurting the other days.
+
+### Method
+
+Pre-registered: `hydro_thu` (17 of 585 days) added to the log model; 585-day rolling-origin backtest; seeds 0-24 and the replicate 100-124; a placebo with the flags reassigned among Thursdays (seed 20261018); four rules (Hydro-Thursday interval below zero on both seed sets;
+everything else not clearly hurt; at least 13 of 17 Hydro Thursdays better; placebo not clearly helped).
+
+### Results
+
+Hydro Thursdays **−274.8 (−436.4, −92.3)** and **−280.5 (−431.3, −113.0)**; the other 568 days +1.0 (−6.5, +8.3) and +4.2 (−2.5, +10.6); pooled −7.1 and −4.1. 14 of 17 better (p = 0.006). Bias on those days −£824 → −£357. **Placebo −29.0 (−57.8, −4.8) on its 20 flagged days.**
+Rules 1, 2 and 3 pass; rule 4 fails. On the 39 new days (three Hydro Thursdays, context): their miss 1,780 → 1,232, the others 832 → 829.
+
+### Conclusion
+
+1. **Formally rejected: the placebo rule fails.** One random draw of 20 Thursdays also gained £29 with an interval below zero, so the test cannot be called clean by its own rule.
+2. **Substantively the strongest lead of the Hydro series:** about £275 on Hydro Thursdays (more than six times the all-days flag), in both seed sets, with nothing lost elsewhere and 14 of 17 days better. The placebo's gain is a tenth of that.
+3. **Not known:** whether the placebo draw was a fluke. A permutation check (many random sets of 17 Thursdays) would say how often chance gives £275; it needs its own rules.
+4. **Caveats:** a fourth look at the same 585 days, the weekday chosen after seeing the results, only 17 flagged days; the weekly log is the clean test and will record Hydro Thursdays.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final

@@ -468,3 +468,34 @@ and not pursued; Hydro Thursdays are recorded in the weekly log all the same.
 
 **Expectation, stated in advance.** If Thursday is a real effect, the Hydro-Thursday change should be of the order of −£100 to −£200 (about what the full flag showed) and the pooled change −£3 to −£6 with an interval spanning zero. If it was a
 lucky slice, the replicate seeds and the placebo will show it.
+
+### 12.1 Result (run 18 October 2026, after the rules were committed in `7d827e0`)
+
+Average miss in £/day on the 585 backtest days; change = log model with `hydro_thu` minus without (95% interval). 17 Hydro Thursdays, 568 other days.
+
+| | Hydro Thursdays (17) | All other days (568) | All 585 days |
+|---|---|---|---|
+| Seeds 0-24 | 925.6 → 650.9; **−274.8 (−436.4 to −92.3)** | +1.0 (−6.5 to +8.3) | 908.2 → 901.2; −7.1 (−17.1 to +1.9) |
+| Seeds 100-124 | 930.6 → 650.1; **−280.5 (−431.3 to −113.0)** | +4.2 (−2.5 to +10.6) | −4.1 (−13.2 to +4.3) |
+| **Placebo** (17 flags reassigned among Thursdays; it came out as 20 flagged days) | 507.7 → 478.7; **−29.0 (−57.8 to −4.8)** | +1.7 (−2.8 to +6.3) | +0.6 (−3.8 to +5.2) |
+
+Bias on Hydro Thursdays (forecast minus actual): −£824 without the flag, −£357 with it. Other Thursdays: −£7.6 and −£6.0 (intervals span zero). **14 of the 17 Hydro Thursdays are better with the flag** (one-sided sign test p = 0.006). By block (seeds
+0-24) the change is negative in seven blocks and positive in one (block 2, +£116 on three days).
+
+**Verdict against the rules: FAIL, on rule 4 alone.**
+
+| Rule | Result |
+|---|---|
+| 1. Hydro-Thursday interval entirely below zero on both seed sets | PASS (−436 to −92; −431 to −113) |
+| 2. Everything else not clearly hurt | PASS (−6.5 to +8.3; −2.5 to +10.6) |
+| 3. Sign test, at least 13 of 17 better | PASS (14, p = 0.006) |
+| 4. Placebo interval not entirely below zero | **FAIL** (−57.8 to −4.8 on the shuffled flags' own days) |
+
+**Reading.** The Thursday flag is by far the strongest result of the whole Hydro series: a gain of about £275 on the 17 Hydro Thursdays, more than six times the all-days flag's £45, in both seed sets, with nothing lost elsewhere. But the one
+placebo draw (a random 20 Thursdays) also came out slightly better with the flag, by £29, interval below zero, and the pre-registered rule says a placebo that looks like a gain means the test cannot be trusted. The placebo's own days happened to be
+unusually easy ones (average miss 508 against 926 for the real Hydro Thursdays), so a small gain there is the kind of thing one random draw can produce, but a single draw cannot say how often. **The formal result is a fail; whether it is also a
+fluke of that draw is not known.** A permutation check (many random shuffles, to see how often a random set of 17 Thursdays gains £275) would answer it; it is not part of the rules and would need its own rules first.
+
+**Context only, the 39 new days.** There were three Hydro Thursdays (10 Sep André Rieu, 1 Oct and 15 Oct; the rules said two, which was a miscount): their average miss 1,780 → 1,232, the other 36 days 832 → 829, all 39 days 905 → 860.
+
+**Decision.** Logged as Series 40, formally a fail. No change to the model. The Thursday finding goes to the weekly log as the strongest lead of the series, with the placebo caveat attached.
