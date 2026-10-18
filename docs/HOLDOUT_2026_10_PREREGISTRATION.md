@@ -149,3 +149,15 @@ sales figure or score had been read.
 fitted on). Only the 39 new days take the newly downloaded weather. All features are then recomputed over the combined series with
 the pipeline's own functions. The code checks that doing this reproduces the frozen features on the 979 old days to within 1e-6, and
 stops otherwise (`overlay_frozen_weather` in `src/experiments/run_series35_holdout.py`). Nothing else in this document changes.
+
+## 13. Addendum, Sunday 18 October 2026 — rebuild of the working copies
+
+At 15:17 on 18 October the working folders under `data/holdout/` (`features`, `interim`, `processed`, `raw` and the three `models*` folders) were emptied by something
+outside this project's code. They were rebuilt on the same day with the same script (`prepare`, `fit`, `score`) from the same inputs, which were checked first against
+the hashes in section 2. **The rebuilt models predict identically**: all 1,420 scored forecasts equal the original scoring (differences 0.000000 on forecast, actual and
+manager), and `results_simple.md` is byte-identical.
+
+The file hashes of the refitted models differ from `docs/holdout_log/fit_fingerprints.json` because CatBoost writes a random model id into every saved model; identical
+training does not give identical files. That file is **left unchanged**, because it is the record that the models existed before scoring. The new hashes, the hash of the
+predictions and the checks are in `docs/holdout_log/rebuild_2026-10-18.json`. **From the first Monday run (19 October) the saved model files are fitted once, fingerprinted at
+issue time and never refitted**, so the file hash identifies what issued a forecast.
