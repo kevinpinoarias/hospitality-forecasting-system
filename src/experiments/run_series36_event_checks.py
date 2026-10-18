@@ -19,6 +19,8 @@ in src/features/events.py):
               against the stored post model; seeds 0-24 and 100-124, a shuffled-flag placebo and a sanity refit without the flag. Verdict against four rules.
   hydrothu    The pre-registered Thursday-only Hydro flag (section 12 of the write-up, committed before this code): hydro_thu = a Hydro show on a Thursday, added to the
               log model, seeds 0-24 and 100-124, a placebo shuffled among Thursdays, a sign test on the 17 Hydro Thursdays and a verdict against four rules.
+  thuperm     The repeated placebo for the Thursday flag (section 13 of the write-up, committed before this code): 200 random reassignments of the Thursday flags
+              among all Thursdays, 5 seeds each, each scored on its own flagged days, against the real flag's change on the same 5 seeds.
   saturday    The pre-registered Saturday test: one flag, sat_big_home (a Saturday with Celtic or Rangers at home), on the raw-pound and log1p models,
               seeds 0-24 and a replicate on 100-124. Rules in docs/EVENTS_EXPLORATION_2026_10.md, section 4 (written before the run).
 
@@ -30,6 +32,7 @@ Run:  python -m src.experiments.run_series36_event_checks residuals
       python -m src.experiments.run_series36_event_checks hydrocorr
       python -m src.experiments.run_series36_event_checks postflag [--workers 11]
       python -m src.experiments.run_series36_event_checks hydrothu [--workers 11]
+      python -m src.experiments.run_series36_event_checks thuperm [--workers 11]
 """
 
 from __future__ import annotations
@@ -57,6 +60,8 @@ RESULTS_SCOTLAND = OUT_DIR / "series36_scotland.jsonl"
 RESULTS_HYDRO = OUT_DIR / "series36_hydro.jsonl"
 RESULTS_POSTFLAG = OUT_DIR / "series36_postflag.jsonl"
 RESULTS_THU = OUT_DIR / "series36_hydrothu.jsonl"
+RESULTS_PERM = OUT_DIR / "series36_thuperm.jsonl"
+PERM_DRAWS = 200
 PLACEBO_SEED = 20261018
 SEED_CHUNK = 5
 SEEDS = {"s0_24": list(range(25)), "s100_124": list(range(100, 125))}
@@ -515,6 +520,70 @@ def run_hydrothu(workers: int) -> None:
     print("  => " + ("PASS: a candidate for the weekly log, not promoted" if all(rules.values()) else "FAIL: not pursued; record as Series 40"))
 
 
+def fit_task_perm(task: dict) -> dict:
+    started = time.time()
+    df = _STATE["df"].copy()
+    df["perm_flag"] = placebo_flag(df["date"], df["hydro_thu"], task["perm_seed"])
+    per_seed = bagged_log1p_predictions(df, _STATE["folds"], list(FINAL_FEATURES) + ["perm_flag"], dict(FINAL_PARAMS), task["seeds"])
+    return {"id": task["id"], "variant": "perm", "set": "perm", "draw": task["draw"], "per_seed": [[round(float(x), 2) for x in r] for r in per_seed],
+            "seconds": round(time.time() - started, 1)}
+
+
+def run_thuperm(workers: int) -> None:
+    from src.experiments.series19_21_common import read_done
+
+    tasks = [{"id": f"perm_{i}", "draw": i, "perm_seed": PLACEBO_SEED + i, "seeds": list(range(5))} for i in range(1, PERM_DRAWS + 1)]
+    run_parallel(tasks, fit_task_perm, RESULTS_PERM, workers, init_worker36, "series36-thuperm")
+    done = read_done(RESULTS_PERM)
+
+    df, folds = load_protocol()
+    frame = df.merge(event_calendar(), on="date", how="left")
+    frame["hydro_thu"] = frame["hydro_show"] * (frame["date"].dt.dayofweek == 3).astype(int)
+    days = _protocol_days().merge(frame[["date", "hydro_thu"]], on="date", how="left")
+    a = days["actual"].to_numpy()
+    real_flag = (days["hydro_thu"] == 1).to_numpy()
+
+    def first_chunk(path, record_id: str) -> np.ndarray:
+        rec = read_done(path)[record_id]
+        arr = np.array(rec["per_seed"])
+        assert arr.shape[0] == 5
+        return arr.mean(axis=0)
+
+    base = first_chunk(RESULTS_HYDRO, "log_base_s0_24_0")
+    real = first_chunk(RESULTS_THU, "log_thu_s0_24_0")
+    real_change = float((np.abs(real - a) - np.abs(base - a))[real_flag].mean())
+    changes, counts = [], []
+    for i in range(1, PERM_DRAWS + 1):
+        pred = np.array(done[f"perm_{i}"]["per_seed"]).mean(axis=0)
+        flag_all = placebo_flag(frame["date"], frame["hydro_thu"], PLACEBO_SEED + i)
+        flag_days = days[["date"]].merge(pd.DataFrame({"date": frame["date"], "f": flag_all}), on="date", how="left")["f"].to_numpy() == 1
+        changes.append(float((np.abs(pred - a) - np.abs(base - a))[flag_days].mean()))
+        counts.append(int(flag_days.sum()))
+    ch = np.array(changes)
+    rank = int((ch <= real_change).sum())
+    p = (rank + 1) / (len(ch) + 1)
+    print(f"real flag, 5 seeds: change on its {int(real_flag.sum())} Hydro Thursdays = {real_change:+.1f} (25-seed figure was -274.8)")
+    print(f"{len(ch)} placebo draws, flagged scored days per draw: min {min(counts)}, median {int(np.median(counts))}, max {max(counts)}")
+    print(f"placebo change on own flagged days: mean {ch.mean():+.1f}, 5th pct {np.percentile(ch, 5):+.1f}, median {np.median(ch):+.1f}, 95th pct {np.percentile(ch, 95):+.1f}, "
+          f"best (most negative) {ch.min():+.1f}, worst {ch.max():+.1f}")
+    print(f"draws at least as good as the real flag: {rank} of {len(ch)} -> one-sided p = {p:.4f}")
+    first = changes[0]
+    print(f"the first placebo of Series 40 (seed {PLACEBO_SEED}) gave -29.0 at 25 seeds; draw 1 here (seed {PLACEBO_SEED + 1}) gave {first:+.1f}; share of draws more negative than -29.0: {(ch <= -29.0).mean():.3f}")
+    rule1 = p <= 0.05
+    best = ch.min()
+    rule2 = (rank <= 2) or (real_change <= 2 * best)
+    print("\nVERDICT against the pre-registered rules:")
+    print(f"  [{'PASS' if rule1 else 'FAIL'}] 1 rank: real change beats at least 95% of placebo draws (p = {p:.4f})")
+    print(f"  [{'PASS' if rule2 else 'FAIL'}] 2 size: beyond all but two draws (rank {rank}) or at least twice the best placebo ({best:+.1f}) -> {real_change:+.1f}")
+    if rule1 and rule2:
+        print("  => unlikely to be chance on the backtest: the leading candidate for the weekly log (not promoted)")
+    elif not rule1:
+        print("  => indistinguishable from a random set of Thursdays: dropped to a note")
+    else:
+        print("  => unclear")
+    pd.Series(changes, name="placebo_change").to_csv(OUT_DIR / "series36_thuperm_changes.csv", index=False)
+
+
 def run_saturday(workers: int) -> None:
     run_parallel(_tasks(SATURDAY_VARIANTS, SEEDS), fit_task, RESULTS_SATURDAY, workers, init_worker36, "series36-saturday")
     bags = _bags(RESULTS_SATURDAY)
@@ -539,8 +608,8 @@ def run_saturday(workers: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro", "hydrocorr", "postflag", "hydrothu"])
+    parser.add_argument("stage", choices=["residuals", "football", "saturday", "scotland", "hydro", "hydrocorr", "postflag", "hydrothu", "thuperm"])
     parser.add_argument("--workers", type=int, default=11)
     args = parser.parse_args()
     {"residuals": run_residuals, "football": lambda: run_football(args.workers), "saturday": lambda: run_saturday(args.workers),
-     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers), "hydrocorr": run_hydrocorr, "postflag": lambda: run_postflag(args.workers), "hydrothu": lambda: run_hydrothu(args.workers)}[args.stage]()
+     "scotland": lambda: run_scotland(args.workers), "hydro": lambda: run_hydro(args.workers), "hydrocorr": run_hydrocorr, "postflag": lambda: run_postflag(args.workers), "hydrothu": lambda: run_hydrothu(args.workers), "thuperm": lambda: run_thuperm(args.workers)}[args.stage]()

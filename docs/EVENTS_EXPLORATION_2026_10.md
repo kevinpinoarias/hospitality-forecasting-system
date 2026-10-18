@@ -523,3 +523,27 @@ If rule 1 fails, the Thursday result is **indistinguishable from what a random s
 are noisier than 25; the real flag and the baseline use the same five, so the comparison is fair but the real change at 5 seeds will differ a little from the −£275 at 25 seeds.
 
 **Expectation, stated in advance.** If the Thursday effect is real, the real change should sit far in the tail (a p of 0.01 or lower), with most placebo draws between about +£20 and −£40.
+
+### 13.1 Result (run 18 October 2026, after the rules were committed in `6408b40`)
+
+200 random reassignments of the Thursday flags among all Thursdays, the log model refitted for each on 5 seeds, each scored on its own flagged days among the 585 backtest days (14 to 27 flagged days per draw, median 20). Change in average miss, £/day (negative is a gain).
+
+| | Change on its own flagged days |
+|---|---|
+| **Real Hydro-Thursday flag** (17 days, same 5 seeds; the 25-seed figure was −274.8) | **−245.3** |
+| Placebo draws: mean | +4.4 |
+| Placebo draws: median | +3.7 |
+| Placebo draws: 5th / 95th percentile | −28.5 / +34.6 |
+| Placebo draws: best (most negative) / worst | −56.3 / +66.0 |
+| Draws at least as good as the real flag | **0 of 200** (one-sided p = 0.005, the smallest value 200 draws can give) |
+
+Series 40's single placebo (−29.0 at 25 seeds) sits at about the 4th to 5th percentile of this distribution (4.5% of the draws are more negative than −29.0): a lucky draw, though not an absurd one.
+
+**Verdict against the rules: both pass.** Rule 1 (rank): the real change beats 100% of the draws (p = 0.005 ≤ 0.05). Rule 2 (size): beyond every draw, and about 4.4 times the best placebo (−245.3 against −56.3).
+
+**Reading.** The Thursday flag's gain on its 17 days is far outside what random Thursdays produce: no draw out of 200 came near it, and the placebo draws centre on zero (+4) as they should. **On the backtest, the Hydro-Thursday effect is not chance.**
+What this does and does not settle: the draws ask "could a random set of Thursdays look this good?" (no). They do not ask "could the best of seven weekdays look this good by luck?". A rough allowance for seven weekdays, multiplying p by 7, gives about 0.035, still below 0.05, but the allowance is mine and not a simulation. And it is still a fourth look at the same
+585 days, with the weekday picked after seeing the results.
+
+**Decision.** The Thursday flag is the **leading candidate for the weekly log** (not promoted, not in the product model). Series 40 stays recorded as a formal fail on its own rule 4; this result is its follow-up (Series 41). To promote it the weekly log needs 26 weeks of Hydro Thursdays with an
+interval excluding zero (the pattern so far is about one Hydro Thursday a month, 17 in 19 months, so a useful number takes well over a year; a Saturday-and-Thursday version would arrive faster), and a source for the Hydro programme at forecast time.

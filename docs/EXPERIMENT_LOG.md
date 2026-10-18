@@ -3304,6 +3304,33 @@ Rules 1, 2 and 3 pass; rule 4 fails. On the 39 new days (three Hydro Thursdays, 
 3. **Not known:** whether the placebo draw was a fluke. A permutation check (many random sets of 17 Thursdays) would say how often chance gives £275; it needs its own rules.
 4. **Caveats:** a fourth look at the same 585 days, the weekday chosen after seeing the results, only 17 flagged days; the weekly log is the clean test and will record Hydro Thursdays.
 
+## Series 41 — The Thursday Flag Against 200 Random Placebos
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py thuperm` · **Rules** (committed before any code, `6408b40`) and results: `docs/EVENTS_EXPLORATION_2026_10.md`, sections 13 and 13.1
+
+### Context
+
+Series 40's Thursday-only Hydro flag gained about £275 on its 17 days but failed its placebo rule: one random draw of Thursdays also gained £29 with an interval below zero. One draw cannot say how often chance does that.
+
+### Hypothesis
+
+**H41**: the real Thursday flag's gain is larger than random sets of Thursdays give.
+
+### Method
+
+Pre-registered: 200 random reassignments of the Thursday flags among all Thursdays (seeds 20261019 to 20261218), the log model refitted for each on 5 seeds with the usual rolling-origin protocol, each scored on its own flagged days; the real flag and the unflagged baseline from the same 5 seeds. Rule 1: the real
+change beats at least 95% of the draws; rule 2: it is beyond all but two draws, or at least twice the best placebo.
+
+### Results
+
+Real change −245.3 (5 seeds). Placebo draws: mean +4.4, median +3.7, 5th/95th percentile −28.5/+34.6, best −56.3, worst +66.0. **0 of 200 draws were at least as good as the real flag (p = 0.005).** Series 40's placebo (−29) is at about the 4.5th percentile. Both rules pass.
+
+### Conclusion
+
+1. **The Hydro-Thursday effect is not chance on the backtest:** no random set of Thursdays came near it, and the placebo draws centre on zero.
+2. **Leading candidate for the weekly log**, not promoted. Series 40 remains a formal fail on its own placebo rule; this is its follow-up.
+3. **What it does not settle:** the weekday was chosen as the best of seven after seeing the results (a rough ×7 allowance gives p of about 0.035); it is a fourth look at the same 585 days; only 17 flagged days. The clean test is the weekly log.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
