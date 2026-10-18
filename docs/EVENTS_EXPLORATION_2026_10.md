@@ -499,3 +499,27 @@ fluke of that draw is not known.** A permutation check (many random shuffles, to
 **Context only, the 39 new days.** There were three Hydro Thursdays (10 Sep André Rieu, 1 Oct and 15 Oct; the rules said two, which was a miscount): their average miss 1,780 → 1,232, the other 36 days 832 → 829, all 39 days 905 → 860.
 
 **Decision.** Logged as Series 40, formally a fail. No change to the model. The Thursday finding goes to the weekly log as the strongest lead of the series, with the placebo caveat attached.
+
+## 13. The Thursday flag against many random placebos — rules (written 18 October 2026, before any code or run)
+
+**Why.** Section 12.1: the Thursday flag gained £275 on its 17 days, but the one placebo draw (a random 20 Thursdays) also gained £29 with an interval below zero, which fails rule 4. One draw cannot say how often chance gives a gain. This repeats
+the placebo many times. **It does not change the Series 40 verdict, which stays a formal fail;** it asks how unusual the real result is.
+
+**Procedure.** For each of 200 draws *i* = 1 to 200: the same number of Thursday flags as the real `hydro_thu` are reassigned at random among all Thursdays in the model's rows (seed 20261018 + *i*), the log model is refitted with that flag
+as an extra input (same recipe and rolling-origin protocol as before), and the change in average miss (with the flag minus without) is taken **on that draw's own flagged days among the 585 backtest days**. To keep 200 draws affordable each fit uses **5 seeds
+(0-4)**; the real flag and the unflagged baseline are taken from the same 5 seeds (the first chunk of the stored 25-seed fits), so the comparison is like for like. No draw is discarded or repeated.
+
+**Statistic.** The average change in absolute error on the flagged days (negative is a gain), as for the real flag.
+
+**Rules.**
+1. *Rank*: the real flag's 5-seed change (on its 17 Hydro Thursdays) is more negative than at least 95% of the 200 placebo changes (one-sided p ≤ 0.05).
+2. *Size*: the real change is also more negative than the 99th-percentile-best placebo gain, i.e. beyond all but two of the 200 draws, **or** at least twice the best placebo gain; whichever is looser.
+3. *Spread*: the 200 placebo changes are reported as a distribution (mean, 5th, 50th and 95th percentiles, the best); the first placebo (seed 20261018, −£29) is located within it.
+
+**Reading, fixed in advance.** If rules 1 and 2 hold, the Thursday result is **unlikely to be chance on the backtest** and is recorded as the leading candidate for the weekly log (still not promoted; a fourth look at the same days, a weekday chosen after the fact).
+If rule 1 fails, the Thursday result is **indistinguishable from what a random set of Thursdays can give** and is dropped to a note. If rule 1 holds and rule 2 fails, it is recorded as unclear.
+
+**Limits, stated in advance.** Placebo days vary in difficulty (the first draw's days were easy ones: average miss 508 against 926 for the real days), so the statistic's spread comes partly from which days are drawn; that is what the draws are for. Five seeds
+are noisier than 25; the real flag and the baseline use the same five, so the comparison is fair but the real change at 5 seeds will differ a little from the −£275 at 25 seeds.
+
+**Expectation, stated in advance.** If the Thursday effect is real, the real change should sit far in the tail (a p of 0.01 or lower), with most placebo draws between about +£20 and −£40.
