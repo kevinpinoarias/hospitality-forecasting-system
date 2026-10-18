@@ -187,3 +187,65 @@ the manager, Old Firm and World Cup days lower still) but no interval excludes z
    judged separately from a crowd-passing-through flag. Any such test needs its rules written first, a replicate on fresh seeds, and a check on the weekly log.
 
 The football and Scotland results stay in the Series 36 log entry as they are: not shown, not pursued for this venue.
+
+## 9. The Hydro flag — checks on the list, and the test rules (written 18 October 2026, before any run)
+
+### 9.1 Chasing the list's gaps
+
+**Missing music shows.** The earlier note said the Hydro list was about 6–12% below Concert Archives' counts. That comparison is probably a counting difference (Concert Archives counts
+listings, not show-days; its site blocks our reader, so it could not be reconciled line by line). An independent check on one month: every Hydro date found by searching November 2025
+(2, 3, 6, 11, 16, 19, 22, 23, 25 and 30 November) is in `config/events/concert_days.csv`: 10 of 10. Spot checks of Westlife, Kevin Bridges, Hans Zimmer and Duran Duran also agree.
+The setlist.fm and Hydro-site archives could not be used (setlist.fm gives upcoming shows and a handful of recent ones; the web archive is blocked). **No shows were added**; the list stands as
+read from Songkick, with the caveat that one sampled month is not a proof of completeness.
+
+**Non-music days — is the forecast off?** Hydro non-music events found: WWE Clash at the Castle (Sat 15 Jun 2024), PFL Europe 3 (Sat 28 Sep 2024), Gladiators Live (20 and 21 Dec 2025),
+Cirque's Wizard of Oz (Sun 28 Dec 2025), WWE Live (Sat 10 Jan 2026). Actual minus forecast, £:
+
+| Day | Manager | Model (where it exists) | Normal size of a miss |
+|---|---|---|---|
+| Sat 15 Jun 2024, WWE Clash | −5,099 | n/a (before the backtest) | manager MAE 1,163 on 2024 Saturdays |
+| Sat 28 Sep 2024, PFL | +1,214 | n/a | same |
+| Sat 20 Dec 2025, Gladiators Live | +349 | +9 | model MAE 908 |
+| Sun 21 Dec 2025, Gladiators Live | −2,369 | −1,157 | |
+| Sun 28 Dec 2025, Cirque | −1,175 | −403 | |
+| Sat 10 Jan 2026, WWE Live | +1,393 | +3,716 | |
+
+Mixed: some days far below the forecast, one far above, two ordinary. **There is no consistent pattern, so non-music events are not added** (six days, five events, and the busy
+December and January periods carry their own swings). The flag therefore means what the list already holds: *a music or comedy show listed at the OVO Hydro that day.*
+
+### 9.2 Disclosure
+
+The Hydro was picked from a residual check on these same 585 backtest days (about five flags looked at: three venues, "any show" and a capacity sum), after the first idea came from five days
+chosen for their errors. So this test is **not** a clean out-of-sample test of the idea; it tests whether a model *using* the flag, learning only from earlier days at every step, predicts later
+days better. The clean evidence is the weekly log from 19 October.
+
+### 9.3 Rules
+
+**Feature.** `hydro_show` = 1 when `config/events/concert_days.csv` has a row for the OVO Hydro on that day (music or comedy), else 0. Same-day only: no flag for the day before or after, no
+count of consecutive nights, no split between music and comedy, no other venue. 153 of the 585 backtest days are flagged.
+
+**Models and protocol.** The final model's recipe (log1p target, 38 features, depth 4, 300 iterations, rate 0.05) with and without `hydro_show`; the 585-day rolling-origin backtest;
+seeds 0-24; the same fits on the raw-£ target as a secondary result. Replicate on seeds 100-124 for both.
+
+**Placebo.** The same test with the flags shuffled: the 153 flagged weekdays are reassigned at random among the days of the same weekday over the whole date range (fixed seed 20261018). A real
+effect should not survive the shuffle.
+
+**Metric.** Pooled MAE over the 585 days, change = with the flag minus without it, 95% interval from the 7-day moving-block bootstrap (`masked_block_bootstrap`); the same on flagged days, on
+unflagged days, Monday-Thursday and Friday-Sunday.
+
+**The flag passes only if all of these hold.**
+1. *Primary*: on the log1p model, seeds 0-24, the pooled change is below zero and its 95% interval is entirely below zero.
+2. *Replicate*: on seeds 100-124 the pooled interval is also entirely below zero.
+3. *Where it comes from*: on seeds 0-24 the change on flagged days is below zero and more negative than the change on unflagged days, and the unflagged days' interval is not entirely above zero
+   (the flag must not buy its gain by hurting the other days).
+4. *Placebo*: the shuffled flag's pooled interval is not entirely below zero (if it is, the test is broken and the result is void).
+
+Reported either way, not rules: the raw-£ results, bias on flagged days, the gain over the manager (manager MAE 1,074.5), and the same on the 39 new days (13 Hydro days; context only,
+they have been seen).
+
+**Decision.** *Pass*: the flag is recorded as supported on the backtest and enters the weekly log as a candidate input; it is **not** added to the product model on this evidence. Promotion needs
+the log to reach 26 weeks with an interval excluding zero, the same bar as the Track A package, and a way to know the Hydro programme at forecast time (the Hydro and Ticketmaster publish weeks
+ahead). *Fail*: the result is logged as Series 37, the flag is not pursued, and the residual check's +£324 to +£366 stays recorded as a fact about the venue, not an input.
+
+**Expectation, stated in advance.** If the effect is as large as the residual check suggests and the model can learn it, the pooled gain is a few tens of pounds a day. If the model already
+captures it through the manager's forecast and the weekday, the change will be near zero.
