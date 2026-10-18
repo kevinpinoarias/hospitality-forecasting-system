@@ -172,3 +172,18 @@ Tuesday 29 Sep (home) +£221 and +£137; Saturday 3 Oct (away) +£2,744 and +£1
 **Reading.** As expected in advance, the data hold too few Scotland days to say anything. The flags are not pursued as inputs; the weekly log can record
 Scotland's matches as facts, and the World Cup days are a reminder that a rare, very large TV event may matter more than ordinary internationals but cannot be
 learned from three days.
+
+## 8. Note for later — where football features might still earn their place (added 18 October 2026)
+
+Football, club and national team, is parked as a model input for this venue. The venue is a cafe-restaurant that does not show matches, so a game in Glasgow is
+at best a crowd passing by and at worst a reason for regulars to stay away; the data lean towards slightly lower sales on match days (home-match days −£135 against
+the manager, Old Firm and World Cup days lower still) but no interval excludes zero. Two reasons to come back to it:
+
+1. **A different kind of venue.** For a pub or a bar that shows the games, football is the demand: kick-off times, the opponent, a derby or a tournament knockout would be
+   core inputs, and the Celtic / Rangers / Scotland lists, flags and tests built here (`config/events/`, `src/features/events.py`) are the starting point. If this
+   system is ever used for such a venue, test football first.
+2. **Better features for this venue.** A feature that actually helps would probably need what was missing here: a complete fixture list with kick-off times (a 12:30
+   Sunday derby and a 3pm Saturday league game are different days), weekend-only and kick-off-window versions, and a match-day-displacement flag (regulars staying away)
+   judged separately from a crowd-passing-through flag. Any such test needs its rules written first, a replicate on fresh seeds, and a check on the weekly log.
+
+The football and Scotland results stay in the Series 36 log entry as they are: not shown, not pursued for this venue.
