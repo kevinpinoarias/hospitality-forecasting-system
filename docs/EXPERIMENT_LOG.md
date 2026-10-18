@@ -3138,6 +3138,42 @@ the four days of 12 October; the week of 28 September was the manager's worst (1
 4. **The 39 days are now training data.** They are a valid holdout for the frozen models, not clean evidence for anything designed after looking at them. The
    weekly forecast log from Monday 19 October is the next honest test; it is not set up yet.
 
+## Series 36 — Do Football and Concerts Explain What the Forecasts Miss?
+
+**Run**: 2026-10-16 to 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py` · **Lists**: `config/events/` ·
+**Full write-up and pre-registered Saturday rules**: `docs/EVENTS_EXPLORATION_2026_10.md`
+
+### Context
+
+The Series 35 holdout test (39 new venue days) left a few large misses that neither the deployed model nor the manager saw coming. A look-up
+afterwards found a concert or race nearby on four of five. This series checks whether events explain the misses across the 585 old backtest days
+and whether adding them as inputs helps. Hypotheses were not written before the first check; the Saturday test was pre-registered before its run.
+
+### Method
+
+(1) Weekday-adjusted least squares of (actual − forecast) on event flags, 7-day block bootstrap. (2) The 585-day backtest with Celtic / Rangers
+features added (three- and five-feature variants, seeds 0-24). (3) A pre-registered single flag, `sat_big_home`, on the raw-£ and log1p models,
+seeds 0-24 and 100-124. Event lists were built from public pages (Wikipedia season pages; Songkick venue histories) and are incomplete: see the
+write-up for the gaps.
+
+### Results
+
+- **Football home matches:** no extra trade (−£135 against the manager, −£184 against the model, intervals include zero). Old Firm, 8 days,
+  too few to read. Away matches, nothing.
+- **Football features in the model:** all days, MAE 908.2 → 899.3 (3 features) and 899.5 (5 features), changes −8.9 and −8.7 with intervals
+  spanning zero; on the 39 new days both were worse (916 and 914 against 905).
+- **Saturday flag (pre-registered):** primary change −2 (−13, +10), replicate +4 (−10, +18). The rules fail. The earlier Saturday gain was chance.
+- **Concerts:** a show at the **OVO Hydro** lifts sales by **+£324 (+63, +602)** a day over the manager's forecast and **+£366 (+167, +587)** over
+  the model's, on 153 days; the O2 Academy and the Armadillo show nothing. The 39 new days agree (13 Hydro days, +£1,095 over the model against +£107).
+
+### Conclusion
+
+1. **Football is not pursued as a model input** on this evidence. It is recorded in the weekly log for a later check with complete fixtures and kick-off times.
+2. **The Hydro is the one clear event signal.** A Hydro flag is the next test and needs its rules written down first; nothing event-related is
+   in the model.
+3. **Caveats:** the idea came from five days chosen after their errors; the football list is incomplete (Rangers' European legs, kick-off times);
+   the concert list is about 6-12% short for the Hydro and has no non-music events.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
