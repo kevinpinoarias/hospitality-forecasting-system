@@ -436,3 +436,35 @@ Hydro Saturdays higher.
 
 **Decision.** Not pursued; logged as Series 39. Of the four tests asked for, the flag in a plain model (Series 37), the correction on the log model and on the post model (Series 38) and the flag in the post model (this one) all point the same
 way: a small gain on Hydro days that never separates from zero, and a loss on Sundays.
+
+## 12. A Thursday-only Hydro flag — test rules (written 18 October 2026, before any code or run)
+
+**Why.** Sections 9 to 11: every Hydro input gains a little on Hydro days, never clearly, and loses on Sundays and Mondays and a little on ordinary days. The weekday tables show the gain concentrated on Thursday (17 Hydro Thursdays; the
+plain log model under-forecast them by about £820; the flag cut the miss by £209, interval −298 to −100) and Saturday. **Thursday was chosen because it was the best of seven weekdays in results already seen**, so this is a post-hoc slice.
+With seven weekdays, about three times in ten at least one would look clear by luck alone.
+
+**Feature.** `hydro_thu` = 1 on a Thursday on which `config/events/concert_days.csv` has a row for the OVO Hydro, else 0. 17 of the 585 backtest days are flagged. No other weekday, no other venue.
+
+**Models and protocol.** The log model's recipe (log1p target, 38 features, depth 4, 300 iterations, rate 0.05), with and without `hydro_thu`; the 585-day rolling-origin backtest; seeds 0-24 and a replicate on 100-124.
+(Monday to Thursday are forecast by the log model in the post model, so a Thursday result applies to the post model unchanged.)
+
+**Placebo.** The same fit with the 17 flags reassigned at random among all Thursdays (fixed seed 20261018), seeds 0-24.
+
+**Metric.** Change in MAE (with the flag minus without it), 95% interval from `masked_block_bootstrap`, on the 17 Hydro Thursdays, on the other 568 days, and on all 585 days; the number of the 17 Hydro Thursdays that are better with
+the flag.
+
+**It passes only if all of these hold.**
+1. *Hydro Thursdays*: the change has a 95% interval entirely below zero on seeds 0-24 **and** on seeds 100-124.
+2. *Everything else*: the change on the other 568 days has an interval that is not entirely above zero on both seed sets (the flag must not clearly hurt anything else).
+3. *Sign test*: on seeds 0-24 at least 13 of the 17 Hydro Thursdays are better with the flag (one-sided binomial p = 0.025).
+4. *Placebo*: on the shuffled flags' own 17 days the interval is not entirely below zero.
+
+**Reported, not rules.** The pooled change (it will span zero: 17 days cannot move a 585-day average by more than a few pounds); the Hydro Thursdays in the 39 new days (1 October, Westlife; 15 October, Duran Duran) as context only.
+
+**Decision.** *Pass*: the flag is recorded as a candidate for the weekly log, **not** added to the product model; it needs 26 weeks and a Hydro-programme source at forecast time like every other Hydro input. *Fail*: logged as Series 40
+and not pursued; Hydro Thursdays are recorded in the weekly log all the same.
+
+**Disclosure.** A fourth look at the same 585 days for one idea, with the weekday picked after the fact. A pass would be a lead, not evidence; the weekly log is the clean test.
+
+**Expectation, stated in advance.** If Thursday is a real effect, the Hydro-Thursday change should be of the order of −£100 to −£200 (about what the full flag showed) and the pooled change −£3 to −£6 with an interval spanning zero. If it was a
+lucky slice, the replicate seeds and the placebo will show it.
