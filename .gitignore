@@ -209,3 +209,6 @@ wandb/
 
 # The isolated copy of the pipeline used for the holdout test (real, unanonymised-derived data)
 data/holdout/
+
+# Forecast log runner: training copies and correction history (real daily figures) stay local
+data/training/
