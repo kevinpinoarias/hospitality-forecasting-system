@@ -212,3 +212,9 @@ data/holdout/
 
 # Forecast log runner: training copies and correction history (real daily figures) stay local
 data/training/
+
+# Per-machine settings of the forecast log (manager folder path)
+config/forecast_log.local.yaml
+.forecast_log.lock
+
+logs/
