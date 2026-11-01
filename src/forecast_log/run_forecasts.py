@@ -1,8 +1,8 @@
 """
 One run of the forecast log: make the forecasts that are due, append them to the log, commit and push (rules: PREREGISTRATION.md in the `forecasting-log` repository).
 
-  python -m src.forecast_log.run_forecasts --trigger monday      next week (NW) and this week (TW)        scheduled Monday 08:00
-  python -m src.forecast_log.run_forecasts --trigger evening     tomorrow (TD)                            scheduled every evening 18:00
+  python -m src.forecast_log.run_forecasts --trigger monday      next week (NW) and this week (TW)               scheduled Monday 12:30 (scripts/run_forecast_log.cmd weekly)
+  python -m src.forecast_log.run_forecasts --trigger evening     tomorrow (TD) only                              by hand
   add --dry-run to compute and print everything without writing, committing or pushing
 
 For every forecast type the run makes the three models (portfolio, post, hydro) without the manager's forecast (it only reaches us after the day; the stand-in takes its place), with the
@@ -157,7 +157,7 @@ def _print_summary(rows: list[dict]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--trigger", required=True, choices=["monday", "evening", "NW", "TW", "TD"])
-    parser.add_argument("--now", help="issue time (ISO, e.g. 2026-11-02T08:00:00+00:00); default: the current time")
+    parser.add_argument("--now", help="issue time (ISO, e.g. 2026-11-02T12:30:00+00:00); default: the current time")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     settings = load_settings()

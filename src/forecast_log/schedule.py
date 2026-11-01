@@ -1,12 +1,16 @@
 """
 When each forecast of the log is issued, which days it covers and when it is late (section 2 of the log's PREREGISTRATION.md).
 
-  NW  next week   issued every Monday 08:00   covers the following Monday to Sunday   deadline: Monday 23:59
-  TW  this week   issued every Monday 08:00   covers the current Monday to Sunday     deadline: Monday 10:00 (before the venue opens)
-  TD  tomorrow    issued every evening 18:00  covers the next day                     deadline: 23:59 on the day it is issued
+  NW  next week   issued every Monday 12:30   covers the following Monday to Sunday   deadline: Monday 23:59
+  TW  this week   issued every Monday 12:30   covers the current Monday to Sunday     deadline: Monday 23:59
+  TD  tomorrow    by hand only (`evening`)    covers the next day                     deadline: 23:59 on the day it is issued
 
-A run issued late (a catch-up after the computer was off) still forecasts, but only days that have not started: a day is forecast only if it is after the issue date, or the issue date
-itself and the issue time is before the venue opens. Anything issued after its deadline is labelled `late`.
+Everything runs once a week, in one scheduled task on Monday at 12:30 (the weekly export is dropped in the morning; the same task processes it first). The
+weekly run makes NW and TW; TD would only repeat a day TW already covers, so it is not part of it.
+
+A day can be forecast if it is the issue date or later; what keeps a forecast honest is that its sales data ends before the day (run_forecasts.py never forecasts a
+day whose actual is already known). So Monday is forecast at 12:30 from data through Sunday, though by then it has opened. A run issued late (a catch-up after
+the computer was off) still forecasts the days from its issue date on, and anything issued after its deadline is labelled `late`.
 """
 
 from __future__ import annotations
@@ -15,7 +19,6 @@ from datetime import date, datetime, time, timedelta
 
 NEXT_WEEK, THIS_WEEK, TOMORROW = "NW", "TW", "TD"
 FORECAST_TYPES = (NEXT_WEEK, THIS_WEEK, TOMORROW)
-OPENING_HOUR = 10
 TRIGGERS = {"monday": (NEXT_WEEK, THIS_WEEK), "evening": (TOMORROW,)}
 
 
@@ -24,8 +27,8 @@ def week_monday(day: date) -> date:
 
 
 def allowed(target: date, issue: datetime) -> bool:
-    """A day can be forecast only if it has not started: after the issue date, or the issue date itself before the venue opens."""
-    return target > issue.date() or (target == issue.date() and issue.hour < OPENING_HOUR)
+    """A day can be forecast if it is the issue date or later (the run itself refuses any day whose actual sales are already in its data)."""
+    return target >= issue.date()
 
 
 def target_dates(forecast_type: str, issue: datetime) -> list[date]:
@@ -48,7 +51,7 @@ def deadline(forecast_type: str, issue: datetime) -> datetime:
     if forecast_type == NEXT_WEEK:
         return datetime.combine(monday, time(23, 59, 59), tzinfo=tz)
     if forecast_type == THIS_WEEK:
-        return datetime.combine(monday, time(OPENING_HOUR, 0), tzinfo=tz)
+        return datetime.combine(monday, time(23, 59, 59), tzinfo=tz)
     if forecast_type == TOMORROW:
         return datetime.combine(issue.date(), time(23, 59, 59), tzinfo=tz)
     raise ValueError(f"unknown forecast type {forecast_type!r}")

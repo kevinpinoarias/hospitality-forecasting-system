@@ -21,29 +21,28 @@ def at(text: str) -> datetime:
     return datetime.fromisoformat(text).replace(tzinfo=TZ)
 
 
-def test_a_monday_morning_run_forecasts_next_week_and_this_week():
-    issue = at("2026-11-02T08:00:00")  # a Monday
-    nw = schedule.target_dates(schedule.NEXT_WEEK, issue)
-    tw = schedule.target_dates(schedule.THIS_WEEK, issue)
-    assert nw == [date(2026, 11, 9) + timedelta(days=i) for i in range(7)]
-    assert tw == [date(2026, 11, 2) + timedelta(days=i) for i in range(7)]  # including Monday itself: it opens at 10:00
+def test_the_weekly_run_forecasts_next_week_and_all_of_this_week():
+    issue = at("2026-11-02T12:30:00")  # Monday 12:30: the one scheduled run of the week
+    assert schedule.forecast_types_for("monday") == ("NW", "TW")  # tomorrow would repeat a day this week's forecast already covers
+    assert schedule.target_dates(schedule.NEXT_WEEK, issue) == [date(2026, 11, 9) + timedelta(days=i) for i in range(7)]
+    assert schedule.target_dates(schedule.THIS_WEEK, issue) == [date(2026, 11, 2) + timedelta(days=i) for i in range(7)]  # Monday too: the data ends on Sunday
+    assert schedule.on_time(schedule.NEXT_WEEK, issue) and schedule.on_time(schedule.THIS_WEEK, issue)
 
 
 def test_an_evening_run_forecasts_tomorrow_only():
     assert schedule.target_dates(schedule.TOMORROW, at("2026-11-04T18:00:00")) == [date(2026, 11, 5)]
 
 
-def test_a_late_this_week_run_forecasts_only_days_that_have_not_started():
-    issue = at("2026-11-04T09:00:00")  # a Wednesday, before opening
-    assert schedule.target_dates(schedule.THIS_WEEK, issue)[0] == date(2026, 11, 4)
-    issue = at("2026-11-04T12:00:00")  # a Wednesday after opening: Wednesday has started
-    assert schedule.target_dates(schedule.THIS_WEEK, issue) == [date(2026, 11, 5), date(2026, 11, 6), date(2026, 11, 7), date(2026, 11, 8)]
+def test_a_late_this_week_run_forecasts_from_its_issue_date_on():
+    issue = at("2026-11-04T15:00:00")  # a catch-up on Wednesday afternoon
+    assert schedule.target_dates(schedule.THIS_WEEK, issue) == [date(2026, 11, 4) + timedelta(days=i) for i in range(5)]  # Wednesday to Sunday
+    assert not schedule.on_time(schedule.THIS_WEEK, issue)
 
 
 def test_deadlines_and_lateness():
-    assert schedule.on_time(schedule.THIS_WEEK, at("2026-11-02T08:00:00"))
-    assert schedule.on_time(schedule.THIS_WEEK, at("2026-11-02T10:00:00"))
-    assert not schedule.on_time(schedule.THIS_WEEK, at("2026-11-02T10:01:00"))   # two hours late after the computer was off
+    assert schedule.on_time(schedule.THIS_WEEK, at("2026-11-02T12:30:00"))
+    assert schedule.on_time(schedule.THIS_WEEK, at("2026-11-02T23:30:00"))      # a catch-up late on Monday is still on time
+    assert not schedule.on_time(schedule.THIS_WEEK, at("2026-11-03T09:00:00"))   # Tuesday: late
     assert schedule.on_time(schedule.NEXT_WEEK, at("2026-11-02T22:00:00"))      # next week's forecast is still on time late on Monday
     assert not schedule.on_time(schedule.NEXT_WEEK, at("2026-11-03T09:00:00"))
     assert schedule.on_time(schedule.TOMORROW, at("2026-11-04T23:30:00"))

@@ -1,6 +1,7 @@
 @echo off
 rem Runs one step of the forecast log from the runner folder and keeps a console log.
-rem Usage: run_forecast_log.cmd monday|evening|score [--dry-run]
+rem Usage: run_forecast_log.cmd weekly|drop|monday|evening|score [--dry-run]
+rem weekly = the scheduled Monday task: the weekly drop, then the scores, then next week's and this week's forecasts (each step runs even if the one before reported a problem).
 rem Task Scheduler starts this; it can also be double-clicked or run in a terminal.
 setlocal
 cd /d "%~dp0.."
@@ -10,8 +11,18 @@ if not exist logs mkdir logs
 rem the date as yyyymmdd for the log file name (this computer prints dd/mm/yyyy)
 set STAMP=%DATE:~-4%%DATE:~3,2%%DATE:~0,2%
 echo [%DATE% %TIME%] start %1 %2 >> logs\forecast_log_%STAMP%.log
-if /I "%1"=="score" (
+if /I "%1"=="weekly" (
+    if /I "%2"=="--dry-run" (
+        echo [%DATE% %TIME%] dry run: the weekly drop and the scores are skipped >> logs\forecast_log_%STAMP%.log
+    ) else (
+        python -m src.forecast_log.weekly_drop >> logs\forecast_log_%STAMP%.log 2>&1
+        python -m src.forecast_log.score_forecasts >> logs\forecast_log_%STAMP%.log 2>&1
+    )
+    python -m src.forecast_log.run_forecasts --trigger monday %2 >> logs\forecast_log_%STAMP%.log 2>&1
+) else if /I "%1"=="score" (
     python -m src.forecast_log.score_forecasts %2 >> logs\forecast_log_%STAMP%.log 2>&1
+) else if /I "%1"=="drop" (
+    python -m src.forecast_log.weekly_drop >> logs\forecast_log_%STAMP%.log 2>&1
 ) else (
     python -m src.forecast_log.run_forecasts --trigger %1 %2 >> logs\forecast_log_%STAMP%.log 2>&1
 )

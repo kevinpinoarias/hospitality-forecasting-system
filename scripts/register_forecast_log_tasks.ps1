@@ -3,21 +3,21 @@ Registers the forecast log's scheduled tasks in Windows Task Scheduler. You revi
 
   powershell -ExecutionPolicy Bypass -File D:\Projectos\DRG\forecasting-runner\scripts\register_forecast_log_tasks.ps1 [-Remove]
 
-Tasks (they run only while you are logged on, start as soon as possible after a missed start, need the network, and give up after an hour):
-  ForecastLog-Monday    every Monday 08:00   run_forecast_log.cmd monday    next week (NW) and this week (TW)
-  ForecastLog-Evening   every day 18:00      run_forecast_log.cmd evening   tomorrow (TD)
-  ForecastLog-Score     every day 21:00      run_forecast_log.cmd score     add actuals and rewrite the scores
-Each task's first start is its NEXT occurrence, so registering never triggers a run by itself. A start missed because the computer was off runs when it is next on and you are logged on:
-once, however many starts were missed. A run issued after its deadline is logged as late. -Remove deletes the three tasks and nothing else.
+Task (it runs only while you are logged on, starts as soon as possible after a missed start, needs the network, and gives up after an hour):
+  ForecastLog-Weekly    every Monday 12:30   run_forecast_log.cmd weekly    process any new export in data\raw_private, update the scores, then make the forecasts:
+                                                                            next week (NW) and this week (TW), Monday to Sunday each
+Its first start is its NEXT occurrence, so registering never triggers a run by itself. A start missed because the computer was off runs when it is next on and you are logged on:
+once, however many starts were missed. A run issued after its deadline is logged as late. -Remove deletes this task (and the four older ForecastLog tasks, if any are registered) and nothing else.
 #>
 param([switch]$Remove)
 
 $runner = Split-Path -Parent $PSScriptRoot
 $cmd = Join-Path $runner "scripts\run_forecast_log.cmd"
-$names = "ForecastLog-Monday", "ForecastLog-Evening", "ForecastLog-Score"
+$names = "ForecastLog-Weekly"
+$old = "ForecastLog-Drop", "ForecastLog-Monday", "ForecastLog-Evening", "ForecastLog-Score"  # an earlier design: removed if present
 
 if ($Remove) {
-    foreach ($n in $names) { Unregister-ScheduledTask -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue }
+    foreach ($n in $names + $old) { Unregister-ScheduledTask -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue }
     "Removed: $($names -join ', ')"
     return
 }
@@ -33,10 +33,9 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAv
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
+foreach ($n in $old) { Unregister-ScheduledTask -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue }
 $jobs = @(
-    @{ Name = "ForecastLog-Monday";  Arg = "monday";  Start = (Next-Occurrence 8 0 "Monday"); Trigger = { param($s) New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At $s } },
-    @{ Name = "ForecastLog-Evening"; Arg = "evening"; Start = (Next-Occurrence 18 0 "");      Trigger = { param($s) New-ScheduledTaskTrigger -Daily -At $s } },
-    @{ Name = "ForecastLog-Score";   Arg = "score";   Start = (Next-Occurrence 21 0 "");      Trigger = { param($s) New-ScheduledTaskTrigger -Daily -At $s } }
+    @{ Name = "ForecastLog-Weekly";  Arg = "weekly";  Start = (Next-Occurrence 12 30 "Monday"); Trigger = { param($s) New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At $s } }
 )
 foreach ($j in $jobs) {
     $trigger = & $j.Trigger $j.Start
