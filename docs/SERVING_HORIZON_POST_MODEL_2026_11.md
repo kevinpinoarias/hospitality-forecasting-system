@@ -52,3 +52,47 @@ This is a measurement, not a promotion test: nothing changes in the log whatever
 - The short buckets are small (about 56 to 65 day-scores each), so their costs are noisy.
 - The 39 new days are not included (the models stop at 6 September).
 - **Expectation**: the post model's cost about the same as the log model's (around +£70 at days 8 to 16 and +£100 overall in Series 18), because every piece of the post model takes the number as an input and the weekend pieces fall back to the plain models beyond one or two weeks. The post model itself should be somewhat better than the log model at days 1 to 14, where its weekend pieces are used.
+
+## 7. How the code reads the rules, and one fix to the sanity check (before any table existed)
+
+- **Fix.** The first full run stopped at the gate: the post-model check failed (largest difference £42.6) while the log-model check passed. Every piece matched its stored backtest to £0.002; the difference was only on four Fridays of the first origin (31 January to 21 February 2025), because the data has no sales on Friday 24 January 2025 and the script's routing treated a missing day among the 1-to-4-week lags as "not known" and switched those Fridays to the plain model. The validated backtest routes by weekday alone. The "every real input" columns now route by weekday alone (as the validated backtest does); the "with" and "without" columns keep the log's availability rule (as the log itself would). With that, the check passes (largest difference £0.0022). The gate worked: no table was written or read before both checks passed.
+- **Correction history.** The first origin (15 January 2025) has no earlier post-model errors, so its Saturday and Sunday forecasts are not corrected, as in the validated backtest.
+- **Order of commits.** The script was run before it was committed (the rules were committed first, in `bcd6ac4`); it is committed with the results.
+
+## 8. Result (run 1 November 2026)
+
+8 origins (15 January 2025 to 11 March 2026), 1,425 day-scores, the same days and buckets as Series 18. Sanity checks: both pass (£0.0022).
+
+MAE by distance, £ a day:
+
+| Days ahead | Scores | Manager alone | Log model, real inputs | Log model, with the number | Log model, without it | Post model, real inputs | Post model, with the number | Post model, without it |
+|---|---|---|---|---|---|---|---|---|
+| 1-7 | 56 | 1,104 | 832 | 863 | 888 | 794 | 821 | 834 |
+| 8-16 | 65 | 949 | 913 | 966 | 1,036 | 804 | 879 | 928 |
+| 17-30 | 104 | 1,038 | 914 | 1,027 | 1,077 | 867 | 986 | 1,037 |
+| 31-60 | 240 | 1,118 | 978 | 1,013 | 1,199 | 944 | 974 | 1,155 |
+| 61-90 | 240 | 1,022 | 868 | 911 | 953 | 832 | 892 | 920 |
+| 91-180 | 720 | 1,108 | 947 | 988 | 1,096 | 932 | 963 | 1,077 |
+| **1-180** | **1,425** | **1,082** | **930** | **976** | **1,077** | **901** | **945** | **1,045** |
+
+Cost of losing the number (without minus with), £ a day, 95% block-bootstrap interval:
+
+| Days ahead | Log model | Post model | Post cost minus log cost |
+|---|---|---|---|
+| 1-7 | +24.8 (−66.7, +151.7) | +12.5 (−86.2, +148.1) | −12.2 (−41.2, +15.4) |
+| **8-16** | +70.7 (−18.1, +164.5) | **+48.2 (−39.9, +150.4)** | −22.5 (−57.9, +9.0) |
+| 17-30 | +50.4 (−58.8, +152.4) | +50.9 (−58.5, +154.2) | +0.5 (−12.1, +11.1) |
+| 31-60 | +186.0 (+32.1, +428.5) | +181.2 (+26.3, +425.3) | −4.8 (−23.2, +11.6) |
+| 61-90 | +42.3 (−21.7, +101.6) | +28.1 (−33.4, +84.4) | −14.2 (−32.1, −0.1) |
+| 91-180 | +108.0 (+22.9, +218.5) | +114.1 (+29.8, +223.3) | +6.1 (−2.5, +14.3) |
+| **1-180** | +100.9 (+45.7, +169.4) | **+99.3 (+44.7, +168.3)** | **−1.6 (−7.9, +4.5)** |
+
+**Reading, by the rule in section 5.** Post cost minus log cost over all 180 days is −1.6 (−7.9, +4.5): **the same cost.** Losing the number costs the post model about £99 a day over 180 days and about £48 a day at 8 to 16 days ahead, with wide intervals in the short buckets.
+
+**What the numbers say.**
+1. The expectation in section 8 held: the post model loses about what the log model loses (£99 against £101 over 180 days), because every one of its pieces takes the number.
+2. The post model is better than the log model in every bucket and every condition (without the number, over 180 days, 1,045 against 1,077; at 8 to 16 days, 928 against 1,036).
+3. For the weekly log's next-week forecasts (8 to 14 days ahead, without the number), the post model scores 928 against the manager's 949: level with the manager, where the log model was about £90 worse. At 1 to 7 days it is far better than the manager (834 against 1,104).
+4. The log model on the verified calendar reproduces Series 18's original-calendar figures closely (without the number over 180 days 1,077 against 1,078), as expected from Series 29.
+
+**Limits.** Overlapping windows (most days scored up to three times) make the intervals too narrow; real weather for the first 16 days makes the short buckets a little optimistic (the log uses average weather); the short buckets have 56 and 65 day-scores; the hydro arm and the 39 new days are not included.

@@ -3358,6 +3358,28 @@ Next-week MAE: N0 1,042 / 1,037, N1 1,042 / 1,035, N2 1,077 / 1,073 (524 days). 
 3. **Not settled:** gains under about £50 a day (the intervals are about ±65); why N2 loses; the 39-day context check.
 4. **Caveats:** a 42nd look at the same days; 524 of the 585 days scored (weeks cut by block edges).
 
+## Series 43 — What the Missing Manager Number Costs the Post Model, by Distance
+
+**Run**: 2026-11-01 · **Script**: `src/experiments/run_series43_post_model_horizon.py` · **Rules** (committed before any code, `bcd6ac4`), the sanity-check fix and results: `docs/SERVING_HORIZON_POST_MODEL_2026_11.md`, sections 7 and 8
+
+### Context
+
+The weekly log always forecasts without the manager's number. Series 18 measured that cost by distance for the final model on the original calendar, before the post model existed; the log issues the post model.
+
+### Method
+
+Series 18's protocol unchanged: 8 origins, 180 days, 1,425 day-scores, seasonal history fill, real weather for 16 days then medians, the real number or the stand-in. The post model (without the Hydro flag) assembled from its five refitted pieces with the log's weekday routing at any distance and the Saturday and Sunday correction learnt before each origin; the verified-calendar log model beside it. Two sanity checks gate the table.
+
+### Results
+
+Post model, with / without the number (£ a day): days 1-7 821 / 834 (+12), **8-16 879 / 928 (+48)**, 17-30 986 / 1,037 (+51), 31-60 974 / 1,155 (+181), 61-90 892 / 920 (+28), 91-180 963 / 1,077 (+114), **all 945 / 1,045 (+99)**. Manager alone 1,104 / 949 / 1,038 / 1,118 / 1,022 / 1,108 / 1,082. Log model without the number: 888 / 1,036 / 1,077 / 1,199 / 953 / 1,096 / 1,077. Post cost minus log cost over 180 days −1.6 (−7.9, +4.5): the same cost. The post-model sanity check first failed on four Fridays (a missing sales day, 24 January 2025, switched them to the plain model); the ceiling now routes by weekday as the validated backtest does, and both checks pass to £0.0022 before any table was produced.
+
+### Conclusion
+
+1. **Losing the number costs the post model about what it costs the log model:** about £99 a day over 180 days, about £48 at 8 to 16 days ahead (wide interval), little at 1 to 7 days.
+2. **The post model is better than the log model at every distance, with or without the number.** Without it, the post model is level with the manager at the log's next-week distance (928 against 949) and far better within a week (834 against 1,104).
+3. **Caveats:** overlapping windows narrow the intervals; real weather for 16 days flatters the short buckets; small short buckets; no hydro arm.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
