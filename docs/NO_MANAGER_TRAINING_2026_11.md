@@ -54,3 +54,16 @@ Mean absolute error of the arm minus that of N0, on the same days (negative is a
 - A fresh hypothesis on days used by every earlier series (a 42nd look at the same 585 days); the earlier-series warnings about reusing them apply.
 - The stand-in is a calendar median, so it adds little to what the calendar features already say. **Expectation**: N1 and N2 both close to N0, a gain of £0 to £25 a day, the interval likely to include zero. A gain near the £100 of Series 18 would be a surprise, because that gap is mostly the real number's own information, which no training can restore.
 - What would settle it for real is a source for the manager's number before the day, which does not exist. This test only asks whether we are leaving accuracy on the table in the situation we cannot change.
+
+## 9. How the rules are read in the code (fixed before the full run)
+
+Written when the script and its tests were finished, after a rehearsal and before the full run. Nothing in sections 1 to 8 is changed.
+
+- **Days scored.** Every week that lies wholly inside a fold's 60-day test block, for days that have an actual. NW: the last known day is the Sunday eight days before the week's Monday; TW: the Sunday before it. Weeks cut by a block's edge are not scored.
+- **"Pooled".** The change for a day is averaged over the two seed sets. Rule 1 is judged on each seed set separately; rule 2, rule 3 and the busiest-quarter part of rule 4 use the pooled change; the TW part of rule 4 holds if neither seed set's interval lies wholly above zero.
+- **Busiest quarter.** The 25% of NW days with the highest actual sales.
+- **Folds (rule 3).** Folds whose pooled mean NW change is below zero, out of the 10 folds.
+- **The stand-in.** For a training row, the median over the other rows of that fold's training window (the row itself left out); when serving, over all days known at the last known day. Training rows that cannot get a stand-in would be dropped from all three arms; none is expected.
+- **Sanity check.** N0 (seed set A) predicting the test days with their real inputs and real history must match `models/final_model/backtest_predictions.csv` to £0.05; if it does not, no result is read.
+- **Rehearsal.** One fold (the last) with 2 seeds per set was run to test the machinery. Its figures were seen. They are part of the 585 days and no choice was made from them; the full run is the test.
+- **Not built yet.** The 39-day context check on the new data (section 4) is a separate step, run after the main result.
