@@ -3331,6 +3331,33 @@ Real change −245.3 (5 seeds). Placebo draws: mean +4.4, median +3.7, 5th/95th 
 2. **Leading candidate for the weekly log**, not promoted. Series 40 remains a formal fail on its own placebo rule; this is its follow-up.
 3. **What it does not settle:** the weekday was chosen as the best of seven after seeing the results (a rough ×7 allowance gives p of about 0.035); it is a fourth look at the same 585 days; only 17 flagged days. The clean test is the weekly log.
 
+## Series 42 — Training the Log Model for the Day the Manager's Number Is Missing
+
+**Run**: 2026-11-01 · **Script**: `src/experiments/run_series42_no_manager.py` · **Rules** (committed before any code, `b9c71cd`), the sanity-check correction and results: `docs/NO_MANAGER_TRAINING_2026_11.md`, sections 9 to 11
+
+### Context
+
+The weekly export reaches us after the day and Rotaready cannot export a forecast for future dates, so every forecast of the weekly log is made without the manager's number, by a model trained with it. Series 18 put the cost of serving without it at about £100 a day.
+
+### Hypothesis
+
+**H42**: a log model trained for the no-manager situation (stand-in in training, or no manager input at all) has lower error, served without the number, than the log model as deployed.
+
+### Method
+
+Pre-registered: three arms (N0 as deployed, N1 stand-in in training computed from the other training rows, N2 `forecast_sales` dropped), 10-fold rolling-origin protocol, seeds 0-24 and 100-124, scored as the log serves a week (next-week days 8 to 14 days after the last known Sunday, this-week days 1 to 7), a sanity check against the stored log-model backtest, four rules (gain with the interval below zero on both seed sets; pooled gain of at least £15; better in at least 7 of 10 folds; no harm on this-week days or the busiest quarter).
+
+### Results
+
+Next-week MAE: N0 1,042 / 1,037, N1 1,042 / 1,035, N2 1,077 / 1,073 (524 days). Change against N0: **N1 −1.3 (−79.5, +50.3)**, **N2 +35.5 (−32.6, +85.7)**; this-week days N1 +19, N2 +55 (both intervals above zero). Better in 3 and 4 of 10 folds; busiest quarter +73 and +183. All four rules fail for both arms. The sanity check first failed because it named the deployed model's backtest (original school calendar) instead of the verified-calendar log-model backtest; against the right one N0 differs by at most £0.0022 (section 10 records the error and that the table was read before the cause was found).
+
+### Conclusion
+
+1. **H42 is rejected:** training for the missing number gives no detectable gain (N1) or a loss (N2).
+2. **The weekly log keeps `v1`;** no `v2` arm on this evidence. The missing manager number is a data limit, not something training removes.
+3. **Not settled:** gains under about £50 a day (the intervals are about ±65); why N2 loses; the 39-day context check.
+4. **Caveats:** a 42nd look at the same days; 524 of the 585 days scored (weeks cut by block edges).
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final

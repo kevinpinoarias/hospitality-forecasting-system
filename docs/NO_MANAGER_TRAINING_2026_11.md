@@ -75,3 +75,43 @@ The full run finished on 1 November 2026. Its sanity check **failed** (largest d
 The reference the check should have named is the stored log-model backtest on the verified calendar (`reports/experiments/series19_21_cal2`, variant `log1p_final`, seeds 0 to 24). Against it N0 differs by at most **£0.0022** on all 585 days (tolerance £0.05): **pass**. The script now uses that reference.
 
 **What was seen when.** The script printed its summary table in the same command that reported the failed check, and I read the table before I understood why the check had failed, which is the opposite of what section 9 says ("no result is read"). The cause was found and the correct check passes without changing any arm, rule or threshold, so the rules' outcome is not affected, but the order should be on record.
+
+## 11. Result (run 1 November 2026, after the rules in `b9c71cd`, the machinery in `b1e3c5e` and the correction in `6644259`)
+
+Three arms, 10 folds, two seed sets (0 to 24 and 100 to 124), 524 next-week (NW) days and the same 524 this-week (TW) days. Sanity check (section 10): N0 against the stored verified-calendar log-model backtest, largest difference £0.0022, **pass**.
+
+Mean absolute error, £ a day (seed set A / seed set B):
+
+| | NW | TW |
+|---|---|---|
+| N0 as deployed | 1,042.1 / 1,037.0 | 1,018.8 / 1,016.9 |
+| N1 stand-in training | 1,041.8 / 1,034.7 | 1,037.5 / 1,036.4 |
+| N2 input dropped | 1,077.0 / 1,073.1 | 1,073.6 / 1,073.9 |
+
+Change against N0 (negative is a gain), 95% moving-block bootstrap interval:
+
+| | NW set A | NW set B | NW pooled | TW set A | TW set B | Folds better (NW) | Busiest quarter (NW) |
+|---|---|---|---|---|---|---|---|
+| **N1** | −0.3 (−78.6, +51.3) | −2.3 (−79.9, +49.8) | **−1.3** (−79.5, +50.3) | +18.7 (−37.8, +59.8) | +19.5 (−33.0, +57.6) | 3 of 10 | +73.3 |
+| **N2** | +34.9 (−30.9, +83.9) | +36.2 (−34.9, +88.2) | **+35.5** (−32.6, +85.7) | +54.8 (+1.9, +100.5) | +57.0 (+2.7, +103.5) | 4 of 10 | +182.9 |
+
+**Verdict against the rules.** Neither arm is a candidate.
+
+| Rule | N1 | N2 |
+|---|---|---|
+| 1 gain, upper end below zero on both seed sets | no | no |
+| 2 pooled gain of at least £15 | no (−1.3) | no (+35.5, a loss) |
+| 3 better in at least 7 of 10 folds | no (3) | no (4) |
+| 4 no harm | no (busiest quarter +73 against a limit of +25) | no (TW interval wholly above zero; busiest quarter +183) |
+
+N1 minus N2 is −36.8, so they are not one finding.
+
+**Reading, as fixed in section 7.** Rule 1 fails for both arms: **no detectable change; the log keeps `v1`.** No `v2` arm is added on this evidence.
+
+**What the numbers say beyond the rules.**
+1. Training with the stand-in (N1) leaves next-week error where it was (−1.3) and is a little worse on this-week days (+19, interval includes zero). It does not repair the mismatch between training with the number and serving without it.
+2. Dropping the input (N2) is worse, not better: +35 on next-week days (interval includes zero) and +55 on this-week days (both intervals lie above zero), and +183 on the busiest quarter. The real number in training is not a liability even when it is replaced by a median in service.
+3. The expectation in section 8 held for N1 (close to N0, interval including zero) and not for N2 (a loss, where a small gain had been expected). The intervals are about ±65, so gains under roughly £50 a day could not have been seen; "no detectable change" is not "no change".
+4. Not investigated: why N2 is worse (the column is removed from the model's tie-breaking and splits, but a loss of £35 is more than the £2 column-order effects of Series 19), and what next-week error would be with the real number supplied.
+
+**Limits.** A 42nd look at the same 585 days; weeks cut by a block's edge are not scored (524 of 585 days); the 39-day context check of section 4 has not been run.
