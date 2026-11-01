@@ -653,7 +653,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 - ~~test shorter-lag features such as lag_1~~ - **tested** (Series 4): lag_1-3 and 28-day rolling features all made accuracy worse
 - ~~expand the lag family more systematically~~ - **tested** (Series 2, 4)
 - ~~revisit forecast-error lag features~~ - **tested** (Series 2, 4)
-- add richer rolling statistics and trend-sensitive features
+- add richer rolling statistics and trend-sensitive features: rolling median, standard deviation, maximum and minimum, and ratio-to-rolling-mean (untested; Series 4 suggests small or negative returns)
 
 **Holiday and seasonality redesign**
 - ~~build explicit Christmas-period features~~ - **tested** (Series 5-12): a flag, a graded intensity index, named phases and post-hoc corrections all failed to help
@@ -665,6 +665,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 - extend the school-holiday table back to January 2024: the 2024 Easter and summer breaks are missing, so the model learns those breaks from 2025-26 only (a fix changes every backtest figure, so it means re-running the experiment log)
 
 **Hard-day forecasting**
+- test a two-stage model: first classify whether a day is a normal or spike day, then predict sales separately for each (untested; the large misses so far look event-driven, so it may need event data to work)
 - isolate and investigate spike days
 - classify worst forecast days by type
 - inspect whether the worst errors cluster around identifiable contexts
