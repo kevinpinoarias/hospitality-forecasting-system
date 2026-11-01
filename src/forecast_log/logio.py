@@ -17,6 +17,7 @@ import pandas as pd
 FORECAST_COLUMNS = ["run_id", "issue_time", "target_date", "lead_days", "forecast_type", "model", "model_version", "variant", "forecast", "manager_forecast_used",
                     "manager_arrived_at", "data_through", "weather_source", "hydro_list_through", "input_hash", "model_fingerprint", "code_commit", "on_time"]
 RUN_COLUMNS = ["run_id", "issue_time", "trigger", "status", "reason", "data_through", "forecast_types_made", "code_commit"]
+WEATHER_COLUMNS = ["run_id", "date", "max_temp", "rain_mm", "sun_hours", "fetched_at"]  # the live weather each run used (a forecast cannot be fetched again later)
 
 
 def existing_keys(forecasts_csv: Path) -> set[tuple[str, str, str, str]]:
@@ -61,8 +62,9 @@ def ensure_header(path: Path, columns: list[str]) -> None:
         raise RuntimeError(f"{path.name} has a different header ({first}) from the one this code writes")
 
 
-def write_run(log_repo: Path, forecast_rows: list[dict], run_row: dict) -> None:
+def write_run(log_repo: Path, forecast_rows: list[dict], run_row: dict, weather_rows: list[dict] | None = None) -> None:
     _append(log_repo / "log" / "forecasts.csv", FORECAST_COLUMNS, forecast_rows)
+    _append(log_repo / "log" / "weather_used.csv", WEATHER_COLUMNS, weather_rows or [])
     _append(log_repo / "log" / "runs.csv", RUN_COLUMNS, [run_row])
 
 

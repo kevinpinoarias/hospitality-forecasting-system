@@ -8,12 +8,14 @@ The log's three models and the benchmarks, as functions of the target days and w
 Routing at any lead (it reduces to the pre-registered routing of the holdout test at a week's distance): Friday uses `A_all` only if the sales of the same weekday 1 to 4 weeks earlier are all known,
 else the plain Monday-to-Thursday model; Saturday uses `A_lags` if the sales 2 and 3 weeks earlier are known, else the plain raw model; Sunday uses `B` (calendar and weather only, always available).
 
-Features for days beyond the data are built the way the live API builds them (`served_rows`): real history up to the last known day, later days filled with weekday-and-season medians, weather from the
-historical-average fallback. The manager's forecast is the supplied number, or (without-manager variant) the weekday-and-season median of the manager's past forecasts.
+Features for days beyond the data are built the way the live API builds them (src/api/inference.py): real history up to the last known day, later days filled with weekday-and-season medians, and
+the weather Open-Meteo has for the days after the last known one (recorded for past days, forecast for about 16 days ahead), the historical average beyond that or if the service fails. The
+manager's number is never known in time, so its place is taken by the stand-in the API uses: the weekday-and-season median of the manager's past forecasts.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,14 +23,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.api.weather import fetch_live_weather, live_weather_end
 from src.config import CONFIG
 from src.experiments import run_series35_holdout as h
-from src.features.serving_features import seasonal_medians
+from src.features.serving_features import WEATHER_COLS, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features
 from src.forecast_log import v1
 from src.models.final_model import DATE_COL, TARGET_COL, BaggedCatBoost
 
 MODELS = ("portfolio", "post", "hydro")
-WEATHER_SOURCE = "fallback_average"
 
 
 @dataclass
@@ -68,6 +70,47 @@ def load_models(log_repo: Path, version: str = v1.VERSION, models_root: Path | N
     return Models(version, h.Bag(b.models, b.features, "log1p"), pieces, portfolio_print, prints)
 
 
+# --------------------------------------------------------------------------- weather, as the live API takes it
+
+
+def fetch_run_weather(last_known_day: pd.Timestamp, issue_date: dt.date) -> tuple[pd.DataFrame, bool]:
+    """Open-Meteo's daily weather for every day after the last known one that it covers (recorded for past days, forecast up to about 15 days after the issue date),
+    with the API's own function. Returns (weather, errored); on a failed fetch the weather is empty and every day keeps its historical average."""
+    start = (last_known_day + pd.Timedelta(days=1)).date()
+    weather, errored = fetch_live_weather(start, live_weather_end(issue_date))
+    weather = weather.copy()
+    weather[DATE_COL] = pd.to_datetime(weather[DATE_COL]).dt.normalize()
+    return weather.reset_index(drop=True), errored
+
+
+def weather_label(target: dt.date, weather: pd.DataFrame, errored: bool, issue_date: dt.date) -> str:
+    """Where the target day's own weather came from, in the API's words (src/api/inference.py)."""
+    if len(weather) and pd.Timestamp(target) in set(weather[DATE_COL]):
+        return "observed" if target <= issue_date else "forecast"
+    if errored and target <= live_weather_end(issue_date):
+        return "historical_average_api_error"
+    return "historical_average"
+
+
+def served_rows(full: pd.DataFrame, last_known_day: pd.Timestamp, target_dates, calendar: str, weather: pd.DataFrame) -> pd.DataFrame:
+    """Feature rows for `target_dates`: real history up to `last_known_day`, the days after it filled with weekday-and-season medians (sales, the manager's number, weather), then the
+    live weather laid over those days where Open-Meteo has a figure. Nothing dated after `last_known_day` is read from `full`."""
+    history = full[full[DATE_COL] <= last_known_day]
+    daily = extend_daily_frame(history, max(pd.Timestamp(d) for d in target_dates).date())
+    if len(weather):
+        live = weather.set_index(DATE_COL)
+        later = (daily[DATE_COL] > last_known_day) & daily[DATE_COL].isin(live.index)
+        for col in WEATHER_COLS:
+            daily.loc[later, col] = live.loc[daily.loc[later, DATE_COL], col].to_numpy()
+    frame = h.build_frame(daily, calendar)
+    position = {d: i for i, d in enumerate(frame[DATE_COL])}
+    sales = fill_future_sales_seasonally(frame, len(history), history)
+    return with_history_features(frame, sales, [position[pd.Timestamp(d)] for d in target_dates])
+
+
+# --------------------------------------------------------------------------- the models
+
+
 def lags_known(sales_known: pd.Series, dates: pd.Series, lags: tuple[int, ...]) -> np.ndarray:
     """True for each date whose sales exactly `lag` days earlier are all known, for every lag given."""
     ok = pd.Series(True, index=sales_known.index)
@@ -88,13 +131,13 @@ def route_post(models: Models, rows: pd.DataFrame, sales_known: pd.Series, hydro
     return np.where(wd == "Sunday", models.pieces["sun_B"].predict(w), out)
 
 
-def forecast_days(models: Models, full: pd.DataFrame, last_known_day: pd.Timestamp, targets: list[pd.Timestamp], manager: np.ndarray | None,
-                  history: tuple[pd.DataFrame, np.ndarray]) -> pd.DataFrame:
-    """Portfolio, post and hydro forecasts for `targets`. `manager` is the manager's numbers (one per target) or None for the without-manager variant."""
+def forecast_days(models: Models, full: pd.DataFrame, last_known_day: pd.Timestamp, targets: list[pd.Timestamp], history: tuple[pd.DataFrame, np.ndarray],
+                  weather: pd.DataFrame) -> pd.DataFrame:
+    """Portfolio, post and hydro forecasts for `targets`, without the manager's number (the stand-in in its place), with the live weather where it exists."""
     hist_days, hist_pred = history
     sales_known = h.sales_known_series(full, last_known_day, max(targets))
-    rows_v2 = v1.add_hydro_thu(h.served_rows(full, last_known_day, targets, "v2", manager))
-    rows_v1 = h.served_rows(full, last_known_day, targets, "v1", manager)
+    rows_v2 = v1.add_hydro_thu(served_rows(full, last_known_day, targets, "v2", weather))
+    rows_v1 = served_rows(full, last_known_day, targets, "v1", weather)
     post = h.correct_new_block(hist_days, hist_pred, targets, route_post(models, rows_v2, sales_known, hydro=False))
     hydro = h.correct_new_block(hist_days, hist_pred, targets, route_post(models, rows_v2, sales_known, hydro=True))
     return pd.DataFrame({"target_date": [pd.Timestamp(t).date() for t in targets], "portfolio": models.portfolio.predict(rows_v1), "post": post, "hydro": hydro,

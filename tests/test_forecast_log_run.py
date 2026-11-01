@@ -1,12 +1,11 @@
 """
 Tests for the forecast log's run logic (src/forecast_log: schedule, inputs, logio, predict.lags_known). The models and the full run are exercised by a dry run in the runner folder;
-these guard the rules that make the log honest: which days are forecast, when a run is late, that unknown Hydro Thursdays are skipped, that a number is only used if it arrived in time,
-and that rows are appended once and never repeated.
+these guard the rules that make the log honest: which days are forecast, when a run is late, that unknown Hydro Thursdays are skipped, that the live weather only covers the days after the
+last known one, that the manager's number is scored as a benchmark once it arrives, and that rows are appended once and never repeated.
 """
 
 from __future__ import annotations
 
-import os
 from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
@@ -63,27 +62,25 @@ def test_hydro_thursdays_beyond_the_list_are_unknown_not_empty():
     assert inputs.unknown_hydro_thursdays([date(2026, 12, 30)], date(2026, 12, 1)) == set()  # a Wednesday is not a Thursday
 
 
-def test_manager_numbers_are_read_by_date_and_only_if_they_arrived_in_time(tmp_path):
-    first = tmp_path / "week1.csv"
-    first.write_text("date,forecast\n2026-11-09,5000\n09/11/2026,5100\n2026-11-10,6000\n", encoding="utf-8")
-    second = tmp_path / "week2.csv"
-    second.write_text("Date,Forecast\n2026-11-10,6200\n2026-11-11,7000\n", encoding="utf-8")
-    (tmp_path / "notes.csv").write_text("something,else\n1,2\n", encoding="utf-8")  # not a forecast file: ignored
-    old, new = datetime(2026, 11, 1).timestamp(), datetime(2026, 11, 5).timestamp()
-    os.utime(first, (old, old))
-    os.utime(second, (new, new))
-    frame = inputs.read_manager_forecasts(tmp_path)
-    assert list(frame["date"].dt.strftime("%Y-%m-%d")) == ["2026-11-09", "2026-11-10", "2026-11-11"]
-    assert frame.set_index(frame["date"].dt.strftime("%Y-%m-%d"))["forecast"].to_dict() == {"2026-11-09": 5100.0, "2026-11-10": 6200.0, "2026-11-11": 7000.0}  # the newest file wins
-    cutoff = datetime(2026, 11, 3).astimezone()
-    early = inputs.manager_for(frame, [date(2026, 11, 9), date(2026, 11, 10), date(2026, 11, 11)], not_after=cutoff)
-    assert list(early["date"].dt.strftime("%Y-%m-%d")) == ["2026-11-09"]  # the other numbers arrived after the cut-off
-    assert inputs.read_manager_forecasts(None).empty and inputs.read_manager_forecasts(tmp_path / "missing").empty
+def test_the_weather_label_says_where_each_day_came_from():
+    weather = pd.DataFrame({"date": pd.to_datetime(["2026-11-02", "2026-11-03", "2026-11-04"])})
+    issue = date(2026, 11, 3)
+    assert predict.weather_label(date(2026, 11, 2), weather, False, issue) == "observed"   # already happened when the forecast was made
+    assert predict.weather_label(date(2026, 11, 4), weather, False, issue) == "forecast"
+    assert predict.weather_label(date(2026, 11, 30), weather, False, issue) == "historical_average"  # beyond the service's range
+    assert predict.weather_label(date(2026, 11, 5), weather.iloc[:0], True, issue) == "historical_average_api_error"  # in range, but the service failed
+
+
+def test_the_version_decides_which_correction_history_is_read():
+    from src.forecast_log import v1
+
+    assert v1.correction_history_path("v2").name == "v2_correction_history.csv"
+    assert v1.CORRECTION_HISTORY.name == "v1_correction_history.csv"
 
 
 def _row(**over):
     base = {"run_id": "r", "issue_time": "t", "target_date": "2026-11-10", "lead_days": 8, "forecast_type": "NW", "model": "post", "model_version": "v1", "variant": "no_manager", "forecast": 1.0,
-            "manager_forecast_used": 1.0, "manager_arrived_at": "", "data_through": "2026-11-01", "weather_source": "fallback_average", "hydro_list_through": "2026-12-31", "input_hash": "x",
+            "manager_forecast_used": 1.0, "manager_arrived_at": "", "data_through": "2026-11-01", "weather_source": "forecast", "hydro_list_through": "2026-12-31", "input_hash": "x",
             "model_fingerprint": "y", "code_commit": "z", "on_time": "on_time"}
     return {**base, **over}
 
@@ -94,8 +91,8 @@ def test_a_forecast_is_logged_once_and_never_repeated(tmp_path):
     first = logio.new_rows_only([_row(), _row(model="hydro"), _row()], path)  # the third repeats the first within the same batch
     assert [r["model"] for r in first] == ["post", "hydro"]
     logio._append(path, logio.FORECAST_COLUMNS, first)
-    again = logio.new_rows_only([_row(), _row(variant="with_manager"), _row(target_date="2026-11-11")], path)
-    assert [(r["variant"], r["target_date"]) for r in again] == [("with_manager", "2026-11-10"), ("no_manager", "2026-11-11")]
+    again = logio.new_rows_only([_row(), _row(model="portfolio"), _row(target_date="2026-11-11")], path)
+    assert [(r["model"], r["target_date"]) for r in again] == [("portfolio", "2026-11-10"), ("post", "2026-11-11")]
 
 
 def test_a_log_file_with_a_different_header_is_refused(tmp_path):
@@ -194,3 +191,52 @@ def test_the_weekly_drop_finds_exports_placed_straight_in_the_private_folder(tmp
     manifest = {done.name: {"sha256": hashlib.sha256(done.read_bytes()).hexdigest()}, changed.name: {"sha256": "an older version"}}
     (private / ".anonymize_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     assert wd.pending_exports(private) == [changed.name, new.name]
+
+
+# --------------------------------------------------------------------------- live weather and the manager benchmark
+
+
+def test_live_weather_is_laid_over_the_days_after_the_last_known_one_only():
+    from src.forecast_log.run_forecasts import FEATURES
+
+    if not FEATURES.exists():
+        pytest.skip("needs data/features/engineered_features.csv (python main.py)")
+    from src.experiments import run_series35_holdout as h
+
+    full = h.load_engineered(FEATURES)
+    last = pd.Timestamp("2026-08-02")
+    targets = [pd.Timestamp("2026-08-04"), pd.Timestamp("2026-08-25")]
+    plain = predict.served_rows(full, last, targets, "v2", pd.DataFrame(columns=["date", "max_temp", "rain_mm", "sun_hours"]))
+    weather = pd.DataFrame({"date": pd.to_datetime(["2026-08-01", "2026-08-03", "2026-08-04"]), "max_temp": [40.0, 30.0, 31.0], "rain_mm": [0.0, 0.0, 0.0], "sun_hours": [12.0, 12.0, 12.0]})
+    live = predict.served_rows(full, last, targets, "v2", weather)
+    assert live["max_temp"].iloc[0] == 31.0 and live["is_hot_for_scotland"].iloc[0] == 1  # the target day takes the service's figure
+    assert live["temp_anomaly_14d"].iloc[0] != plain["temp_anomaly_14d"].iloc[0]  # and so do the features built from the days before it
+    assert live["max_temp"].iloc[1] == plain["max_temp"].iloc[1]  # a day the service does not cover keeps its average
+    weather_known_day = weather.copy()
+    weather_known_day.loc[0, "max_temp"] = -50.0  # 1 August is a known day: its real weather must never be replaced
+    assert predict.served_rows(full, last, targets, "v2", weather_known_day)["temp_anomaly_14d"].iloc[0] == live["temp_anomaly_14d"].iloc[0]
+
+
+def test_the_manager_benchmark_is_matched_to_the_portfolio_forecasts():
+    from src.forecast_log import score_forecasts as sf
+
+    forecasts = pd.DataFrame({"forecast_type": ["NW", "NW", "TD", "NW"], "target_date": ["2026-11-09", "2026-11-10", "2026-11-09", "2026-11-09"],
+                              "model": ["portfolio", "portfolio", "portfolio", "post"], "variant": "no_manager", "on_time": "on_time", "forecast": 1.0})
+    manager = pd.DataFrame({"target_date": ["2026-11-09", "2026-11-11"], "manager_forecast": [5000.0, 6000.0]})
+    rows = sf.manager_benchmark_rows(forecasts, manager)
+    assert sorted(zip(rows["forecast_type"], rows["target_date"])) == [("NW", "2026-11-09"), ("TD", "2026-11-09")]  # 10 Nov has no number yet; 11 Nov was not forecast
+    assert set(rows["model"]) == {"manager"} and set(rows["forecast"]) == {5000.0}
+
+
+def test_the_manager_number_is_recorded_once_when_the_export_brings_it(tmp_path):
+    from src.forecast_log import score_forecasts as sf
+
+    (tmp_path / "log").mkdir()
+    logio.ensure_header(tmp_path / "log" / "forecasts.csv", logio.FORECAST_COLUMNS)
+    logio._append(tmp_path / "log" / "forecasts.csv", logio.FORECAST_COLUMNS, [_row(target_date="2026-11-09")])
+    features = tmp_path / "features.csv"
+    pd.DataFrame({"date": ["2026-11-08", "2026-11-09", "2026-11-10"], "total_sales": [1.0, 2.0, np.nan], "forecast_sales": [900.0, 1000.0, np.nan]}).to_csv(features, index=False)
+    assert sf.update_manager(tmp_path, features) == 1  # 8 Nov is before the first forecast; 10 Nov has no number yet
+    assert sf.update_manager(tmp_path, features) == 0  # never added twice
+    recorded = pd.read_csv(tmp_path / "log" / "manager_forecasts.csv")
+    assert list(recorded["target_date"]) == ["2026-11-09"] and list(recorded["manager_forecast"]) == [1000.0]

@@ -1,3 +1,3 @@
 # Settings for the forecast log (src/forecast_log). Override per machine in config/forecast_log.local.yaml (not tracked).
 log_repo: D:/Projectos/DRG/forecasting-log      # the private forecasting-log repository (rows are appended, committed and pushed here)
-manager_dir: null                               # folder of the manager's forecasts: CSV files with columns date,forecast (one row per day). null = without-manager rows only.
+model_version: v1                               # the registered model version the runs use (models/<version> and data/training/<version>_correction_history.csv)

@@ -4,6 +4,8 @@ Scoring the forecast log: add the actual sales that have arrived, then compare t
   python -m src.forecast_log.score_forecasts [--dry-run]
 
 * Actuals are appended to `log/actuals.csv` for days from the first forecast's target date onward, once each, never edited.
+* The manager's forecast for those days reaches us in the same weekly export, after the day; it is appended to `log/manager_forecasts.csv` the same way and scored as a benchmark
+  (it was never an input to any forecast in the log).
 * Scores are written to `log/scores/latest.md` and `log/scores/tables.csv` (derived outputs, rewritten each time); forecasts are never touched.
 * Every table is on matched days: the two things compared are scored on the same target dates, same forecast type and same variant.
 * Q1 portfolio vs manager; Q2 post vs portfolio; Q3 hydro vs post on Hydro Thursdays (sign test). Before the pre-registered reading times (26 weeks; 20 Hydro Thursdays or 52 weeks) the
@@ -26,7 +28,10 @@ from src.forecast_log import logio
 from src.forecast_log.run_forecasts import FEATURES, load_settings
 from src.models.final_model import DATE_COL, TARGET_COL
 
+MANAGER_COL = "forecast_sales"  # the manager's forecast column of the engineered features
+
 ACTUAL_COLUMNS = ["target_date", "actual_sales", "recorded_at", "source"]
+MANAGER_COLUMNS = ["target_date", "manager_forecast", "recorded_at", "source"]
 MIN_DAYS_FOR_INTERVAL = 14
 FORMAL_READING = "26 weeks of forecasts (Q1, Q2); 20 Hydro Thursdays or 52 weeks (Q3)"
 
@@ -48,8 +53,38 @@ def update_actuals(log_repo: Path, features_path: Path = FEATURES) -> int:
     return len(rows)
 
 
+def update_manager(log_repo: Path, features_path: Path = FEATURES) -> int:
+    """Append the manager's forecast (as it arrives in the weekly export) for days from the first forecast target onward that are not in manager_forecasts.csv yet. Returns the
+    number of rows added."""
+    forecasts = log_repo / "log" / "forecasts.csv"
+    if not forecasts.exists() or pd.read_csv(forecasts).empty:
+        return 0
+    first = pd.read_csv(forecasts)["target_date"].min()
+    path = log_repo / "log" / "manager_forecasts.csv"
+    logio.ensure_header(path, MANAGER_COLUMNS)
+    have = set(pd.read_csv(path, dtype=str)["target_date"]) if path.stat().st_size else set()
+    known = pd.read_csv(features_path, parse_dates=[DATE_COL]).dropna(subset=[MANAGER_COL])
+    new = known[(known[DATE_COL] >= pd.Timestamp(first)) & ~known[DATE_COL].dt.strftime("%Y-%m-%d").isin(have)]
+    rows = [{"target_date": d.strftime("%Y-%m-%d"), "manager_forecast": round(float(v), 2), "recorded_at": logio.stamp(), "source": "weekly export"}
+            for d, v in zip(new[DATE_COL], new[MANAGER_COL])]
+    logio._append(path, MANAGER_COLUMNS, rows)
+    return len(rows)
+
+
+def manager_benchmark_rows(forecasts: pd.DataFrame, manager: pd.DataFrame) -> pd.DataFrame:
+    """The manager's number as a benchmark row for every forecast type and target date the portfolio model forecast (so it is compared on the same days)."""
+    keys = forecasts.loc[forecasts["model"] == "portfolio", ["forecast_type", "target_date"]].drop_duplicates()
+    m = keys.merge(manager[["target_date", "manager_forecast"]], on="target_date", how="inner")
+    return pd.DataFrame({"forecast_type": m["forecast_type"], "target_date": m["target_date"], "model": "manager", "variant": "", "on_time": "on_time",
+                         "forecast": m["manager_forecast"].astype(float)})
+
+
 def scored_frame(log_repo: Path) -> pd.DataFrame:
-    forecasts = pd.read_csv(log_repo / "log" / "forecasts.csv", dtype={"variant": str}).fillna({"variant": ""})
+    forecasts = pd.read_csv(log_repo / "log" / "forecasts.csv", dtype={"variant": str, "target_date": str}).fillna({"variant": ""})
+    manager_path = log_repo / "log" / "manager_forecasts.csv"
+    if manager_path.exists() and manager_path.stat().st_size:
+        manager = pd.read_csv(manager_path, dtype={"target_date": str})
+        forecasts = pd.concat([forecasts, manager_benchmark_rows(forecasts, manager)], ignore_index=True)
     actuals = pd.read_csv(log_repo / "log" / "actuals.csv")
     frame = forecasts.merge(actuals[["target_date", "actual_sales"]], on="target_date", how="inner")
     frame["miss"] = frame["forecast"] - frame["actual_sales"]
@@ -105,7 +140,6 @@ def build_report(frame: pd.DataFrame) -> tuple[str, pd.DataFrame]:
         for question, a, b, variant_label in (
             ("Q1 portfolio vs manager (no-manager variant)", ("portfolio", "no_manager"), ("manager", ""), ""),
             ("Q2 post vs portfolio (no-manager variant)", ("post", "no_manager"), ("portfolio", "no_manager"), ""),
-            ("Q2 post vs portfolio (with-manager variant)", ("post", "with_manager"), ("portfolio", "with_manager"), ""),
             ("Q3 hydro vs post, all days (no-manager variant)", ("hydro", "no_manager"), ("post", "no_manager"), ""),
         ):
             rows.append({"type": ftype, "question": question, **paired_difference(frame, a, b, ftype)})
@@ -125,6 +159,7 @@ def main() -> int:
     args = parser.parse_args()
     log_repo = Path(load_settings()["log_repo"])
     added = 0 if args.dry_run else update_actuals(log_repo)
+    managers = 0 if args.dry_run else update_manager(log_repo)
     frame = scored_frame(log_repo)
     report, table = build_report(frame)
     print(report)
@@ -134,8 +169,8 @@ def main() -> int:
     (log_repo / "log" / "scores" / "latest.md").write_text(report, encoding="utf-8")
     if not table.empty:
         table.to_csv(log_repo / "log" / "scores" / "tables.csv", index=False)
-    outcome = logio.commit_and_push(log_repo, f"scores: {added} new actuals, {frame['target_date'].nunique() if not frame.empty else 0} scored days")
-    print(f"[score] {added} actuals added; {outcome}")
+    outcome = logio.commit_and_push(log_repo, f"scores: {added} new actuals, {managers} manager forecasts, {frame['target_date'].nunique() if not frame.empty else 0} scored days")
+    print(f"[score] {added} actuals and {managers} manager forecasts added; {outcome}")
     return 0
 
 

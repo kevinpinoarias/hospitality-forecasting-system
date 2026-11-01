@@ -38,7 +38,14 @@ from src.models.final_model import DATE_COL, FINAL_FEATURES, TARGET_COL
 VERSION = "v1"
 FIRST_EXCLUDED_DAY = pd.Timestamp("2026-09-07")  # the first day NOT in the training data
 TRAINING_FEATURES = PROJECT_ROOT / "data" / "training" / "v1_engineered_features.csv"
-CORRECTION_HISTORY = PROJECT_ROOT / "data" / "training" / "v1_correction_history.csv"
+
+
+def correction_history_path(version: str) -> Path:
+    """The Saturday and Sunday correction history a version uses (frozen at its cut-off, kept beside the runner's data)."""
+    return PROJECT_ROOT / "data" / "training" / f"{version}_correction_history.csv"
+
+
+CORRECTION_HISTORY = correction_history_path(VERSION)
 MODELS_DIR = PROJECT_ROOT / "models" / VERSION
 THURSDAY = 3
 WEEKEND_PIECES = {"fri_A_all": "Friday", "sat_A_lags": "Saturday", "sun_B": "Sunday"}
