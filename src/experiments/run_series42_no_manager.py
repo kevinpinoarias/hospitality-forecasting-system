@@ -171,14 +171,18 @@ def judge(frame: pd.DataFrame, arm: str) -> dict:
 
 
 def sanity_check(records: dict[str, dict], days: pd.DataFrame) -> dict:
-    """N0 with real inputs and real history against the stored final-model backtest predictions."""
-    stored = pd.read_csv(CONFIG.path("final_model_dir") / "backtest_predictions.csv").set_index("date")["final_model_prediction"]
+    """N0 with real inputs and real history against the stored log-model backtest on the verified calendar (the `_cal2` results set).
+    models/final_model/backtest_predictions.csv is NOT the reference: it is the deployed model on the original school calendar."""
+    from src.experiments import run_package_validation as pv
+
+    stored = pv.load_set("_cal2")["log_raw_0_24"]["log1p_final"]
     ours = {}
     for r in records.values():
         ours.update(r.get("real_inputs", {}))
-    common = sorted(set(ours) & set(stored.index))
-    diff = np.array([abs(ours[d] - stored[d]) for d in common])
-    return {"days": len(common), "max_abs_diff": float(diff.max()) if len(diff) else float("nan"), "passes": bool(len(diff) and diff.max() <= SANITY_TOLERANCE)}
+    mine = np.array([ours.get(d, np.nan) for d in days["date"]])
+    diff = np.abs(mine - stored)
+    return {"days": int(np.isfinite(diff).sum()), "max_abs_diff": float(np.nanmax(diff)) if np.isfinite(diff).any() else float("nan"),
+            "passes": bool(np.isfinite(diff).all() and np.nanmax(diff) <= SANITY_TOLERANCE)}
 
 
 def mae_table(frame: pd.DataFrame) -> pd.DataFrame:
@@ -190,7 +194,7 @@ def report(records: dict[str, dict], days: pd.DataFrame, smoke: bool = False, ch
     lines = ["# Series 42: scores", ""]
     if check_sanity:
         s = sanity_check(records, days)
-        lines += [f"Sanity check (N0, real inputs, against the stored final-model backtest): {s['days']} days, largest difference {s['max_abs_diff']:.4f}, "
+        lines += [f"Sanity check (N0, real inputs, against the stored verified-calendar log-model backtest): {s['days']} days, largest difference {s['max_abs_diff']:.4f}, "
                   f"{'PASS' if s['passes'] else 'FAIL'} (tolerance {SANITY_TOLERANCE}).", ""]
     lines += ["## Mean absolute error (£ a day)", "", mae_table(frame).to_markdown(index=False), ""]
     verdicts = [judge(frame, arm) for arm in ("N1", "N2")]

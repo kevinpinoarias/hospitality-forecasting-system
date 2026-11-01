@@ -67,3 +67,11 @@ Written when the script and its tests were finished, after a rehearsal and befor
 - **Sanity check.** N0 (seed set A) predicting the test days with their real inputs and real history must match `models/final_model/backtest_predictions.csv` to £0.05; if it does not, no result is read.
 - **Rehearsal.** One fold (the last) with 2 seeds per set was run to test the machinery. Its figures were seen. They are part of the 585 days and no choice was made from them; the full run is the test.
 - **Not built yet.** The 39-day context check on the new data (section 4) is a separate step, run after the main result.
+
+## 10. Correction to the sanity check (found on the first full run)
+
+The full run finished on 1 November 2026. Its sanity check **failed** (largest difference £173.9 against £0.05) because sections 4 and 9 named the wrong reference: `models/final_model/backtest_predictions.csv` is the **deployed model on the original school calendar**, while the arms here are fitted on this branch's verified-calendar features. A fresh refit with the repository's own `BaggedCatBoost.fit` reproduces N0 exactly (difference 0.000) and also differs from that file by up to £118, so the fault is the reference, not the arms.
+
+The reference the check should have named is the stored log-model backtest on the verified calendar (`reports/experiments/series19_21_cal2`, variant `log1p_final`, seeds 0 to 24). Against it N0 differs by at most **£0.0022** on all 585 days (tolerance £0.05): **pass**. The script now uses that reference.
+
+**What was seen when.** The script printed its summary table in the same command that reported the failed check, and I read the table before I understood why the check had failed, which is the opposite of what section 9 says ("no result is read"). The cause was found and the correct check passes without changing any arm, rule or threshold, so the rules' outcome is not affected, but the order should be on record.
