@@ -175,3 +175,22 @@ def test_the_weekly_drop_copies_only_new_files_and_finds_gaps(tmp_path):
     feats = tmp_path / "f.csv"
     pd.DataFrame({"date": ["2026-11-01", "2026-11-02", "2026-11-04"], "total_sales": [1, 2, 4]}).to_csv(feats, index=False)
     assert [d.strftime("%Y-%m-%d") for d in wd.find_gaps(feats)] == ["2026-11-03"]
+
+
+def test_the_weekly_drop_finds_exports_placed_straight_in_the_private_folder(tmp_path):
+    import hashlib
+    import json
+
+    from src.forecast_log import weekly_drop as wd
+
+    private = tmp_path / "private"
+    assert wd.pending_exports(private) == []  # no folder yet: nothing to do
+    private.mkdir()
+    done, changed, new = (private / f"Rotaready-CostControlRawData{n}.csv" for n in (1, 2, 3))
+    done.write_text("processed", encoding="utf-8")
+    changed.write_text("corrected re-export", encoding="utf-8")
+    new.write_text("dropped in by hand", encoding="utf-8")
+    (private / "~$open_in_excel.xlsx").write_text("", encoding="utf-8")  # Excel's lock file is not an export
+    manifest = {done.name: {"sha256": hashlib.sha256(done.read_bytes()).hexdigest()}, changed.name: {"sha256": "an older version"}}
+    (private / ".anonymize_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    assert wd.pending_exports(private) == [changed.name, new.name]
