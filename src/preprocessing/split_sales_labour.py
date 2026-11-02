@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from src.preprocessing.common import normalise_series, read_file
+from src.preprocessing.common import build_file_list, normalise_series, read_file
 
 
 # ---------------------------------------------------------------------
@@ -29,7 +29,6 @@ from src.preprocessing.common import normalise_series, read_file
 
 from src.config import CONFIG
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INPUT_DIR = CONFIG.path("raw_data_dir")
 OUTPUT_DIR = CONFIG.path("interim_dir")
 SALES_DIR = OUTPUT_DIR / "sales"
@@ -43,7 +42,6 @@ LABOUR_DIR.mkdir(parents=True, exist_ok=True)
 # Config
 # ---------------------------------------------------------------------
 
-EXTS = {".csv", ".xlsx"}
 TARGET_METRIC = "wages"
 TARGET_SUBDIV = "forecast"
 REQUIRED_COLS = ["Metric", "Subdivision"]
@@ -81,19 +79,6 @@ def write_output(df_sales: pd.DataFrame, df_labour: pd.DataFrame, source_path: P
         df_labour.to_excel(LABOUR_DIR / f"{stem}_labour.xlsx", index=False)
 
 
-def build_file_list(input_dir: Path) -> list[Path]:
-    """Return valid raw input files from the raw data directory."""
-    return sorted(
-        [
-            p for p in input_dir.iterdir()
-            if p.is_file()
-            and p.suffix.lower() in EXTS
-            and not p.name.startswith("~$")
-            and p.name.lower() != "split_summary.csv"
-        ]
-    )
-
-
 # ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
@@ -108,7 +93,7 @@ def split_sales_and_labour(input_dir: Path = INPUT_DIR) -> pd.DataFrame:
         Summary of processing results.
     """
     summary: list[dict] = []
-    files = build_file_list(input_dir)
+    files = [p for p in build_file_list(input_dir) if p.name.lower() != "split_summary.csv"]
 
     if not files:
         raise FileNotFoundError(f"No supported raw files found in: {input_dir}")
