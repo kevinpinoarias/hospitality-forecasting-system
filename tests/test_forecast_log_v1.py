@@ -23,8 +23,9 @@ def test_the_pieces_are_the_ones_in_the_pre_registration():
     assert set(v1.WEEKEND_PIECES) == {"fri_A_all", "sat_A_lags", "sun_B"}
 
 
-def test_the_first_excluded_day_keeps_the_holdout_days_out_of_training():
-    assert v1.FIRST_EXCLUDED_DAY == pd.Timestamp("2026-09-07")
+def test_the_cut_off_is_the_day_after_the_export_of_1_november():
+    assert v1.FIRST_EXCLUDED_DAY == pd.Timestamp("2026-11-02")
+    assert v1.BACKTEST_END == pd.Timestamp("2026-09-07")  # the withdrawn fit's forecasts fill the history from here to the cut-off
 
 
 def test_the_flag_marks_a_hydro_thursday_and_nothing_else():

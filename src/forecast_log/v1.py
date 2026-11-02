@@ -2,8 +2,9 @@
 Version v1 of the models behind the forecast log (the private repository `forecasting-log`; rules in its PREREGISTRATION.md).
 
 The log has three arms: the portfolio model (the frozen deployed model), the post model (the weekend package) and the hydro model (the post model plus the Thursday-Hydro flag).
-Version v1 is fitted ONCE on the rows dated before 7 September 2026 (the holdout test's cut-off), from the frozen engineered-features file, then saved and fingerprinted. It is never refitted:
-a refit is a new version. The pieces are:
+Version v1 is fitted ONCE on the rows dated before 2 November 2026 (the last day of the export available on 1 November), from a frozen copy of the engineered features, then saved
+and fingerprinted. It is never refitted: a refit is a new version. (An earlier fit to 6 September, made on 30 October, was withdrawn before any forecast was logged: the log's
+PREREGISTRATION.md, amendment of 1 November 2026.) The pieces are:
 
   log             the log model: Monday to Thursday of the post model, and the Wednesday-to-Thursday base of both package arms
   log_hydro_thu   the log model with the Thursday-Hydro flag as an extra input: Monday to Thursday of the hydro model
@@ -14,8 +15,8 @@ a refit is a new version. The pieces are:
 
 The portfolio model is not refitted: its files (models/final_model) are verified against the fingerprint named in the holdout pre-registration.
 
-Run (from the runner folder):
-  python -m src.forecast_log.v1 export-history --out data/training/v1_correction_history.csv      (in the development folder, where the backtest results exist)
+Run on Product-branch (the development folder), then copy models/v1 and data/training/v1_correction_history.csv to the runner:
+  python -m src.forecast_log.v1 export-history --withdrawn-models <folder of the withdrawn fit's six pieces>
   python -m src.forecast_log.v1 fit --log-repo D:\\Projectos\\DRG\\forecasting-log
 """
 
@@ -36,8 +37,10 @@ from src.features.events import concert_calendar
 from src.models.final_model import DATE_COL, FINAL_FEATURES, TARGET_COL
 
 VERSION = "v1"
-FIRST_EXCLUDED_DAY = pd.Timestamp("2026-09-07")  # the first day NOT in the training data
+FIRST_EXCLUDED_DAY = pd.Timestamp("2026-11-02")  # the first day NOT in the training data
+BACKTEST_END = pd.Timestamp("2026-09-07")  # the backtest's days end before this; the withdrawn fit forecast the days from here to the cut-off
 TRAINING_FEATURES = PROJECT_ROOT / "data" / "training" / "v1_engineered_features.csv"
+TRAINING_FEATURES_SHA = "c5355ae36638b5180a232f04992276821bc26bb797c6c7833be8c00eb6b5733a"  # data/features/engineered_features.csv as rebuilt on 2 November 2026
 
 
 def correction_history_path(version: str) -> Path:
@@ -72,8 +75,8 @@ def add_hydro_thu(frame: pd.DataFrame) -> pd.DataFrame:
 def training_frames() -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """The v1 training rows (plain, and with the weekend inputs added) and the hash of the features file they come from."""
     sha = h.file_sha256(TRAINING_FEATURES)
-    if sha != h.FROZEN_FEATURES_SHA:
-        raise RuntimeError(f"{TRAINING_FEATURES} is not the frozen features file (sha256 {sha[:16]}..., expected {h.FROZEN_FEATURES_SHA[:16]}...)")
+    if sha != TRAINING_FEATURES_SHA:
+        raise RuntimeError(f"{TRAINING_FEATURES} is not the frozen features file (sha256 {sha[:16]}..., expected {TRAINING_FEATURES_SHA[:16]}...)")
     full = add_hydro_thu(h.load_engineered(TRAINING_FEATURES))
     train = h.complete_rows(full)
     train = train[train[DATE_COL] < FIRST_EXCLUDED_DAY].reset_index(drop=True)
@@ -132,12 +135,31 @@ def fit_v1(log_repo: Path) -> dict:
     return entry
 
 
-def export_correction_history(out: Path) -> None:
-    """The backtest days and the post model's own out-of-sample weekend forecasts for them, which the Saturday and Sunday correction learns from
-    (frozen at the cut-off). Needs the stored backtest results, so it is run in the development folder and the file is copied to the runner."""
-    days, weekend = h.package_history(FIRST_EXCLUDED_DAY)
+def withdrawn_fit_days(withdrawn_models: Path, next_fold: int) -> pd.DataFrame:
+    """The days from the end of the backtest to the cut-off, with the withdrawn fit's forecasts for them (trained before 7 September, so out of
+    sample): the package as validated, each weekend day with its chosen option and the real inputs, as the backtest's own forecasts were made."""
+    arms = {"D": h.Bag.load(withdrawn_models / "log"), "Fri_A_all": h.Bag.load(withdrawn_models / "fri_A_all"),
+            "Sat_A_lags": h.Bag.load(withdrawn_models / "sat_A_lags"), "Sun_B": h.Bag.load(withdrawn_models / "sun_B")}
+    full = h.load_engineered(TRAINING_FEATURES)
+    rows = h.complete_rows(full)
+    rows = rows[(rows[DATE_COL] >= BACKTEST_END) & (rows[DATE_COL] < FIRST_EXCLUDED_DAY)].reset_index(drop=True)
+    expected = pd.date_range(BACKTEST_END, FIRST_EXCLUDED_DAY - pd.Timedelta(days=1), freq="D")
+    if not rows[DATE_COL].reset_index(drop=True).equals(pd.Series(expected, name=DATE_COL)):
+        raise RuntimeError(f"the training features do not hold every day from {BACKTEST_END.date()} to {(FIRST_EXCLUDED_DAY - pd.Timedelta(days=1)).date()}")
+    frame = pd.DataFrame({"date": rows[DATE_COL].dt.strftime("%Y-%m-%d"), "fold_id": next_fold, "actual": rows[TARGET_COL].to_numpy(),
+                          "weekday": h.weekday_names(rows[DATE_COL])})
+    frame["package_weekend_forecast"] = h.package_mode_a(arms, rows, full.set_index(DATE_COL)[TARGET_COL])
+    return frame
+
+
+def export_correction_history(out: Path, withdrawn_models: Path) -> None:
+    """The days and the post model's own out-of-sample forecasts for them, which the Saturday and Sunday correction learns from (frozen at the
+    cut-off): the backtest's days (to 6 September), then the withdrawn fit's forecasts to the cut-off as one more block. Needs the stored backtest
+    results, so it is run in the development folder and the file is copied to the runner."""
+    days, weekend = h.package_history(BACKTEST_END)
     frame = days[["date", "fold_id", "actual", "weekday"]].copy()
     frame["package_weekend_forecast"] = weekend
+    frame = pd.concat([frame, withdrawn_fit_days(withdrawn_models, int(frame["fold_id"].max()) + 1)], ignore_index=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(out, index=False)
     print(f"[v1] correction history: {len(frame)} days ({frame['date'].min()} to {frame['date'].max()}) -> {out}; sha256 {h.file_sha256(out)[:16]}")
@@ -155,11 +177,12 @@ def main() -> None:
     fit.add_argument("--log-repo", type=Path, required=True)
     export = sub.add_parser("export-history")
     export.add_argument("--out", type=Path, default=CORRECTION_HISTORY)
+    export.add_argument("--withdrawn-models", type=Path, required=True, help="the folder holding the withdrawn fit's six pieces (log, fri_A_all, sat_A_lags, sun_B used)")
     args = parser.parse_args()
     if args.command == "fit":
         fit_v1(args.log_repo)
     else:
-        export_correction_history(args.out)
+        export_correction_history(args.out, args.withdrawn_models)
 
 
 if __name__ == "__main__":
