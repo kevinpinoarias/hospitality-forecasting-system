@@ -77,6 +77,12 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
+**Series 44-51** use the same protocol and JSONL files (`reports/experiments/series44/` to `series51/`) and
+are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
+each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
+checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
+backtest gains an 11th fold, the 585-day figures change, and the scripts stop with a message.
+
 ---
 
 ## Series 1 — Algorithm & Hyperparameter Sweep
@@ -3386,6 +3392,244 @@ Post model, with / without the number (£ a day): days 1-7 821 / 834 (+12), **8-
 2. **The post model is better than the log model at every distance, with or without the number.** Without it, the post model is level with the manager at the log's next-week distance (928 against 949) and far better within a week (834 against 1,104).
 3. **Caveats:** overlapping windows narrow the intervals; real weather for 16 days flatters the short buckets; small short buckets; no hydro arm.
 
+## Series 44 — Do the Month and Day-of-Year Columns All Earn Their Place?
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series44_month_doy_encodings.py` · Results (local, gitignored): `reports/experiments/series44/`
+
+### Context
+
+The final model reads `month`, `month_sin`, `month_cos`, `day_of_year`, `day_of_year_sin` and `day_of_year_cos`: two calendar facts, each written three ways. Series 1's leave-one-out removed one column at a time and found that removing most of them helped, but every column kept two siblings carrying its signal, so that test could not say whether the columns are useless or merely redundant.
+
+### Hypothesis
+
+**H44**: some variant with fewer of the six columns scores a lower MAE than all six.
+
+### Method
+
+Whole encodings removed instead of single columns. Each fact gets one of four options (none, the plain number, the sine/cosine pair, both), 4 × 4 = 16 variants, `both`/`both` being the final model; every other column keeps its place in the order. The final model's protocol (log1p target, depth 4, 300 iterations, 10 folds, 585 days), 25 seeds (0-24) repeated on 25 more (100-124). Pre-registered rule: a smaller set replaces the six only if its change is below zero with a 95% moving-block bootstrap interval excluding zero on both seed sets; a tie is a tie.
+
+### Results
+
+Baseline (all six) £909.96 on seeds 0-24 and £912.74 on seeds 100-124 (the final model's logged £909.57 differs by £0.39, possibly the corrected school calendar of Series 29; not investigated, and it does not affect the comparison, as every variant shares it). Change against the baseline, both seed sets (£, negative is better):
+
+| Month columns | Day-of-year columns | Features | Change |
+|---|---|---|---|
+| Pair only | All three | 37 | −1.75 / −2.17 (tie) |
+| None | All three | 35 | +2.84 / −1.99 (tie) |
+| All three | Pair only | 37 | +1.70 / +0.83 (tie) |
+| All three | Plain number only | 36 | +9.73 / +9.66 (worse on both) |
+| All three | None | 35 | +17.67 / +17.16 (worse on both) |
+| None | None | 32 | +30.54 / +25.74 (worse on both) |
+
+Every variant without any day-of-year column is £17 to £31 worse with an interval above zero on both seed sets. Mean MAE by day-of-year option (seeds 0-24): both 911.4, pair 915.6, plain number 923.1, none 934.7. **No variant met the rule; the six columns stay.**
+
+### Conclusion
+
+1. **Day of year carries the seasonality;** the sine/cosine pair is the part that matters (pair alone ties the full set; the plain number alone is about £10 worse, since a tree cannot wrap December back to January on a 1-366 scale).
+2. **The month columns add nothing once day of year is there,** the redundancy Series 1 suspected but could not show. The small gain of the best variant (no plain `month`) was tested again with 100 fresh seeds in Series 46 and is zero.
+3. **Caveats:** the same 585 days as every series since Series 1; the two seed sets differ by £2.8 for the identical model, so gains of £1 to £3 cannot be told from seed noise.
+
+## Series 45 — Is `year` Needed, and Is `is_weekend` the Right Weekend Flag?
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series45_year_and_weekend_flag.py` · Results: `reports/experiments/series45/`
+
+### Context
+
+`year` can only be cut into the years the model has seen (2024, 2025, 2026), so in 2027 it behaves as 2026; the partial year 2026 also looks quiet because the data stops before the busy November and December. `is_weekend` is `day_of_week >= 4`, which is Friday, Saturday **and** Sunday (a good choice for a venue, a misleading name): Sunday (£8.3k a day) sits far below Friday (£10.5k) and Saturday (£14.8k).
+
+### Hypothesis
+
+**H45**: dropping `year`, or changing the weekend flag, lowers the final model's MAE.
+
+### Method
+
+2 × 4 = 8 variants: `year` kept or dropped, and `is_weekend` as today, removed, replaced by three single-day flags (`is_friday`, `is_saturday`, `is_sunday`), or replaced by a Friday+Saturday flag plus a Sunday flag. `day_of_week` and its sine/cosine stay. The new flags sit where `is_weekend` sits in the column order. Same protocol, seeds and rule as Series 44.
+
+### Results
+
+Change against the final model (£; seeds 0-24 / 100-124):
+
+| Year | Weekend flag | Change |
+|---|---|---|
+| Kept | Three single-day flags | −7.63 (−16.3 to +0.9) / −12.20 (−22.5 to −2.6) |
+| Dropped | Three single-day flags | −11.74 (−30.5 to +4.5) / −14.55 (−34.7 to +2.6) |
+| Dropped | As today | −4.89 / −3.03 |
+| Kept | No flag | −1.47 / −1.60 |
+| Kept | Friday+Saturday flag and Sunday flag | +0.47 / −4.32 |
+
+The single-day flags gain on Friday (−£27 and −£36) and Saturday (−£30 and −£36); dropping `year` improves Saturday by £84 to £120 but makes Monday to Thursday £8 to £14 worse and Friday worse. **No variant met the rule** (the single-day flags missed it on seeds 0-24 by under £1).
+
+### Conclusion
+
+1. **The single-day flags were the one promising result,** against the expectation written down beforehand (all four weekend options within noise). A possible reason is that the trees are four splits deep: isolating Saturday from `day_of_week` takes two splits, `is_saturday` one. Series 48 tests that.
+2. **Dropping `year` shifts error between weekdays** rather than lowering it.
+3. **Caveat:** the same 585 days; the model here is the plain log model, which the post model uses only on Monday to Thursday (Series 47).
+
+## Series 46 — Confirming the Calendar Candidates on Fresh Seeds and on the New Days
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series46_calendar_confirmation.py` · Results: `reports/experiments/series46/`
+
+### Context
+
+Two kinds of noise stand between Series 44-45 and a decision: the model's own randomness (two 25-seed bags of the identical model differ by £2.8) and which days were scored. More seeds shrink the first and not the second.
+
+### Method
+
+Six variants on the final model's 38 columns (no plain `month`; the single-day flags; both; and each of the last three without `year`). **Part A**: the same 585 days with 100 new seeds (200-299). **Part B**: every model fitted on rows before 7 September 2026 and scored on the 56 days from then to 1 November (no earlier series chose a calendar column using them; Series 35 and 36 used them for other questions). Pre-registered: supported only if part A is below zero with an interval excluding zero and part B is below zero (part B is a veto, 56 days cannot confirm).
+
+### Results
+
+Change against the final model (£; part A with 95% interval; part B on 56 days):
+
+| Variant | Features | Part A | Part B |
+|---|---|---|---|
+| Without the plain month number | 37 | −0.00 (−2.7 to +2.5) | +2.14 |
+| Single-day flags | 40 | **−10.82 (−19.7 to −3.1)** | +3.14 |
+| Both of the above | 39 | **−9.61 (−18.5 to −1.6)** | +0.87 |
+| Single-day flags, without `year` | 39 | −14.03 (−33.9 to +1.8) | −2.93 |
+| Single-day flags, without month number and `year` | 38 | −15.30 (−36.6 to +1.2) | −4.58 |
+
+The single-day flags' part A gain is Friday (−£29) and Saturday (−£37); the variant with the flags and no month number is better in 9 of 10 folds, while the one that also drops `year` is better in only 5. **No candidate was supported** (part B failed the veto for the flags).
+
+### Conclusion
+
+1. **The plain `month` number does nothing:** the −£2 of Series 44 was seed noise.
+2. **The single-day flags are a real effect on the plain log model on these 585 days,** not seed luck; part B (56 days, 8 Saturdays) could not confirm or deny it.
+3. **The gain of the variants without `year` is one fold.** The fold of 10 January to 10 March 2026 averages −£154 a day, which alone accounts for more than the whole −£15.30: that fold trains on only nine 2026 rows (all 1-9 January, mean sales £4,860 against £8,589 overall), so `year = 2026` acts as a "quiet day" marker and the plain log model's error on the Saturdays of that fold is about £1,200 a day larger than without `year`. This is a rollover hazard for any model retrained in the first weeks of a year, not an accuracy gain.
+4. **Caveat:** the candidates were chosen after seeing Series 44-45 on the same 585 days, and the post model does not use this plain log model on Friday to Sunday (Series 47).
+
+## Series 47 — Single-Day Flags Inside the Real Friday, Saturday and Sunday Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series47_weekend_flags_in_pieces.py` · Results: `reports/experiments/series47/`
+
+### Context
+
+The post model uses the plain log model only on Monday to Thursday. Friday is log1p with the same-weekday inputs, Saturday raw pounds with the sales of 2 and 3 weeks ago, Sunday log1p with the weekend interactions, then the Series 24 correction (`src/forecast_log/v1.py`).
+
+### Method
+
+Each piece refitted twice, as deployed and with `is_weekend` replaced by the three flags in the same place (`year` kept), scored on its own weekday over the 585 days with 100 seeds and on the new days; the package (Monday-Thursday from the log model) assembled both ways and corrected. Pre-registered rule as Series 46.
+
+### Results
+
+| Piece | Days | As deployed | With flags | Change | Folds better | New days (8) |
+|---|---|---|---|---|---|---|
+| Friday | 83 | 1,088.3 | 1,083.0 | −5.36 (−35.3 to +22.5) | 7 | +18.27 |
+| Saturday | 84 | 1,078.8 | 1,076.6 | −2.24 (−13.6 to +12.1) | 6 | −9.88 |
+| Sunday | 84 | 1,075.0 | 1,086.8 | +11.78 (−7.0 to +29.5) | 3 | −27.39 |
+
+The package: £873.02 → £871.85 before the correction (−1.17, −7.7 to +5.4) and **£865.36 → £864.34 after it (−1.02, −7.8 to +5.6)**. No piece and not the package met the rule.
+
+### Conclusion
+
+1. **The flags' gain on the plain log model disappears inside the real pieces** (Friday −£29 → −£5, Saturday −£37 → −£2); the post model's pieces stay as they are.
+2. **Nothing changes in the deployed models:** the forecast log's `v1` pieces are fitted once and never refitted, so adopting the flags would be a new version.
+
+## Series 48 — Why the Single-Day Flags Faded Inside the Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series48_why_flags_faded.py` · Results: `reports/experiments/series48/`
+
+### Hypotheses
+
+**E1**: the pieces' extra inputs already tell the model what the flags tell it. **E2**: with four-split trees `is_saturday` saves a split that `day_of_week` needs two for, and deeper trees would make the flags unnecessary.
+
+### Method
+
+The plain log model, `is_weekend` or the flags, under five settings: as the final model, plus the Friday piece's inputs, plus the Saturday piece's, plus the Sunday piece's, and trees six splits deep; 100 seeds (200-299). The control reproduced Series 46's fits exactly (checked by the script). Pre-registered: E1 holds for a piece if the flags help in the control (interval below zero) and help less than half as much with that piece's inputs.
+
+### Results
+
+The flags' effect (£, negative = the flags help):
+
+| Setting | Friday | Saturday |
+|---|---|---|
+| Final model | −28.8 | −36.8 |
+| + Friday inputs | −5.4 | −22.3 |
+| + Saturday inputs | −12.3 | −26.8 |
+| + Sunday inputs | −30.6 | −31.4 |
+| Trees 6 deep | −13.2 | −26.3 |
+
+Neither E1 nor E2 held by the pre-registered rule (the control's Friday interval, −73.9 to +10.1, includes zero). MAE by weekday, the question of whether the pieces do the flags' job better: Friday plain model + flags 1,089.5 against the real Friday piece 1,088.3 (level); Saturday 1,112.9 (best log setting) against 1,078.8; Sunday 1,095.8 against 1,075.0. Deeper trees are worse overall (£922.6 against £911.6).
+
+### Conclusion
+
+1. **Friday: the inputs do the flags' job** (about 80% of the gain gone with Friday's own inputs; the control's interval is wide).
+2. **Saturday: the inputs only remove about a quarter of it,** yet the real Saturday piece gains nothing. The same inputs on the log target give −£27, on the raw-pound target −£2: the raw-pound target looks like the reason (not tested directly).
+3. **The real pieces beat anything built from the flags** on Saturday (about £34) and Sunday (about £21) and match it on Friday; E2 is not the explanation.
+
+## Series 49 — A Leap-Year-Safe Day of Year
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series49_leap_safe_day_of_year.py` · Results: `reports/experiments/series49/`
+
+### Context
+
+`day_of_year` is one higher after 29 February in a leap year (1 March is day 61 in 2024, 60 in 2025), and day 366 (31 December 2024) falls on the same sine/cosine point as day 1 because the circle's period is 365. The data holds one leap year. 1 January is a closed day (£0 in the model rows) and the raw `day_of_year`, `month` and `is_bank_holiday` separate the two, so no conflicting signal reaches the model.
+
+### Method
+
+The three day-of-year columns recomputed as if every year had 365 days (29 February takes 28 February's number; 1 March is always 60, 25 December always 359, 31 December 2024 is 365). 307 rows (29 February to 31 December 2024) change. Final-model protocol, 100 seeds (200-299), written expectation: a tie.
+
+### Results
+
+£911.62 with the final model's numbering, £911.66 leap-safe: **+0.04 (−4.88 to +4.80)**; 2025 test days +1.66, 2026 −2.15; better in 4 of 10 folds. **A tie.**
+
+### Conclusion
+
+1. **Nothing is measurable on the 585 days,** as the test days are all in 2025 and 2026.
+2. **A correctness fix for 2028, not a gain.** Not applied: the deployed `v1` models are never refitted; it can go into a later model version.
+
+## Series 50 — Dropping `year` Inside the Real Post-Model Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series50_drop_year_in_pieces.py` · Results: `reports/experiments/series50/`
+
+### Context
+
+Series 45-46 dropped `year` from the plain log model; Series 47 showed the post model uses separate pieces on Friday, Saturday and Sunday.
+
+### Method
+
+`year` removed from each of the four pieces (Monday-Thursday log model, Friday, Saturday, Sunday), everything else as deployed; the year-kept side reused Series 46-47's 100-seed fits. The rule was **amended before any result was read**, at the owner's request: the first version made three pass/fail gates; the reading is now by judgment on the package's net change in pounds, whether it is spread over folds or sits in one, where it comes from by weekday, and the cost in complexity or risk.
+
+### Results
+
+| Piece | Change from dropping `year` | Folds better | Without the Jan-Mar 2026 fold | New days |
+|---|---|---|---|---|
+| Monday-Thursday | +11.34 | 5 | +2.75 | −19.38 (32 days) |
+| Friday | +20.09 | 2 | +10.10 | +19.35 |
+| Saturday | −30.35 | 4 | +9.61 | +1.76 |
+| Sunday | −7.19 | 5 | +5.47 | −1.47 |
+
+The package: £873.02 → £876.95 before the correction (+3.94, −7.0 to +14.8), **£865.36 → £867.13 after it (+1.76, −9.3 to +12.0)**; five folds better and five worse after the correction, the most recent fold (July-September 2026) worst at +£18.4; adding the four pieces' new-days changes by hand gives about −£8 on the 56 days.
+
+### Conclusion
+
+1. **No accuracy case for dropping `year`:** about +£2 on the package, within noise. The Saturday gain comes from the January-March 2026 fold; without it, Saturday is £9.6 worse.
+2. **The rollover hazard of Series 46 is small in the real pieces:** the package changes by only −£2.3 a day in that fold, because the pieces' recent-sales inputs carry the level.
+3. **`year` stays.** Before any retraining in January to March 2027 (when a handful of low-season 2027 rows would first appear), repeat this check on the then-current data. Whether and when to retrain is the owner's decision.
+
+## Series 51 — The Combined Calendar Candidate Inside the Real Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series51_combined_candidate_in_pieces.py` · Results: `reports/experiments/series51/`
+
+### Context
+
+Series 46's most promising row (single-day flags, no plain `month`, no `year`; −£15.30 on the plain log model) had been tested in parts inside the real pieces (Series 47: the flags, package −£1.0; Series 50: no `year`, package +£1.8) but never together.
+
+### Method
+
+All three changes applied to each of the four pieces (38, 42, 40 and 42 columns), the as-deployed side reused from Series 46-47, 100 seeds (200-299), the new days, the package corrected as in Series 47. Read by judgment on the net effect, as agreed after Series 49 (no pass/fail gate; stated in the script before it ran).
+
+### Results
+
+The package: £873.02 → £874.03 before the correction (+1.02, −13.0 to +14.4) and **£865.36 → £864.56 after it (−0.81, −14.6 to +11.8)**. By fold after the correction the change swings from −£34.6 to +£23.9 and is better in 5 of 10. By piece: Saturday −39.62 (−89.0 to +5.0), Monday to Thursday +8.07, Friday +13.33 (better in 3 folds), Sunday +1.44; over the 56 new days the four pieces net to −£0.10 a day.
+
+### Conclusion
+
+1. **A wash:** the three changes together move the package by under a pound, as the parts did separately; the Saturday gain is offset by Monday to Friday.
+2. **The 38 columns stay.** The calendar and cycle columns have now been tested as columns (Series 44), as encodings (Series 44-46), on the plain log model (Series 45-46) and inside the real pieces (Series 47-51): nothing improves the post model in a way that can be told from noise.
+3. **Caveat:** the intervals are about ±£13, so a real gain of a few pounds would not show; all of Series 44-51 reuse the same 585 days.
+4. **Open, recorded in the README's Future Work:** the untested calendar candidates (day of month, week of month, week of year, month start and end); and a rerun of the weekend-feature selection (Series 26-27, with Series 23-24) with the three single-day flags in the base, because the options chosen for Friday, Saturday and Sunday were chosen with `is_weekend` there and another option or combination could win with the flags. The backtest gains an 11th fold around 6 November 2026, so the protocol has to be decided first.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
@@ -3422,6 +3666,18 @@ feature set on current evidence. See Series 7's conclusions for an open
 question about whether this consistent pattern reflects real redundancy
 or CatBoost's hyperparameters (fixed since Series 1, tuned for a smaller
 feature space) being unable to exploit any added feature well.
+
+**Calendar and cycle columns re-examined (Series 44-51), all kept:** `month`,
+`month_sin`, `month_cos`, `day_of_week`, `day_of_week_sin`, `day_of_week_cos`,
+`day_of_year`, `day_of_year_sin`, `day_of_year_cos`, `year`, `is_weekend`.
+Day of year carries the seasonality (removing it costs £17 to £31); the three
+month columns add nothing once it is there; `is_weekend` means Friday to Sunday
+(`day_of_week >= 4`) and single-day flags help only the plain log model, not the
+real Friday, Saturday and Sunday pieces; `year` is a wash in the pieces but a
+rollover risk if the model is retrained in January to March, so check it again
+before such a retrain; a leap-year-safe day of year is a tie and a correctness
+fix for 2028. Not engineered or tested: day of month, week of month, week of
+year, month start and end flags.
 
 **Never a candidate (leakage or non-feature intermediate):**
 `forecast_error`, `payday`, `prev_payday`, `next_payday`.

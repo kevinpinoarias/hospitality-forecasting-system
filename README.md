@@ -343,6 +343,8 @@ On that footing, 18 hypothesis-driven experiment series tested algorithms and hy
 
 **Four later series tried to improve on it, and did not** ([Series 19-22](docs/EXPERIMENT_LOG.md#series-19--does-the-order-of-the-38-columns-matter), each scored under the model's own protocol and re-checked on fresh seeds): the order of the 38 columns moves the result no more than seed luck does (100 random orders, spread £1.95 against £1.78); shallower trees with more iterations, 60 configurations, never beat the current setting (£909.57); and the LSTM and Transformer - given the 38 features, a hyperparameter grid, and finally the predicted day's own features - stay at least £120 behind (best £1,029 against £907 on the same days).
 
+**A review of the calendar columns found nothing to change** ([Series 44-51](docs/EXPERIMENT_LOG.md#series-44--do-the-month-and-day-of-year-columns-all-earn-their-place)): the month and day-of-year columns were tested as whole encodings rather than one at a time, with 100 fresh seeds, on the 56 days since the backtest ended, and inside the real Friday, Saturday and Sunday models. Day of year carries the seasonality (removing it costs £17-31 a day); the three month columns add nothing once it is there; separate Friday, Saturday and Sunday flags in place of `is_weekend` help a plain model by £11 but add nothing inside the real weekend models, which already see recent same-weekday sales; and dropping `year` is a wash for the full forecast (+£1.8) although it would matter if the model were retrained in the first weeks of a year. The 38 columns stay.
+
 **Against the venue's manual forecast** (Series 17), on 569 matched days:
 
 | Forecast | MAE | MAPE | vs. manual |
@@ -653,6 +655,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 
 **Feature expansion**
 - ~~test shorter-lag features such as lag_1~~ - **tested** (Series 4): lag_1-3 and 28-day rolling features all made accuracy worse
+- ~~re-examine the calendar and cycle columns (month, day of week, day of year, year, is_weekend)~~ - **tested** (Series 44-51): all 38 columns stay; day of month, week of month, week of year and month start/end flags are untested
 - ~~expand the lag family more systematically~~ - **tested** (Series 2, 4)
 - ~~revisit forecast-error lag features~~ - **tested** (Series 2, 4)
 - add richer rolling statistics and trend-sensitive features: rolling median, standard deviation, maximum and minimum, and ratio-to-rolling-mean (untested; Series 4 suggests small or negative returns)
@@ -665,6 +668,11 @@ Several future directions emerged from the project. Items marked **done** or **t
 - re-test a December correction once a third December of data exists
 - revisit the payday feature: `days_since_payday` always counts from the previous month's payday, so on the few days between an early payday (a Friday, say) and the end of the month it reads about 30 rather than 1-2, and those days miss the payday window flag (fixing it changes every backtest figure; the API's `day_context` already reports the real day counts)
 - extend the school-holiday table back to January 2024: the 2024 Easter and summer breaks are missing, so the model learns those breaks from 2025-26 only (a fix changes every backtest figure, so it means re-running the experiment log)
+
+**Post model (the weekend package: Series 23-27 and the Saturday/Sunday correction)**
+- test the calendar features still untested as add-one candidates to the 38, and then inside the real pieces: day of month, week of month, week of year, and month start and end flags (Series 44-51 covered only the columns already in the model)
+- rerun the weekend-feature selection (Series 26-27) with the three single-day flags (`is_friday`, `is_saturday`, `is_sunday`) in the base instead of `is_weekend`. Series 47 put the flags into the pieces as they were chosen, but those choices (Friday: the same-weekday memory, Saturday: the sales of 2 and 3 weeks ago on the raw-pound target, Sunday: the weekend interactions) were made with `is_weekend` in the base, and with the flags a different option per weekday, or a different combination of options, could win. The same applies to the log-versus-raw choice for Saturday (Series 23) and the Saturday and Sunday correction settings (Series 24). Series 48 suggests the raw-pound target is why the flags added nothing on Saturday, so test the flags on the Saturday piece with other options before ruling them out
+- before any such rerun, decide the backtest protocol: around 6 November 2026 there will be 60 days beyond the 10 folds that end on 6 September, so the backtest gains an 11th fold and every 585-day figure changes. Series 44-51 stop with a message when that happens; pin the first 10 folds to compare with earlier results, or move all of them to the new protocol
 
 **Hard-day forecasting**
 - test a two-stage model: first classify whether a day is a normal or spike day, then predict sales separately for each (untested; the large misses so far look event-driven, so it may need event data to work)
