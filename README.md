@@ -671,6 +671,10 @@ Several future directions emerged from the project. Items marked **done** or **t
 - inspect whether the worst errors cluster around identifiable contexts
 - design features specifically for difficult peak periods
 
+**Neural networks**
+- explore the LSTM and Transformer further: they have only been tried on the original 15 features, and on the 38 in Series 20 (worse by about £200-250), so they sit well behind CatBoost (Series 20 and 22: best network about £122 worse on the common days, even when it sees the target day's own features)
+- untested: other architectures, features designed for the networks rather than inherited from the tree models, a network on the weekend-package inputs or the log-pound target, blending a network with CatBoost on more than the one leave-one-fold-out check already done (no gain)
+
 **Adaptive modelling**
 - ~~test shorter rolling training windows~~ - **tested** (Series 1): no universal winner between a sliding one-year window and all history
 - ~~compare models trained on recent-only vs longer historical periods~~ - **tested** (Series 1)
