@@ -234,14 +234,16 @@ These were chosen because they produced the best generalisation among the explor
 - payday behaviour
 - limited weather sensitivity
 
-### Feature sets: V1 and V2
+### Feature lists: 15 and 38
 
-The project uses two named feature sets, each defined **once**, in `src/features/build_features.py`:
+The project uses two named feature lists, each defined **once**, in `src/features/build_features.py`:
 
-- **V1** - the original 15 features above. Used by XGBoost, the neural models and the experiment log's baseline.
-- **V2** - all 38: V1 plus the 23 candidates the experimentation programme added, in a fixed order (column order changes CatBoost's seeded fits). Used by the final CatBoost model the API serves.
+- **`feature_list_15`** - the original 15 features above. Used by XGBoost, the neural models and the experiment log's baseline.
+- **`feature_list_38`** - all 38: the 15 plus the 23 candidates the experimentation programme added, in a fixed order (column order changes CatBoost's seeded fits). Used by the final CatBoost model the API serves, and the base of every piece of the weekly forecast log.
 
-`config/config.yaml` says which set each model uses (`features.use`), so switching a model's features is one line there, not an edit in several files. The XGBoost and neural models read V1 straight from `engineered_features.csv` (`load_model_frame`); the old separate `model_features.csv` no longer exists.
+Both are in use; neither replaced the other. Earlier documents (the experiment log up to Series 22) call them V1 and V2.
+
+`config/config.yaml` says which list each model uses (`features.use`), so switching a model's features is one line there, not an edit in several files. The XGBoost and neural models read the 15 straight from `engineered_features.csv` (`load_model_frame`); the old separate `model_features.csv` no longer exists.
 
 ### Broader engineered feature set
 

@@ -30,10 +30,10 @@ splits:
   neural_split_date: '2024-12-31'
 features:
   use:
-    xgboost: v1
-    neural: v1
-    experiments_baseline: v1
-    catboost: v2
+    xgboost: feature_list_15
+    neural: feature_list_15
+    experiments_baseline: feature_list_15
+    catboost: feature_list_38
 weather:
   latitude: 55.8612
   longitude: -4.2502

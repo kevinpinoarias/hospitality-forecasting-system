@@ -10,7 +10,7 @@ message that says what is wrong, instead of the value being silently ignored.
     from src.config import CONFIG
     CONFIG.path("features_dir")      # absolute Path under the project root
     CONFIG.weather.heavy_rain_mm     # 5.0
-    CONFIG.features.use["catboost"]  # "v2"
+    CONFIG.features.use["catboost"]  # "feature_list_38"
 
 The feature sets themselves (the lists of column names) live in
 src/features/build_features.py; this file only holds their names.
@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 CONFIG_PATH_ENV = "FORECAST_CONFIG"  # point at another file, e.g. in tests
 
-FEATURE_SET_NAMES = ("v1", "v2")
+FEATURE_SET_NAMES = ("feature_list_15", "feature_list_38")
 # Every model that picks a feature set must appear under features.use.
 FEATURE_USERS = ("xgboost", "neural", "experiments_baseline", "catboost")
 REQUIRED_PATHS = (

@@ -53,18 +53,19 @@ splits:
 # FEATURES
 # --------------------------------------------------
 # The two feature sets are defined once, in src/features/build_features.py:
-#   v1  the original 15 features
-#   v2  all 38: v1 plus 23 candidates, in a fixed order (column order changes
-#       CatBoost's seeded fits, so the order is part of the definition)
+#   feature_list_15  the original 15 features
+#   feature_list_38  all 38: the 15 plus 23 candidates, in a fixed order (column
+#                    order changes CatBoost's seeded fits, so the order is part
+#                    of the definition)
 # Below, each model says which set it uses. The experiment log's baseline is
-# v1 - do not change "experiments_baseline" without re-running it.
+# feature_list_15 - do not change "experiments_baseline" without re-running it.
 
 features:
   use:
-    xgboost: v1
-    neural: v1
-    experiments_baseline: v1
-    catboost: v2             # the served final model
+    xgboost: feature_list_15
+    neural: feature_list_15
+    experiments_baseline: feature_list_15
+    catboost: feature_list_38    # the served final model
 
 # --------------------------------------------------
 # WEATHER SETTINGS

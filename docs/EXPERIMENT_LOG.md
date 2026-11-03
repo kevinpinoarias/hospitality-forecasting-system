@@ -62,6 +62,12 @@ versions this log was produced with - install with it to reproduce the
 figures exactly. Every fit also uses a fixed seed, but different hardware
 or thread counts can still introduce tiny floating-point differences.
 
+**V1 and V2 in this log.** Series 20 and 22 (and the CHANGELOG up to this point) call the
+original 15 features **V1** and the 38 features **V2**. The code now names them
+`feature_list_15` and `feature_list_38`. They are unrelated to the forecast log's model version
+`v1` or to the school calendars `SCHOOL_BREAKS_V1` / "v1" and "v2" calendar in Series 29-35. The
+Series 20 scripts and stored results keep the old labels.
+
 **Series 19-34 write JSONL files, not CSVs.** Each of those series fits hundreds of
 models, so every finished task is appended to a JSONL file under
 `reports/experiments/series19_21/` and a re-run resumes where it stopped

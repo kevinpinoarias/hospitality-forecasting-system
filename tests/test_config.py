@@ -18,8 +18,8 @@ from src.config import CONFIG, DEFAULT_CONFIG_PATH, FEATURE_USERS, PROJECT_ROOT,
 from src.features.build_features import (
     CANDIDATE_FEATURES,
     FEATURE_SETS,
-    V1_FEATURES,
-    V2_FEATURES,
+    FEATURE_LIST_15,
+    FEATURE_LIST_38,
     features_for,
     load_model_frame,
     model_frame,
@@ -54,16 +54,16 @@ def test_every_model_uses_a_feature_set_that_exists():
 
 
 def test_the_served_model_uses_all_38_and_the_baselines_the_original_15():
-    assert len(V1_FEATURES) == 15 and len(V2_FEATURES) == 38
-    assert features_for("catboost") == V2_FEATURES
+    assert len(FEATURE_LIST_15) == 15 and len(FEATURE_LIST_38) == 38
+    assert features_for("catboost") == FEATURE_LIST_38
     for model in ("xgboost", "neural", "experiments_baseline"):
-        assert features_for(model) == V1_FEATURES
+        assert features_for(model) == FEATURE_LIST_15
 
 
-def test_v2_is_v1_followed_by_the_candidates_with_no_duplicates():
-    assert V2_FEATURES[:15] == V1_FEATURES  # order matters: it changes CatBoost's seeded fits
-    assert V2_FEATURES[15:] == CANDIDATE_FEATURES
-    assert len(set(V2_FEATURES)) == len(V2_FEATURES)
+def test_feature_list_38_is_the_15_followed_by_the_candidates_with_no_duplicates():
+    assert FEATURE_LIST_38[:15] == FEATURE_LIST_15  # order matters: it changes CatBoost's seeded fits
+    assert FEATURE_LIST_38[15:] == CANDIDATE_FEATURES
+    assert len(set(FEATURE_LIST_38)) == len(FEATURE_LIST_38)
 
 
 def test_the_feature_sets_match_the_experiment_framework():
@@ -71,7 +71,7 @@ def test_the_feature_sets_match_the_experiment_framework():
     from src.experiments.series_common import ADD_ALL_CANDIDATES
 
     assert CANDIDATE_FEATURES == list(ALL_CANDIDATES)
-    assert V2_FEATURES == ADD_ALL_CANDIDATES
+    assert FEATURE_LIST_38 == ADD_ALL_CANDIDATES
 
 
 def test_features_for_returns_a_copy_so_callers_cannot_change_the_set():
@@ -94,7 +94,7 @@ def test_the_model_settings_build_the_models_they_describe():
 
 def frame(rows: int = 6) -> pd.DataFrame:
     data = {"date": pd.date_range("2025-01-01", periods=rows), "total_sales": range(rows), "junk": range(rows)}
-    for i, name in enumerate(V1_FEATURES):
+    for i, name in enumerate(FEATURE_LIST_15):
         data[name] = [float(i + r) for r in range(rows)]
     return pd.DataFrame(data)
 
@@ -102,16 +102,16 @@ def frame(rows: int = 6) -> pd.DataFrame:
 def test_model_frame_keeps_the_date_target_and_features_in_order_and_drops_incomplete_rows():
     df = frame()
     df.loc[0, "lag_x"] = 1.0  # an unrelated column with gaps must not cost any rows
-    df.loc[2, V1_FEATURES[3]] = float("nan")
+    df.loc[2, FEATURE_LIST_15[3]] = float("nan")
     out = model_frame(df)
-    assert list(out.columns) == ["date", "total_sales"] + V1_FEATURES
+    assert list(out.columns) == ["date", "total_sales"] + FEATURE_LIST_15
     assert len(out) == 5 and list(out.index) == list(range(5))
     assert "junk" not in out.columns
 
 
 def test_model_frame_reports_missing_columns():
     with pytest.raises(ValueError, match="Missing required model columns"):
-        model_frame(frame().drop(columns=[V1_FEATURES[0]]))
+        model_frame(frame().drop(columns=[FEATURE_LIST_15[0]]))
 
 
 def test_load_model_frame_reads_the_engineered_csv_and_parses_dates(tmp_path):

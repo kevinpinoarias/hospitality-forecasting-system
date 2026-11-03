@@ -14,7 +14,7 @@ Notes
 -----
 - This public portfolio version uses anonymised local data.
 - The file builds one broad engineered feature set. The narrower sets the
-  models train on (V1_FEATURES, V2_FEATURES below) are selected from it with
+  models train on (FEATURE_LIST_15, FEATURE_LIST_38 below) are selected from it with
   `model_frame` / `features_for`; there is no separate model-ready file.
 """
 
@@ -57,16 +57,21 @@ TARGET_COL = "total_sales"
 # ---------------------------------------------------------------------
 # Feature sets - the ONE definition of which columns each model reads
 # ---------------------------------------------------------------------
-# V1: the original 15 features (XGBoost, the neural models, and the baseline
-#     the experiment log started from).
-# V2: all 38 - V1 plus 23 candidates added in Series 2 - used by the final
-#     CatBoost model. The order is part of the definition: column order
-#     changes CatBoost's seeded fits, so V2 must keep V1 first and the
-#     candidates in this order (tests/test_final_model.py and
-#     tests/test_config.py check it against the experiment framework).
+# FEATURE_LIST_15: the original 15 features (XGBoost, the neural models, and
+#     the baseline the experiment log started from).
+# FEATURE_LIST_38: all 38 - the 15 plus 23 candidates added in Series 2 - used
+#     by the final CatBoost model and the base of every forecast-log piece.
+#     The order is part of the definition: column order changes CatBoost's
+#     seeded fits, so the 38 must keep the 15 first and the candidates in this
+#     order (tests/test_final_model.py and tests/test_config.py check it against
+#     the experiment framework).
+# Both are in use: neither replaced the other. Earlier documents (the experiment
+# log up to Series 22, the Series 20 scripts) call them V1 and V2. That is
+# unrelated to the forecast log's model version "v1" and to the "v1"/"v2"
+# school calendars (SCHOOL_BREAKS_V1).
 # config/config.yaml says which set each model uses (features.use).
 
-V1_FEATURES = [
+FEATURE_LIST_15 = [
     "forecast_sales",
     "month_sin",
     "day_of_week",
@@ -110,16 +115,16 @@ CANDIDATE_FEATURES = [
     "warm_streak_len",
 ]
 
-V2_FEATURES = V1_FEATURES + CANDIDATE_FEATURES
+FEATURE_LIST_38 = FEATURE_LIST_15 + CANDIDATE_FEATURES
 
-FEATURE_SETS = {"v1": V1_FEATURES, "v2": V2_FEATURES}
+FEATURE_SETS = {"feature_list_15": FEATURE_LIST_15, "feature_list_38": FEATURE_LIST_38}
 
 # The anomaly feature's name contains its window (temp_anomaly_14d), so the
-# window in the config and the name in V2_FEATURES must agree.
-if f"temp_anomaly_{CONFIG.weather.anomaly_window}d" not in V2_FEATURES:
+# window in the config and the name in FEATURE_LIST_38 must agree.
+if f"temp_anomaly_{CONFIG.weather.anomaly_window}d" not in FEATURE_LIST_38:
     raise ValueError(
         f"weather.anomaly_window is {CONFIG.weather.anomaly_window}, which builds a column "
-        f"named temp_anomaly_{CONFIG.weather.anomaly_window}d - that is not in V2_FEATURES. "
+        f"named temp_anomaly_{CONFIG.weather.anomaly_window}d - that is not in FEATURE_LIST_38. "
         "Rename the feature there (and everywhere it is used) or change the window back."
     )
 
@@ -769,11 +774,11 @@ def add_weather_features(
 # ---------------------------------------------------------------------
 
 def model_frame(df: pd.DataFrame, features: list[str] | None = None) -> pd.DataFrame:
-    """The date, the target and `features` (V1 by default), with the rows the
+    """The date, the target and `features` (FEATURE_LIST_15 by default), with the rows the
     lag/rolling/weather edges leave incomplete dropped - what the XGBoost and
     neural models train on. Replaces the old model_features.csv, which was
     exactly this selection written to disk."""
-    columns = [DATE_COL, TARGET_COL] + list(V1_FEATURES if features is None else features)
+    columns = [DATE_COL, TARGET_COL] + list(FEATURE_LIST_15 if features is None else features)
     missing = [col for col in columns if col not in df.columns]
     if missing:
         raise ValueError(f"Missing required model columns: {missing}")
@@ -793,7 +798,7 @@ def load_model_frame(path: Path | None = None, features: list[str] | None = None
 def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build and save the full engineered feature dataset, and return it together
-    with the V1 model frame (`model_frame`; not written to disk).
+    with the 15-feature model frame (`model_frame`; not written to disk).
     """
     df = load_daily_sales()
 

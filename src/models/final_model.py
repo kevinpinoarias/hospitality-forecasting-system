@@ -33,7 +33,7 @@ TARGET_COL = "total_sales"
 # src/experiments/series_common.py - column order changes CatBoost's
 # seeded fits, so it has to match for the backtest to reproduce the log.
 # tests/test_final_model.py checks the two stay identical.
-FINAL_FEATURES = features_for("catboost")  # V2: see src/features/build_features.py and config/config.yaml
+FINAL_FEATURES = features_for("catboost")  # feature_list_38: see src/features/build_features.py and config/config.yaml
 
 FINAL_PARAMS = CONFIG.catboost.params()
 FINAL_SEEDS = CONFIG.catboost.seeds()
