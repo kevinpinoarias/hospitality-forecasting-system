@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-51** use the same protocol and JSONL files (`reports/experiments/series44/` to `series51/`) and
+**Series 44-52** use the same protocol and JSONL files (`reports/experiments/series44/` to `series52/`) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -3628,7 +3628,42 @@ The package: £873.02 → £874.03 before the correction (+1.02, −13.0 to +14.
 1. **A wash:** the three changes together move the package by under a pound, as the parts did separately; the Saturday gain is offset by Monday to Friday.
 2. **The 38 columns stay.** The calendar and cycle columns have now been tested as columns (Series 44), as encodings (Series 44-46), on the plain log model (Series 45-46) and inside the real pieces (Series 47-51): nothing improves the post model in a way that can be told from noise.
 3. **Caveat:** the intervals are about ±£13, so a real gain of a few pounds would not show; all of Series 44-51 reuse the same 585 days.
-4. **Open, recorded in the README's Future Work:** the untested calendar candidates (day of month, week of month, week of year, month start and end); and a rerun of the weekend-feature selection (Series 26-27, with Series 23-24) with the three single-day flags in the base, because the options chosen for Friday, Saturday and Sunday were chosen with `is_weekend` there and another option or combination could win with the flags. The backtest gains an 11th fold around 6 November 2026, so the protocol has to be decided first.
+4. **Open, recorded in the README's Future Work:** the untested calendar candidates (day of month, week of month, week of year, month start and end). The rerun of the weekend-feature selection with the flags in the base that was also open here was done in Series 52 (no better). The backtest gains an 11th fold once data beyond about 6 November 2026 is ingested, so the protocol has to be decided before further backtest series.
+
+## Series 52 — The Weekend-Feature Selection Redone With the Single-Day Flags in the Base
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series52_weekend_selection_with_flags.py` · Results: `reports/experiments/series52/`
+
+### Context
+
+The post model's Friday, Saturday and Sunday pieces were chosen in Series 26-27 with `is_weekend` in the base. Series 47 put the single-day flags into the pieces as chosen and found nothing, but another option or target could win once the flags are in the base. This is the last test of the flags in the backtest-validated post model.
+
+### Method
+
+Both bases (`is_weekend`, and `is_friday` / `is_saturday` / `is_sunday` in its place and order) refitted on today's data with the same seeds, so the comparison is paired and not confounded by data revisions since the stored Series 23-27 results. Six options (none, A_all, A_summary, A_lags, B, AB) on both targets, seeds 0-24 and 100-124, 240 tasks. Series 27's procedure unchanged: each weekday chooses on blocks 0-4 (seeds 0-24) on its fixed target (log1p for Friday and Sunday, raw pounds for Saturday), the weekend is assembled on the Series 23 hybrid and put through the Series 24 correction. Written before the results: the same options expected to win, the package expected to move by a few pounds at most; read by judgment on the net effect.
+
+### Results
+
+The `is_weekend` base reproduces the old selection (Friday A_all, Saturday A_lags, Sunday B) and the old package: £864.05 (seeds 0-24) and £866.64 (fresh) after the correction, against the stored £864.63 and £865.23. The flags base chooses **Friday: none, Saturday: A_lags, Sunday: A_lags**. On the selection blocks Friday with the flags and no extra inputs scores £1,037.3 against £1,073.0 for `is_weekend` alone; Sunday's A_lags beats B by £5 (1,217.1 against 1,222.1) over about 42 days.
+
+The post model after the correction, flags base against `is_weekend` base (£; seeds 0-24 / fresh):
+
+| | `is_weekend` | Flags | Change (95% interval) |
+|---|---|---|---|
+| Package after the correction | 864.05 / 866.64 | 866.67 / 868.82 | +2.62 (−10.2 to +14.4) / +2.18 (−12.0 to +14.3) |
+| Monday–Thursday | | | −2.1 / −1.4 |
+| Friday | | | −1.2 / −9.3 |
+| Saturday | | | −9.3 / −6.3 |
+| Sunday | | | **+37.0 / +36.3** |
+
+Post-hoc diagnostics, not selections: keeping Sunday on B gives +1.17 / −1.56; the old choices (A_all, A_lags, B) on the flags base give +1.48 / −0.84; Sunday is worse by £10 to £27 in every combination. Exploratory: letting each weekday pick either target gives the same Friday and Saturday picks and Sunday on the raw target with B under both bases, which loses on the judging blocks (flags base £1,035.5 against £1,003.1 for the fixed target; `is_weekend` base £1,045.5 against £956.8).
+
+### Conclusion
+
+1. **No better:** +£2 to +£3 on the post model, inside intervals of about ±£13. The flags help Monday to Thursday, Friday and Saturday by £1 to £9 each and cost Sunday £36.
+2. **The change in the choices is selection noise:** Sunday's A_lags beat B by £5 on five blocks and then cost £36 on the Sundays, the problem Series 27 named (about 84 days per weekend day).
+3. **The flags do not belong in the backtest-validated post model.** Friday with the flags and no extra inputs does as well as the A_all piece (£1 to £9 better a Friday, within noise), which is the Series 48 reading from the other side.
+4. **Open, a serving question and not a backtest one:** the weekly log's Friday uses the A_all piece only when the sales 7, 14, 21 and 28 days earlier are known (`route` in `run_series43_post_model_horizon.py`), which they are not for the next-week Fridays it issues; those use the plain log model. On that model the flags lowered the Friday error by £26.7 and £36.1 on the two seed sets (the first row of the change table in the Series 52 report; wide intervals, −74 to +10 in Series 48). This was not tested in the served routing; recorded in the README's Future Work.
 
 ## Appendix: full candidate pool reference
 
@@ -3667,7 +3702,7 @@ question about whether this consistent pattern reflects real redundancy
 or CatBoost's hyperparameters (fixed since Series 1, tuned for a smaller
 feature space) being unable to exploit any added feature well.
 
-**Calendar and cycle columns re-examined (Series 44-51), all kept:** `month`,
+**Calendar and cycle columns re-examined (Series 44-52), all kept:** `month`,
 `month_sin`, `month_cos`, `day_of_week`, `day_of_week_sin`, `day_of_week_cos`,
 `day_of_year`, `day_of_year_sin`, `day_of_year_cos`, `year`, `is_weekend`.
 Day of year carries the seasonality (removing it costs £17 to £31); the three
