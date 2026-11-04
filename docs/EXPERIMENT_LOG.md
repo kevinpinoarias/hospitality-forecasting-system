@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-52** use the same protocol and JSONL files (`reports/experiments/series44/` to `series52/`) and
+**Series 44-56** use the same protocol and JSONL files (`reports/experiments/series44/` to `series56/`) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -3663,7 +3663,147 @@ Post-hoc diagnostics, not selections: keeping Sunday on B gives +1.17 / −1.56;
 1. **No better:** +£2 to +£3 on the post model, inside intervals of about ±£13. The flags help Monday to Thursday, Friday and Saturday by £1 to £9 each and cost Sunday £36.
 2. **The change in the choices is selection noise:** Sunday's A_lags beat B by £5 on five blocks and then cost £36 on the Sundays, the problem Series 27 named (about 84 days per weekend day).
 3. **The flags do not belong in the backtest-validated post model.** Friday with the flags and no extra inputs does as well as the A_all piece (£1 to £9 better a Friday, within noise), which is the Series 48 reading from the other side.
-4. **Open, a serving question and not a backtest one:** the weekly log's Friday uses the A_all piece only when the sales 7, 14, 21 and 28 days earlier are known (`route` in `run_series43_post_model_horizon.py`), which they are not for the next-week Fridays it issues; those use the plain log model. On that model the flags lowered the Friday error by £26.7 and £36.1 on the two seed sets (the first row of the change table in the Series 52 report; wide intervals, −74 to +10 in Series 48). This was not tested in the served routing; recorded in the README's Future Work.
+4. **Open, a serving question and not a backtest one:** the weekly log's Friday uses the A_all piece only when the sales 7, 14, 21 and 28 days earlier are known (`route` in `run_series43_post_model_horizon.py`), which they are not for the next-week Fridays it issues; those use the plain log model. On that model the flags lowered the Friday error by £26.7 and £36.1 on the two seed sets (the first row of the change table in the Series 52 report; wide intervals, −74 to +10 in Series 48). Tested in the served routing in Series 53: the gain shrinks to £2 to £11 with intervals of about ±£25, so it does not warrant a new model version.
+
+## Series 53 — The Friday Question as the Weekly Log Really Asks It
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series53_friday_as_the_log_serves_it.py` · Results: `reports/experiments/series53/`
+
+### Context
+
+For the next-week Fridays the weekly log issues, the Friday piece (A_all) cannot run, because it needs the sales 7, 14, 21 and 28 days earlier and the 7-day one is not yet known (`route` in `run_series43_post_model_horizon.py`); the plain log model forecasts them. On that model, with every input available, the single-day flags lowered the Friday error by £27 and £36 on two seed sets (Series 46, 48, 52).
+
+### Method
+
+A replay of the weekly log over the backtest: for each of the 83 Fridays in the 585 days, the Monday 11 days before is the issue day and the Sunday before it the last known day; the week's rows are built as the live API builds a date beyond its data (`served_rows`: weekday-and-season medians for the sales after the last known day, the manager's forecast and the weather). Two plain log models, fitted on the history before each backtest block, forecast the week: today's (`is_weekend`) and the flags version, 25 seeds and a second 25 (100-124). Monday to Friday of each week are scored (400 days). Read by judgment on the net effect.
+
+### Results
+
+The replay is harder than the backtest, as it should be: the plain model's Friday MAE is £1,216 (about £1,118 with every input available). Flags minus today (£; seeds 0-24 / fresh):
+
+| Days | n | Change (95% interval) |
+|---|---|---|
+| Friday | 83 | −1.55 (−27.7 to +23.4) / −10.74 (−43.8 to +16.6) |
+| Monday–Thursday | 317 | −4.74 (−12.5 to +2.6) / −4.74 (−12.9 to +2.3) |
+| Monday–Friday | 400 | −4.08 (−12.2 to +3.3) / −5.99 (−15.4 to +2.0) |
+
+By weekday, Tuesday to Thursday −£4.5 to −£9.8 on both seed sets; Monday +0.5 / +5.1; Friday improves in 6 and 5 of 10 folds.
+
+### Conclusion
+
+1. **The Friday gain does not hold under serving conditions:** £27 to £36 with every input becomes £2 to £11 in the replay, with intervals of about ±£25.
+2. **A small, broad gain of £4 to £6 a day on Monday to Friday** is the most the flags offer the plain log model as served; its intervals touch zero. Not worth a new model version on its own.
+3. **The serving question of Series 52 is closed:** no new version is warranted. The README item is marked tested.
+4. **Caveats:** 83 Fridays; the median weather fallback for every day is harsher than the log's real forecast for the first 16 days; the model is refitted per fold, where the deployed log is fitted once.
+
+## Screen — Do the Post Model's Errors Follow the Calendar Candidates Not Yet Built?
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_error_calendar_screen.py` (not a series: no model is fitted, it reads the Series 47-50 backtest predictions)
+
+The post model's backtest errors (as a percentage of the forecast, + = under-forecast, 583 open days; median miss 8.7%) grouped by the candidate features. Day of month (1-5, 6-10, ..., 26-31): means −1.1% to +1.6%, every |t| below 1.0. Week of the month: −0.8% to +0.4% for weeks 1 to 4 and +3.0% for the 45 days of week 5 (t 1.4). Month start (first 3 days) +1.9% (t 0.9); month end (last 3 days) **+4.5% (t 2.25, 57 days)**, which is +3.5% (t 1.7) outside December. Its largest misses outside December are events, not month ends: 28 June 2025 and 28 and 30 June 2026 (the start of the school summer break) and 30 March 2025 (Mother's Day, +27%; +6% in 2026). Event days with two occurrences disagree with themselves (Valentine's Day +34% on a Friday in 2025, +3% on a Saturday in 2026); Father's Day is +7% and +6%; Halloween −23% and Bonfire Night −13% have one occurrence each. Week of year is not screened: it is day of year in other words.
+
+1. **There is little for day-of-month, week-of-month or month-start/end features to catch;** the one edge, month end, is mostly events and the payday columns already sit there.
+2. **The remaining error is event days with one or two occurrences each,** the same data limit as December (two Decembers); a feature built on two examples cannot be learnt or tested.
+3. **A screen, not a proof:** an interaction with the weekday would not show in a one-way table, and one |t| near 2 among about a dozen comparisons is expected by chance.
+
+## Series 54 — Day of the Month in the Weekly Log's Models
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series54_day_of_month.py` · Results: `reports/experiments/series54/`
+
+### Context
+
+Day of month had not been tried. Months have 28 to 31 days, so "day 31" is the last day in some months and does not exist in others. The error screen above found no pattern in the post model's errors by day of month; this is the test of the features themselves.
+
+### Method
+
+Four ways of writing where a day sits in the month, appended after each piece's own inputs (so the baseline is a prefix of every variant), against today's pieces: the plain `day_of_month`; `day_of_month` and `days_to_month_end` (the distance from both edges); a sine/cosine pair of `(day − 1) / days in the month` (the last day of one month next to the first of the next); and all four together. Added to every piece of the weekly log: the post model's Monday-to-Thursday log model and its Friday, Saturday and Sunday pieces; the hydro model's Monday-to-Thursday piece (the log model with the Thursday-Hydro flag, 37 Hydro Thursdays in the rows); and the plain raw-pound Saturday fallback. 100 seeds (200-299), 585 days and the 56 new days; the post and hydro models assembled and put through the Series 24 correction; read by judgment on the net effect. The four post-model baselines were reused from Series 46-47; the hydro and fallback baselines were fitted here.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post model £865.36, hydro model £858.78; better in 2 to 4 folds of 10 in every row):
+
+| Variant | Post model | Hydro model |
+|---|---|---|
+| Day of month | +1.49 (−0.9 to +4.1) | +0.34 (−1.9 to +2.8) |
+| Day of month and days to month end | +2.47 (−0.3 to +5.4) | +0.45 (−2.1 to +3.1) |
+| Circle | +4.55 (−2.0 to +11.6) | +2.99 (−3.5 to +10.3) |
+| All four | +5.62 (−1.1 to +13.4) | +4.85 (−1.6 to +12.2) |
+
+By piece, the Friday piece is worse with every variant (+£5.5 to +£17.1); the Saturday piece improves slightly with `days_to_month_end` (−£4.9 in 8 of 10 folds, interval −12.9 to +5.6) but is £28.7 worse on its 8 new Saturdays; the hydro Monday-to-Thursday piece gains £1.5 with the plain day of month (7 of 10 folds, interval −3.9 to +0.6); the raw Saturday fallback moves −£3.3 to +£5.3. Over the 56 new days the whole models change by −£6.5 to +£8.0 a day with no consistent sign.
+
+### Conclusion
+
+1. **No variant helps either model:** every one is level or worse, with intervals that include zero, and the more columns added the worse it gets (all four: about +£5 on both models).
+2. **The post and hydro models behave alike,** as the hydro flag only changes the Monday-to-Thursday piece.
+3. **The two slightly positive spots** (Saturday with `days_to_month_end`, the hydro Monday-to-Thursday piece with the plain day of month) are inside their intervals and offset by the new days or by Friday.
+4. **Day of month stays out of the model.** Week of month, week of year and the month start and end flags are not yet tested.
+5. **Caveats:** the intervals are about ±£2 to ±£13; the same 585 days as every series since Series 1.
+
+## Series 55 — Week of the Month in the Weekly Log's Models
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series55_week_of_month.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series55/`
+
+### Context
+
+Series 54 found nothing in day of month. Week of month is day of month with the detail removed (the trees can already cut it at 7, 14 and 21), so the reason to try it is the one the weekday flags showed: the trees are four splits deep and a ready-made "first week" column saves splits. Written down beforehand: little or nothing expected.
+
+### Method
+
+Series 54's design: every variant added to every piece of the weekly log (post model's four pieces, the hydro Monday-to-Thursday piece, the raw Saturday fallback), 100 seeds (200-299), 585 days and the 56 new days, the two models assembled and corrected, read by judgment on the net effect. Variants: `week_of_month` (1 to 5 from the 1st, which is also the nth occurrence of the weekday); `week_and_weeks_to_end` (that plus `weeks_to_month_end`, 0 being the last seven days); `calendar_week` (Monday-to-Sunday weeks, week 1 holding the 1st, 1 to 6); all three together. No circle (a week of the month does not wrap). The hydro and fallback baselines are Series 54's `none` fits.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) |
+|---|---|---|---|
+| `week_of_month` | −0.22 (−2.1 to +2.0) | −1.39 (−3.5 to +0.9) | 7 / 7 |
+| `week_and_weeks_to_end` | +2.52 (+0.1 to +5.0) | +0.90 (−1.3 to +3.2) | 3 / 5 |
+| `calendar_week` | +1.53 (−0.5 to +3.8) | +0.09 (−2.2 to +2.4) | 2 / 7 |
+| All three | +3.02 (+0.2 to +6.1) | +1.83 (−0.8 to +4.6) | 3 / 4 |
+
+For `week_of_month`, Monday to Thursday improves in 8 (post) and 9 (hydro) folds of 10 (−£1.1 and −£3.2; the hydro piece's interval, −5.9 to −0.6, excludes zero) while Friday is £3.3 worse; over the 56 new days the whole models change by −£1.4 (post) and +£1.1 (hydro). The raw Saturday fallback improves with `calendar_week` (−£8.1, interval −15.9 to −0.7, 7 of 10 folds) but is £9.4 worse on the new Saturdays, and it is not part of either package.
+
+### Conclusion
+
+1. **Nothing usable:** the plain `week_of_month` is the best of the day-of-month and week-of-month family, a hair better on both models (−£0.2 and −£1.4, better in 7 of 10 folds), but inside its interval, with the new days not agreeing.
+2. **Adding `weeks_to_month_end` hurts** (+£2.5 on the post model, interval above zero), and the three columns together hurt more, as in Series 54: more columns, more noise.
+3. **The two intervals that exclude zero** (the hydro Monday-to-Thursday piece, the raw Saturday fallback) are two of 24 piece-and-variant intervals, about what chance gives, and the fallback's is contradicted by its new days.
+4. **Week of month stays out of the model.** Week of year and the month start and end flags were tested next, in Series 56.
+5. **Caveats:** the intervals are about ±£2 to ±£6; the same 585 days as every series since Series 1.
+
+## Series 56 — Week of the Year and the Month Start and End Flags in the Weekly Log's Models
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series56_week_of_year_and_month_edges.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series56/`
+
+### Context
+
+The last two calendar candidates. Day of year is already in the model, so week of year is the same fact in coarser steps; the month start and end flags are the payday idea (the error screen had seen a month-end excess that turned out to be event days). Written down beforehand: little or nothing expected.
+
+### Method
+
+Series 54's design: every variant added to every piece of the weekly log (the post model's four pieces, the hydro Monday-to-Thursday piece, the raw Saturday fallback), 100 seeds (200-299), 585 days and the 56 new days, the two models assembled and corrected, read by judgment on the net effect. Variants: `week_of_year` (ISO week, 1 to 53); `week_of_year_circle` (its sine and cosine, period 52.18 weeks); `edges_three_days` (first three days and last three days of the month); `edges_one_day` (the 1st and the last day). 720 fits, about 52 minutes on 10 workers. The hydro and fallback baselines are Series 54's `none` fits.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `week_of_year` | +2.12 (−0.2 to +4.6) | +0.55 (−1.7 to +2.9) | 2 / 5 | +0.1 / +1.7 |
+| `week_of_year_circle` | −0.43 (−4.0 to +2.3) | −2.33 (−5.8 to +0.4) | 5 / 6 | +5.6 / +6.0 |
+| `edges_three_days` | +1.26 (−1.0 to +3.7) | −0.14 (−2.4 to +2.0) | 3 / 4 | +6.3 / +4.7 |
+| `edges_one_day` | +1.88 (−0.7 to +4.9) | +0.60 (−2.0 to +3.5) | 3 / 4 | +5.3 / +2.9 |
+
+The best looking result is the circle on the hydro model (−£2.3, 6 of 10 folds), which comes from the hydro Monday-to-Thursday piece (−£3.1, interval −7.1 to +0.4); its interval touches zero and the new days are £6 worse. On the post model it is a wash (−£0.4) because the Sunday gain (−£5.4 before the correction) is cancelled by Friday (+£5.9). Plain `week_of_year` is worse on Sunday (+£6.7, interval +0.4 to +13.4, better in 2 folds of 10). The two flag versions are £1 to £2 worse on the post model, with Saturday and Sunday the weakest pieces. Every variant is worse on the 56 new days (+£0.1 to +£6.3 on the post model).
+
+### Conclusion
+
+1. **Nothing usable.** No variant moves either model by more than £2.5 in either direction, every interval includes zero, and none improves in a clear majority of folds on both models.
+2. **The new days disagree with the best-looking result.** The hydro circle's −£2.3 becomes +£6.0 on the 56 new days.
+3. **The two piece-level intervals that exclude zero are chance-sized:** `week_of_year` on Sunday (worse) and the raw Saturday fallback with `edges_three_days` (−£7.2, interval −14.4 to −0.1, but £24 worse on the new Saturdays and not in either package). That is two of 24 intervals, about what chance gives.
+4. **Week of year and the month edges stay out.** Together with Series 54 and 55 this closes the calendar candidates: day of month, week of month, week of year and month start and end, in every encoding tried, add nothing to a model whose day of year already carries the season.
+5. **Caveats:** the intervals are about ±£2 to ±£6; the same 585 days as every series since Series 1; the ISO week puts 29-31 December in week 1 and the first days of January in week 52 or 53 in some years, which a coarser seasonal column could not tell apart from the next year.
 
 ## Appendix: full candidate pool reference
 
@@ -3702,7 +3842,7 @@ question about whether this consistent pattern reflects real redundancy
 or CatBoost's hyperparameters (fixed since Series 1, tuned for a smaller
 feature space) being unable to exploit any added feature well.
 
-**Calendar and cycle columns re-examined (Series 44-52), all kept:** `month`,
+**Calendar and cycle columns re-examined (Series 44-56), all kept:** `month`,
 `month_sin`, `month_cos`, `day_of_week`, `day_of_week_sin`, `day_of_week_cos`,
 `day_of_year`, `day_of_year_sin`, `day_of_year_cos`, `year`, `is_weekend`.
 Day of year carries the seasonality (removing it costs £17 to £31); the three
@@ -3711,8 +3851,12 @@ month columns add nothing once it is there; `is_weekend` means Friday to Sunday
 real Friday, Saturday and Sunday pieces; `year` is a wash in the pieces but a
 rollover risk if the model is retrained in January to March, so check it again
 before such a retrain; a leap-year-safe day of year is a tie and a correctness
-fix for 2028. Not engineered or tested: day of month, week of month, week of
-year, month start and end flags.
+fix for 2028. Not engineered: day of month, week of month, week of year, month
+start and end flags; a screen of the post model's errors (see "Screen" after
+Series 53) finds no pattern by day of month or week of month, and all four were
+then tested in the weekly log's models: day of month in Series 54 (no gain), week
+of month in Series 55 (a hair better in the plain form, inside the noise), week of
+year and the month start and end flags in Series 56 (no gain, worse on the new days).
 
 **Never a candidate (leakage or non-feature intermediate):**
 `forecast_error`, `payday`, `prev_payday`, `next_payday`.
