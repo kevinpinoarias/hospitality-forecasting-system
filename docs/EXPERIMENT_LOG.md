@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-56** use the same protocol and JSONL files (`reports/experiments/series44/` to `series56/`) and
+**Series 44-58** use the same protocol and JSONL files (`reports/experiments/series44/` to `series58/`) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -3805,6 +3805,75 @@ The best looking result is the circle on the hydro model (−£2.3, 6 of 10 fold
 4. **Week of year and the month edges stay out.** Together with Series 54 and 55 this closes the calendar candidates: day of month, week of month, week of year and month start and end, in every encoding tried, add nothing to a model whose day of year already carries the season.
 5. **Caveats:** the intervals are about ±£2 to ±£6; the same 585 days as every series since Series 1; the ISO week puts 29-31 December in week 1 and the first days of January in week 52 or 53 in some years, which a coarser seasonal column could not tell apart from the next year.
 
+## Series 57 — A Smooth Seasonal Baseline, with CatBoost Learning the Leftovers
+
+**Run**: 2026-11-05 · **Script**: `src/experiments/run_series57_seasonal_baseline.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series57/`
+
+### Context
+
+Series 44-56 found nothing to add to the calendar columns, so this tests how the season is represented instead. CatBoost draws the yearly curve from `day_of_year` with decision trees (yes/no cuts, four deep, 300 added together), which builds a smooth curve as a staircase. The idea: fit the season by ordinary arithmetic first and let CatBoost learn only what is left. Written down beforehand: little or nothing expected, because 300 trees together probably approximate a smooth curve already.
+
+### Method
+
+Per fold, on that fold's training days only, a ridge regression (strength 1.0) of the piece's target (log1p of sales for the log pieces, pounds for the raw Saturday pieces) on a level for each weekday plus, for each weekday separately, K pairs of sine and cosine waves of the day of the year (periods 365.25 / k days); the four zero-sales closure days are left out of its fit. CatBoost is trained on the target minus the baseline, with the piece's own columns, and the forecast is baseline plus CatBoost (expm1 for the log pieces). Four variants: K = 2 or 4 wave pairs, each with every column kept or with `day_of_year`, its sine and cosine, `month` and its sine and cosine removed from CatBoost (the pure form of the idea). Everything else as Series 54: every variant in every piece of the weekly log, post and hydro models, 100 seeds (200-299), 585 days and the 56 new days, the correction, read by judgment on the net effect. 720 fits, about 50 minutes. The hydro and fallback baselines are Series 54's `none` fits.
+
+Checks: with a zero baseline the residual code reproduces the deployed fit exactly (seed 200, three folds, identical predictions). The baseline on its own has a mean absolute error of £1,217 (K = 2) and £1,208 (K = 4) a day over the 585 days, against £873 for the post model.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `residual_k2` | +98.80 (+60.2 to +144.7) | +100.32 (+61.7 to +145.7) | 0 / 0 | +34.1 / +42.9 |
+| `residual_k4` | +185.95 (+140.1 to +237.3) | +186.53 (+140.6 to +237.4) | 0 / 0 | +106.6 / +112.1 |
+| `residual_k2_no_season` | +172.98 (+122.0 to +236.4) | +177.04 (+126.3 to +242.1) | 1 / 1 | +36.3 / +44.5 |
+| `residual_k4_no_season` | +245.96 (+184.4 to +321.6) | +247.06 (+184.8 to +323.0) | 0 / 0 | +104.5 / +106.4 |
+
+Every piece is worse in every variant: Monday to Thursday by £78 to £205, Friday £102 to £185, Saturday £200 to £411 (the worst), Sunday £65 to £240; the only places the new days are better are the Monday-to-Thursday pieces with the K = 2 baseline (−£27 and −£43), where the backtest says +£78 and +£130.
+
+### Conclusion
+
+1. **The idea does not work in this form, clearly.** Every variant is worse than the deployed model in nearly every fold, with every interval above zero and by far more than any earlier calendar test (+£99 to +£246 a day).
+2. **More flexibility is worse:** the 4-wave baseline loses about £87 more than the 2-wave one, which fits the first fold (one year of training days) loosely.
+3. **The trees do need the seasonal columns:** removing them costs a further £74 (K = 2) or £60 (K = 4) on the post model, so the staircase worry was unfounded; the trees represent the season better than a weekday-specific wave regression does.
+4. **A plausible cause, not tested:** the baseline is fitted in-sample, so on the training days its leftovers are smaller than its errors on new days, and CatBoost learns to correct leftovers that are too small, while the baseline's own out-of-sample error (about £1,200 a day) goes straight into the forecast. A cross-fitted baseline (each training day's baseline fitted without it) would test this; it is not run.
+5. **Nothing in production changes, and seasonality stays with the trees and the 38 columns.**
+6. **Caveats:** one baseline design (weekday-specific waves, ridge 1.0, two sizes), not the whole family of seasonal baselines; the intervals are about ±£40 to ±£70 here, far narrower than the gaps.
+
+## Series 58 — The Seasonal Baseline Again, Cross-Fitted
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series58_cross_fitted_baseline.py` (reuses Series 57's baseline code and `run_series54_day_of_month.report`) · Results: `reports/experiments/series58/`
+
+### Context
+
+Series 57's seasonal baseline lost £99 to £246 a day. A plausible cause, named there but not tested, was that the baseline was fitted on the same days CatBoost trains on, so the leftovers CatBoost learned were smaller than the errors the baseline makes on new days. Cross-fitting is the standard repair. Written down beforehand: it recovers some of the loss but stays worse than the deployed model.
+
+### Method
+
+Series 57's design in full (the four variants, every piece of the weekly log, 100 seeds, 585 days and the 56 new days), with one change: each fold's training days are cut into blocks of 56 days (eight whole weeks), and each block's baseline comes from a fit that never saw that block; the test days' baseline is fitted on all training days as before. Checked before the run: the baseline's error on the training days rises from £970-1,150 (in-sample) to £1,235-1,730 (cross-fitted), against £830-1,220 on the test days, so the leftovers CatBoost sees are now as large as on new days or larger. 720 fits (the run was interrupted twice by session restarts and resumed from its results file each time).
+
+### Results
+
+The post model after the correction, change against as deployed (£, 95% interval; baseline £865.36) and against Series 57's in-sample version:
+
+| Variant | Against deployed | Folds better | Against Series 57 (after / before the correction) |
+|---|---|---|---|
+| `residual_k2` | +117.55 (+70.9 to +164.6) | 0 | +18.8 (−12.8 to +46.0) / +2.9 (−31.5 to +30.7) |
+| `residual_k4` | +208.28 (+147.3 to +279.4) | 0 | +22.3 (−25.0 to +74.1) / +6.9 (−41.0 to +58.6) |
+| `residual_k2_no_season` | +174.01 (+122.8 to +233.3) | 0 | +1.0 (−25.4 to +24.4) / −10.0 (−39.6 to +14.5) |
+| `residual_k4_no_season` | +284.90 (+207.9 to +387.0) | 0 | +38.9 (−4.1 to +93.3) / +27.0 (−16.0 to +80.1) |
+
+The hydro model is the same within £3 (+£120.10 to +£283.39). Every piece is worse than deployed in every variant (Monday to Thursday +£88 to +£282, Saturday +£115 to +£253, Sunday +£111 to +£238, Friday +£120 to +£215); the only piece-level intervals that include zero are Saturday, Sunday and the raw Saturday fallback with the K = 2 baseline, which are still above zero as point estimates. On the 56 new days the post model is +£37 to +£91 worse.
+
+### Conclusion
+
+1. **Cross-fitting does not help.** Against Series 57 every difference is between −£10 and +£39 a day and every interval includes zero: the in-sample mismatch was not the cause of the loss, or not the only one.
+2. **The seasonal baseline is closed.** Two designs, in-sample and cross-fitted, four variants each, are all worse than the deployed model by £99 to £285 a day, every interval above zero, in every fold. The trees do the season better than a weekday-specific wave baseline with CatBoost on the leftovers.
+3. **What is not established:** why. The baseline's own error (about £1,200 a day) goes straight into the forecast and CatBoost may not correct a baseline that is wrong in a weekday-and-season-specific way; this was not tested further and is not planned.
+4. **Nothing in production changes.**
+5. **Caveats:** one baseline family (weekday-specific waves, ridge 1.0, blocks of 56 days); the intervals are about ±£40 to ±£80.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
@@ -3857,6 +3926,10 @@ Series 53) finds no pattern by day of month or week of month, and all four were
 then tested in the weekly log's models: day of month in Series 54 (no gain), week
 of month in Series 55 (a hair better in the plain form, inside the noise), week of
 year and the month start and end flags in Series 56 (no gain, worse on the new days).
+How the season is represented was tested too: a smooth weekday-specific wave
+baseline with CatBoost learning the leftovers (Series 57) is £99 to £246 a day worse,
+and fitting that baseline across blocks so CatBoost sees realistic leftovers
+(Series 58) changes nothing.
 
 **Never a candidate (leakage or non-feature intermediate):**
 `forecast_error`, `payday`, `prev_payday`, `next_payday`.

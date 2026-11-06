@@ -187,7 +187,7 @@ def report(results=RESULTS, out_dir=OUT_DIR, variant_columns=VARIANT_COLUMNS, no
                          "new_days_change": float(d_new[own_new].mean())})
     pieces = pd.DataFrame(rows)
     pieces.to_csv(out_dir / "pieces.csv", index=False)
-    print("EACH PIECE ON ITS OWN WEEKDAYS (change = with the day-of-month columns minus as deployed; negative = better; 585 days, 100 seeds)")
+    print("EACH PIECE ON ITS OWN WEEKDAYS (change = with the variant minus as deployed; negative = better; 585 days, 100 seeds)")
     for v in variants:
         print(f"\n{v}"); print(pieces[pieces["variant"] == v].drop(columns="variant").round(2).to_string(index=False))
 
