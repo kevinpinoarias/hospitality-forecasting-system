@@ -4376,6 +4376,21 @@ Part 3 (Saturday piece against the deployed piece on the same seeds):
 3. **It replicates on fresh seeds** (−£18.43 and −£3.25, 7 folds), and the 2026 gain on fresh seeds is −£2.70 against −£0.88, so part of the 2026 fade in Series 70-71 was seed noise.
 4. **Nothing is changed by this.** Forecast-log v1.11 keeps the four-rule definition it was decided with (tested in Series 72 and Part 1 and 3 here); `month_end3` is as good, but choosing it now would be a new post-hoc choice and can be tried in a later version.
 5. **Limits:** the same 585 days and folds throughout; the effect is about 0.3% of the daily error and its interval against the deployed model, in the Saturday piece, is wide; the 56 days from 7 September were worse on Saturdays in Series 70.
+6. **A check made afterwards (no fits) shows the gain is concentrated in two months.** Over the 84 backtest Saturdays (post model, after the correction, total −£1,747), July carries −£299 in 2025 and −£276 in 2026
+   (four Saturdays each) and December 2025 −£483 (four Saturdays): the 12 Saturdays in July and December carry 61% of the gain, and the other 72 carry −£690 (−£9.6 a day, against −£20.8 over all 84). The placebo comparison
+   of Part 1, redone on subsets of Saturdays (the Saturday piece's change before the correction, the real column against all 32 placebos of Series 72 and 73):
+
+   | Saturdays | n | Real column | Placebos, mean (best) | Placebos as good | p |
+   |---|---|---|---|---|---|
+   | All | 84 | −16.06 | −0.95 (−12.76) | 0 of 32 | 0.03 |
+   | July and December only | 12 | −87.41 | −13.18 (−52.59) | 0 of 32 | 0.03 |
+   | Without July and December | 72 | −4.17 | +1.09 (−10.29) | 3 of 32 | 0.12 |
+   | Without July | 76 | −10.17 | +0.23 (−11.68) | 1 of 32 | 0.06 |
+   | Without December | 80 | −10.96 | −0.24 (−11.56) | 1 of 32 | 0.06 |
+
+   So the real column beats every placebo within July and December (both Julys show it), but outside them its gain is about £4 a day and three placebos match it. The backtest holds two Julys and one December,
+   so Conclusion 1 should be read as "payday dates carry something, mostly in July and December". Disclosed in the forecast log's second amendment of 8 November 2026 (log repository commit 5be3dca), which also has
+   Q4 reported for July and December Saturdays apart from the other Saturdays; the next tests are December 2026 and July 2027.
 
 ## Descriptive checks around Series 66-70 (no model fits)
 
