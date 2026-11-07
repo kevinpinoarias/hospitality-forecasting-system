@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 pytest.importorskip("catboost")
 
@@ -27,7 +28,8 @@ def test_the_extra_arm_has_a_model_name_of_its_own_and_is_not_dropped_as_a_repea
 
 
 def test_the_tracked_configuration_does_not_run_v1_11():
-    settings = run_forecasts.load_settings()
+    # the tracked file only: a runner switches v1.11 on in its own, untracked config/forecast_log.local.yaml, which load_settings() would also read
+    settings = yaml.safe_load((run_forecasts.PROJECT_ROOT / "config" / "forecast_log.yaml").read_text(encoding="utf-8"))
     assert settings["model_version"] == "v1"
     assert not settings.get("also_run")
 
