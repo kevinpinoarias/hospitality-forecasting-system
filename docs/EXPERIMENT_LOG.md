@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-64** use the same protocol and JSONL files (`reports/experiments/series44/` to `series64/`; Series 65 fits no model and reads the saved predictions) and
+**Series 44-72** use the same protocol and JSONL files (`reports/experiments/series44/` to `series72/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -4085,6 +4085,289 @@ In about 75% of bootstrap resamples either rule gains. Of the 17 changed backtes
 4. **Next evidence:** Friday 27 November 2026 is a payday under the 28th rule (the 28th is a Saturday), so Saturday 28 November is the next payday Saturday; revisit after about 8 to 10 more.
 5. **Caveat:** 22 backtest events; the intervals come from a moving-block bootstrap of the 585 days.
 
+## Series 66 — The Manager's Forecast Against the Recent Level of Sales, as a Ready-Made Ratio
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series66_forecast_ratio.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series66/`
+
+### Context
+
+The model has the manager's forecast and the recent level of sales (the rolling means and, in the weekend pieces, sales 2 and 3 weeks ago and the mean of the last four same weekdays) as separate columns. A tree splits on one column at a time, so it can only build "the forecast is well above what this weekday has been selling" by stacking cuts. Series 26 tested the recent level of the same weekday, not its ratio to the forecast, and Series 28 found the manager's forecast adds little for Saturday and Sunday. This is not a payday idea: it came from the README's untested "ratio to rolling mean" item. Written down beforehand: little or nothing expected.
+
+### Method
+
+Series 54's design (540 fits). Three variants, each ONE column added on top of the piece's inputs and run on its own, all built only from sales at least 14 days earlier (sales 7 days back are not known for a next-week forecast, as Series 53 found for Fridays; closure days with zero sales are left out): `fc_ratio_3wk` (the forecast divided by the mean of the sales 14, 21 and 28 days earlier), `fc_gap_3wk` (the forecast minus that mean, in pounds) and `fc_ratio_lag14` (the forecast divided by the sales 14 days earlier alone). A logarithm of the ratio is not tried: a tree only asks "above or below a cut".
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `fc_ratio_3wk` | −4.49 (−11.9 to +3.1) | −4.96 (−12.5 to +2.5) | 7 / 6 | +4.6 / +3.7 |
+| `fc_gap_3wk` | +0.56 (−12.8 to +17.4) | −0.30 (−13.7 to +16.4) | 6 / 5 | +0.3 / +1.1 |
+| `fc_ratio_lag14` | +0.12 (−8.0 to +7.5) | −0.45 (−8.2 to +6.7) | 6 / 6 | +2.7 / +3.1 |
+
+By weekday, `fc_ratio_3wk` is Monday to Thursday −£6.2, Friday −£25.3 (interval −65.8 to +8.1, 7 folds better), Saturday +£0.4 and Sunday +£19.9 (interval −0.6 to +40.2, 3 folds better).
+
+### Conclusion
+
+1. **Only the 3-week ratio helps, by about £4.5 to £5 a day (0.5%)**, better in 6 to 7 of 10 folds; the gap in pounds and the single-lag ratio do nothing, so the smoother baseline is what matters.
+2. **It does not meet the bar set beforehand** (an interval below zero in both models and the new days not worse): both intervals include zero and the 56 new days are worse.
+3. **It helps Monday to Friday and hurts Sunday.** It was the best of three variants and the intervals are about ±£7, so Series 69 reruns it on fresh seeds.
+
+## Series 67 — A Pay-Cycle Phase
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series67_pay_cycle_phase.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series67/`
+
+### Context
+
+Some people are paid every two or four weeks; if a venue's guests are, sales would rise on alternate (or every fourth) weekends, which no monthly column can see. The anchor week is unknown, so the model gets the week number counted from Monday 1 January 2024, folded into 2 or 4 phases. A free look at the deployed post model's errors came first (585 backtest days, after the correction, permutation test on the spread between phases): the only result below 0.05 was Friday by week parity (+£288 on even weeks, −£434 on odd weeks, p = 0.017); Saturday (p = 0.95), Sunday (p = 0.91) and Monday to Thursday (p = 0.22) showed nothing, and mod 4 gave Friday p = 0.081 and Friday to Sunday p = 0.060. One test in ten, with no weekend signal, which a pay cycle would show more than a Friday: weak, and the model test was run anyway as one cheap series.
+
+### Method
+
+Series 54's design (360 fits). `week_parity` (whole weeks since 1 January 2024, modulo 2) and `week_mod4` (modulo 4), each one column added on top and run on its own.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro) |
+|---|---|---|---|---|
+| `week_parity` | +1.99 (−0.5 to +4.5) | +0.41 (−2.1 to +2.8) | 2 / 5 | +1.8 / +3.9 |
+| `week_mod4` | +0.45 (−1.7 to +2.8) | −1.20 (−3.7 to +1.4) | 5 / 7 | +1.0 / +1.5 |
+
+### Conclusion
+
+1. **No pay-cycle phase helps.** Every interval includes zero and both are worse on the new days.
+2. **The Friday result of the free check did not carry over:** with the column in, the Friday piece is £5.1 worse (1 fold of 10 better). One result in ten tests, as suspected.
+3. **Benefit and pension payments should not show a phase either:** State Pension, Child Benefit and the Scottish Child Payment are paid every four weeks on a weekday set by each person's own start, and Universal Credit monthly on each claimant's own date, so across a city they average out (GOV.UK and Social Security Scotland pages; no national distribution by day of month was found).
+
+## Series 68 — Working Days to and From Payday
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series68_working_days_to_payday.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series68/`
+
+### Context
+
+The payday columns count calendar days. A Friday payday and a Tuesday payday both read "payday", but the weekend after them sits at a different distance, and a bank holiday shifts the count. Counting only working days (Monday to Friday, not Scottish bank holidays) makes the Saturday, Sunday and Monday after a Friday payday all one working day after it. Written down beforehand: little or nothing expected, because the model already knows the weekday and the calendar distance.
+
+### Method
+
+Series 54's design (540 fits). Columns added on top of the deployed 38, never replacing them, both true distances to the last-working-day payday (0 on payday; `wd_to` is also 0 on a weekend or bank-holiday day with no working day before the payday): `wd_since`, `wd_to`, and `wd_pair` (both).
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro) |
+|---|---|---|---|---|
+| `wd_since` | +2.79 (−0.5 to +6.3) | +0.08 (−2.9 to +3.1) | 3 / 5 | +0.8 / +0.8 |
+| `wd_to` | +1.98 (−0.7 to +4.9) | −0.18 (−2.9 to +2.6) | 3 / 3 | −0.8 / −0.1 |
+| `wd_pair` | +4.01 (+0.9 to +7.1) | +2.04 (−0.9 to +5.0) | 1 / 3 | +0.4 / +2.7 |
+
+### Conclusion
+
+1. **Working days do not help.** The single columns are level or worse; both together are clearly worse for the post model (interval above zero, 1 of 10 folds better).
+2. **As expected:** the model can already combine the weekday and the calendar distance.
+
+## Series 69 — The 3-Week Forecast Ratio on Fresh Seeds
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series69_forecast_ratio_fresh_seeds.py` · Results: `reports/experiments/series69/`
+
+### Context
+
+`fc_ratio_3wk` was the best of three variants in Series 66, so part of its gain may be seed luck. This refits the deployed pieces and the ratio variant on seeds 300-399, which no earlier series used (the baselines of Series 46-47 and 54 use seeds 200-299 and are not reused), as Series 46 did for the calendar columns. It can rule out seed luck; it cannot rule out luck of the days, because the 585 backtest days and the 56 new days are the same. Reading set beforehand: the gain replicates if it is at least £2.3 better (half of Series 66's) in both models and better in at least 6 folds of 10; it is seed luck if it falls under £1 or the sign flips.
+
+### Method
+
+Series 54's design (360 fits: two variants, six pieces, 100 fresh seeds).
+
+### Results
+
+After the correction, change against the deployed pieces refitted on the same seeds (£, 95% interval; deployed MAE £867.17 post, £859.72 hydro):
+
+| | Series 66 (seeds 200-299) | Series 69 (seeds 300-399) |
+|---|---|---|
+| Post model | −4.49 | −4.39 (−11.9 to +2.5), 7 folds better |
+| Hydro model | −4.96 | −3.34 (−10.8 to +3.7), 7 folds better |
+| New days (post / hydro, before the correction) | +4.6 / +3.7 | +8.3 / +3.0 |
+
+By weekday on the fresh seeds: Monday to Thursday −£8.6, Friday −£24.5, Saturday +£2.5, Sunday +£25.2 (interval +4.3 to +49.1). The shape is the same as in Series 66. A split of the saved predictions by calendar year (made afterwards, no refits; after the correction, 336 days in 2025 and 249 in 2026):
+
+| | 2025 | 2026 |
+|---|---|---|
+| Post model, seeds 200-299 | −7.71 (−19.2 to +1.9) | −0.15 (−11.7 to +15.1) |
+| Post model, seeds 300-399 | −8.02 (−19.8 to +1.8) | +0.51 (−10.4 to +13.5) |
+| Hydro model, seeds 200-299 | −9.00 (−20.5 to +0.8) | +0.50 (−11.6 to +14.8) |
+| Hydro model, seeds 300-399 | −5.65 (−17.0 to +4.2) | −0.21 (−11.7 to +12.9) |
+
+Split instead into the first five and last five folds, the gain is in both halves (about −£2.5 to −£6).
+
+### Conclusion
+
+1. **The gain is not seed luck.** The post model's change is almost identical on 100 fresh seeds and the hydro model's stays well past the bar: the reading set beforehand says "replicates".
+2. **It is not established as an improvement.** The intervals still include zero, the 56 new days are worse in both runs, and by calendar year the gain sits in 2025 and is about zero in 2026, so it may be a period effect.
+3. **Not adopted; on the to-do list.** Rerun on the days after 1 November 2026 once about 120 exist, and keep it only if it helps there in both models. A static split (train on 2024, score 2025-26 with no refit) was considered as a Series 71 and left as an optional extra check; it cannot supply unseen days.
+
+## Series 70 — Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series70_payday_intensity.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series70/`
+
+### Context
+
+Series 61 and 64 tried the pay dates (last working day, 25th, 28th, 15th) as flags, windows and a distance to the nearest payday, which ignore the other rules and count every rule equally. Intensity adds the rules up instead: each rule adds a bump on the days around its payday, weighted by the share of payroll teams that use it (CIPP 2023: last working day 0.34, 25th 0.30, 28th 0.30, 15th 0.18; multi-select, rough), and a day gets the total. Written down beforehand: nothing expected, run to close the idea.
+
+### Method
+
+Series 54's design (720 fits, about an hour). Four variants, each ONE column added on top of the deployed 38: `intensity_short` (1.0 on payday, 0.5 the day after, 0 after), `intensity_long` (1.0, 0.75, 0.5, 0.25 for 0 to 3 days after payday), `intensity_sym` (a triangle, 1 − k/4 for the nearest payday at k = 0 to 3 days either side) and `intensity_long_equal` (as `intensity_long` with every rule weighted 1).
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `intensity_short` | −1.47 (−5.3 to +2.4) | −2.42 (−6.4 to +1.6) | 6 / 7 | +0.9 / +4.3 |
+| `intensity_long` | −1.63 (−6.6 to +3.7) | −2.60 (−7.7 to +2.6) | 6 / 8 | +0.9 / +5.8 |
+| `intensity_sym` | −3.34 (−7.7 to +0.9) | −3.80 (−8.3 to +0.4) | 7 / 8 | −2.9 / −1.3 |
+| `intensity_long_equal` | −2.94 (−7.9 to +2.6) | −3.76 (−8.8 to +1.6) | 7 / 8 | +6.5 / +10.5 |
+
+The gain sits in the Saturday piece (post model after the correction −£12.5 to −£20.8; before the correction `intensity_short` −£12.1, interval −20.0 to −3.6, 8 folds better), where the new days are worse (+£11 to +£45).
+
+### Conclusion
+
+1. **A small, consistent, not significant gain.** All four variants are better than the deployed columns in both models (−£1.5 to −£3.8) and in 6 to 8 folds, but every interval includes zero (the triangle's hydro interval only just: −8.3 to +0.4).
+2. **`intensity_sym` is the best and the only one better on the new days in both models** (−£2.9 and −£1.3), so it comes closest to the bar set beforehand (an interval below zero in both models and the new days not worse), and misses it on the interval. It is the same family as the signed distance of Series 61 and 64.
+3. **The survey weights do not clearly matter:** equal weights are no worse in the backtest and clearly worse on the new days.
+4. **Not adopted; kept on the to-do list with signed distance** (rerun both after about 90 more unseen days). Where the gain sits (Saturday) is the payday-Saturday pattern that the new days contradict.
+
+## Series 71 — Amplifying the Triangle Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series71_amplify_intensity.py` · Results: `reports/experiments/series71/`
+
+### Context
+
+Series 70's triangle intensity (`intensity_sym`) was £3.34 (post) and £3.80 (hydro) a day better after the correction, in 7 and 8 folds of 10, better in 94% and 96% of bootstrap resamples, with intervals that include zero and better on the 56 new days. Nearly all of it is the Saturday piece (−£20.8 a day, −£2.99 of the −£3.34), it fades in 2026 (−£1.4 and −£0.4 against −£4.8 and −£6.3 in 2025; Saturdays −£6.1 against −£31.8) and it was the best of four variants after about forty payday variants. This asks whether the signal can be made stronger without overfitting. A tree only asks "above or below a cut", so scaling or squaring the column changes nothing; only a different shape or place can.
+
+### Method
+
+Series 54's design (540 fits). Four fixed variants, each on its own: `sym_saturday_only` (the intensity in the Saturday pieces only, every other piece as deployed; the same fits as Series 70's Saturday pieces, reused), `sym_w2` (the triangle narrowed to reach 1 day either side of payday), `sym_w7` (widened to reach 7 days either side) and `sym_week` (the sum of `intensity_sym` over the 7 days ending on the day). **The rule, written into the script before any result:** choose among these four and Series 70's `intensity_sym` the candidate with the largest gain on the first five folds (285 days) for the post model, one choice for both models; judge it on the last five folds (300 days) and the 56 new days; it is supported if on folds 5-9 it is at least £1.5 a day better than the deployed pieces in both models, better in at least 3 of 5 folds in both, and not worse on the new days; "amplified" means a new variant at least £1 better than `intensity_sym` on folds 5-9.
+
+### Results
+
+After the correction, change against the deployed pieces (£ a day; negative = better; post £865.36, hydro £858.78):
+
+| Variant | Post, all 585 days | Post, folds 0-4 / 5-9 | Post, 2026 | Post new days | Hydro, all 585 days | Hydro, folds 0-4 / 5-9 | Hydro new days |
+|---|---|---|---|---|---|---|---|
+| `intensity_sym` (Series 70) | −3.34 (−7.7 to +0.9) | −5.08 / −1.69 | −1.41 | −2.85 | −3.80 (−8.3 to +0.4) | −5.36 / −2.32 | −1.27 |
+| `sym_saturday_only` | −2.99 (−5.1 to −0.9) | −3.25 / −2.73 | −0.88 | +1.60 | −2.99 (−5.1 to −0.9) | −3.25 / −2.73 | +1.60 |
+| `sym_w2` | −2.35 (−7.4 to +2.5) | −3.41 / −1.34 | −1.05 | −4.05 | −3.30 (−8.4 to +1.6) | −4.44 / −2.22 | −2.08 |
+| `sym_w7` | +0.54 (−4.3 to +5.8) | −0.54 / +1.56 | +1.95 | −10.48 | −0.10 (−5.3 to +5.6) | −1.51 / +1.24 | −7.93 |
+| `sym_week` | +2.39 (−3.1 to +8.2) | +6.99 / −1.98 | −2.63 | −5.45 | +1.70 (−3.7 to +7.4) | +7.47 / −3.78 | −4.70 |
+
+The rule: the choice on folds 0-4 is `intensity_sym` itself (−5.08). On folds 5-9 it is −1.69 (post, 3 of 5 folds better) and −2.32 (hydro, 4 of 5), and −2.85 and −1.27 on the new days: it meets the bar, **supported; not amplified** (no variant is better than it on folds 5-9).
+
+### Conclusion
+
+1. **The original triangle is supported, narrowly, and nothing amplifies it.** It holds on the second half and the new days, but the post-model gain on folds 5-9 (−£1.69) barely clears the £1.5 bar, with 3 of 5 folds better.
+2. **The gain fades:** −£5.1 and −£5.4 on folds 0-4, −£1.7 and −£2.3 on folds 5-9, −£1.4 and −£0.4 in 2026.
+3. **The shape matters only a little.** The narrow triangle is a little weaker (−£2.35 and −£3.30) and about as good on the second half; the wide triangle loses the gain (+£0.54 and −£0.10), because with four pay rules a 7-day triangle covers nearly every day (997 of 1,006); the 7-day sum is worse and unstable (+£7.0 on the first half, −£2.0 on the second). If there is an effect, it is a narrow payday-proximity one.
+4. **`sym_saturday_only` has the narrowest interval (−£5.1 to −£0.9, the only package interval in the payday series that excludes zero), but that is the same Saturday evidence as Series 70** (the Saturday piece alone: −£16.1, interval −30.9 to −1.8) with the noise of the other pieces removed; it is a post-hoc choice made after seeing where the gain sits, and it is £1.6 a day worse on the new days.
+5. **Nothing is adopted.** Two frozen candidates go on the to-do list for a recheck after about 90 more unseen days: `intensity_sym` in every piece and `sym_saturday_only`; keep one only if the backtest and the new days agree in both models.
+6. **Afterwards** (no fits): the Saturday gain is not concentrated on payday-adjacent days (the 23 Saturdays after a Friday payday carry 36% of it, the other 61 Saturdays 64%; several of the biggest gains are at intensity near zero); Series 72 tests whether the column carries payday information at all.
+
+## Series 72 — A Placebo Test for the Triangle Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series72_intensity_placebo.py` · Results: `reports/experiments/series72/`
+
+### Context
+
+Series 70-71's triangle intensity is £3.34 a day better (post model, after the correction), nearly all in the Saturday piece. A look at where the gain sits (no fits) found it is not concentrated on payday-adjacent days: the 23 Saturdays after a Friday payday carry 36% of the Saturday gain and the other 61 Saturdays 64% (£27 a day against £18), and several of the biggest gains are on Saturdays with intensity near zero (4 July 2026 at 0.00, 20 December 2025 at 0.00). With Series 63 (a redundant column moves a seeded fit by about £3) that raised the possibility that the column is a generic nudge to the Saturday model, not a payday signal. Written down beforehand: expected generic, several placebos reaching a gain close to the real one.
+
+### Method
+
+As Series 41 did for the Hydro flag: columns that look like the real one but carry no payday information, fitted in the Saturday piece exactly as the real one (same columns, folds and seeds 200-299; the real column is Series 70's Saturday piece, reused). 12 date-shifted placebos (the real intensity moved by 7, 14, 21, 35, 42 or 49 days either way: the shape is intact and the dates are wrong; 28 days is left out because it nearly lines up with the next payday) and 4 noise placebos (an independent random number between 0 and 0.8 for each day), 480 fits. The rule, written into the script before any result: the real column carries payday information if it beats at least 15 of the 16 placebos on both measures (the Saturday piece's change on the 84 Saturdays before the correction, and the post model's change after the correction); it is a generic effect if at least 4 of the 16 are as good on either.
+
+### Results
+
+Saturday piece changes (£ a day; negative = better), real column against the best placebos:
+
+| Column | Saturday piece, before the correction | Post model, after the correction | Saturdays improved (of 84) |
+|---|---|---|---|
+| **Real `intensity_sym`** | **−16.06** | **−2.99** | 48 |
+| `plc_noise1` (noise) | −12.76 | −1.65 | 50 |
+| `plc_p14` (shifted 14 days) | −6.08 | −1.22 | 42 |
+| `plc_m14` (shifted) | −5.53 | −1.11 | 53 |
+| `plc_p7` (shifted) | −4.50 | −0.98 | 45 |
+| Date-shifted placebos, mean (12) | −1.35 | −0.35 | |
+| Noise placebos, mean (4) | +2.69 (−12.8 to +16.3) | −0.62 | |
+
+The real column is better than all 16 placebos on both measures (0 of 16 as good; the smallest empirical p with 16 placebos is 1/17, 0.06): **the reading set beforehand says payday dates carry something.** Split by period (post model, after the correction):
+
+| | 2025 | 2026 | Folds 0-4 | Folds 5-9 |
+|---|---|---|---|---|
+| Real column | −4.55 | −0.88 | −3.25 | −2.73 |
+| Placebos, mean (standard deviation) | −1.91 (1.3) | +1.59 (1.4) | −1.40 (1.5) | +0.52 (1.0) |
+| Placebos at least as good | 2 of 16 | 0 of 16 | 2 of 16 | 0 of 16 |
+
+### Conclusion
+
+1. **The expectation (generic) was wrong.** The real column beats every placebo, and the shifted placebos, which keep the shape and the weekend rolling, mostly gain little (mean −£1.35 on the Saturday piece against −£16.06).
+2. **The fade is partly generic.** An extra column with no payday information also does better in 2025 (−£1.9) than in 2026 (+£1.6) in this piece; against the placebos the real column is about £2.5 better in both years and in both halves of the folds, so its payday-specific advantage looks stable even though the gain against the deployed model shrinks.
+3. **The Saturdays with low intensity are not a contradiction:** the column describes the whole pay cycle, including the quiet days between paydays, not only the peaks.
+4. **Limits:** 16 placebos give a smallest p of 0.06; the date-shifted placebos are not clean nulls (with four pay rules a shift of 7 or 14 days often lands near another rule's real payday, which makes the test conservative); the real column was itself the best of four shapes, and the best of four placebos would typically reach about −£6 on the Saturday piece against its −£16; the Saturday piece only, the same 585 days and seeds for all columns; the effect is about £2.6 to £3.0 a day on the package (0.3%), and its interval against the deployed model still includes zero.
+5. **Nothing is adopted.** The to-do item stays: recheck `intensity_sym` in the Saturday pieces (and in every piece) on about 90 unseen days; this test raises the odds that a real payday-timing signal is there. Eight more placebos (shifts of 56 to 77 days, about 20 minutes) would take the smallest p under 0.05.
+
+## Descriptive checks around Series 66-70 (no model fits)
+
+**Run**: 2026-11-07 · scripts kept outside the project
+
+1. **Food and Beverage on payday Saturdays.** The raw Rotaready files carry hourly sales and the manager's forecast split into Food and Beverage streams; the model has only ever seen the daily total. The 26 Saturdays after a Friday payday, against the mean of the other Saturdays within five weeks: Food +£388 (2.2 standard errors, higher on 22 of 26), Beverage +£147 (1.1, 17 of 26), total +£534 (1.8, 18 of 26). The beverage share (−0.1 points) and the lunch (−0.1), evening (−0.3) and late (+0.6) shares of the day do not move: payday makes the day bigger, not different. Seven comparisons on 26 days, a neighbour baseline and no model: a lead for forecasting Food and Beverage separately (on the to-do list), not a finding.
+2. **Payday near a long weekend:** 45 days in 15 episodes where a payday (any of the three rules) is within three days of a long weekend; the post model's error on them in the backtest is +£144 against −£83 on other Friday to Monday days, with a spread of about £1,300 a day: noise. No model run.
+3. **December pay brought forward:** early December pay is common (HMRC keeps a permanent reporting easement for it; no typical date or share found), but the manager's miss on 15 to 23 December was +9 to +17% in 2024 and −11 to −16% in 2025 (the backtest holds one December), so nothing can be tested before December 2026.
+4. **Other income dates** (State Pension, Child Benefit, Universal Credit, Scottish Child Payment, SAAS student maintenance, "usually the 7th" on one unverified student site): no day-of-month percentages exist; most are spread by person. A student effect near the 7th would already show in the flat days 1 to 24 of the day-of-month error check.
+
+## Check — Was the Hydro Monday-to-Thursday and Saturday-Fallback Pattern of Series 54-56 a Lucky Baseline?
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_baseline_seed_check.py` · Results: `reports/experiments/baseline_seed_check/` · Not a numbered series (the numbers 59-70 were in use in another session)
+
+### Context
+
+Across Series 54-56, the 12 calendar variants were each compared with one "none" fit of the piece (100 seeds, 200-299). The hydro Monday-to-Thursday piece beat that fit in 10 of 12 variants (mean −£0.96 a day), where the plain Monday-to-Thursday piece, which differs from it by one flag, beat it in 1 of 12 (mean +£1.54); the raw Saturday fallback beat it in 10 of 12 in the backtest (mean −£2.83) and lost in 10 of 12 on the 56 new days. If a shared baseline landed a little high by chance, every variant would look better against it.
+
+### Method
+
+The three pieces' "none" fits refitted on 100 fresh seeds (300-399), same columns, folds and data, 585 backtest days and the 56 new days (90 fits); the plain Monday-to-Thursday piece is a control. Written down beforehand: the baselines differ by £1 to £2 on a piece's own weekdays, the hydro pattern shrinks a lot against the average of the two baselines; it is mostly luck if the hydro piece keeps less than half its gain (mean above −£0.5) or fewer than 8 of 12 variants, real if it keeps most of it (mean below −£0.75, 8 or more of 12).
+
+### Results
+
+The baselines on their own weekdays (£; fresh minus old, 95% interval):
+
+| Piece | Seeds 200-299 | Seeds 300-399 | Difference | New days 200-299 / 300-399 |
+|---|---|---|---|---|
+| Monday-Thursday (control) | 716.95 | 718.35 | +1.41 (−1.0 to +3.9) | 810.51 / 812.00 |
+| Monday-Thursday (hydro) | 705.42 | 705.30 | −0.12 (−2.4 to +2.1) | 764.79 / 769.85 |
+| Saturday fallback (raw) | 1,171.69 | 1,173.26 | +1.56 (−3.3 to +6.2) | 1,054.64 / 1,053.30 |
+
+The 12 variants against each baseline (variants beating it out of 12, mean change in £ a day):
+
+| Piece and part | Old baseline | Fresh baseline | Average of both |
+|---|---|---|---|
+| Hydro, backtest | 10, −0.96 | 10, −0.84 | 10, −0.78 |
+| Hydro, 56 new days | 3, +1.70 | 11, −3.36 | 9, −0.83 |
+| Saturday fallback, backtest | 10, −2.83 | 10, −4.40 | 10, −3.61 |
+| Saturday fallback, new days | 2, +11.67 | 1, +13.01 | 2, +12.34 |
+| Plain Monday-Thursday, backtest | 1, +1.54 | 7, +0.13 | 4, +0.85 |
+| Plain Monday-Thursday, new days | 5, +0.93 | 7, −0.56 | 5, +0.18 |
+
+### Conclusion
+
+1. **The hydro backtest pattern is not baseline luck:** its baseline did not move (−£0.12), and against the average baseline the variants keep −£0.78 (81% of the gain) with 10 of 12 beating it, which meets the rule written beforehand (barely). The effect is tiny: about £0.8 a day on Monday to Thursday, about £0.45 on the whole hydro model, spread over every calendar-structure variant of three families rather than tied to one column, and absent from the plain Monday-to-Thursday piece. Not worth a new version.
+2. **The hydro "worse on the new days" result was baseline luck:** its new-days baseline moved £5 on 32 days (764.79 to 769.85); against the fresh or the averaged baseline the variants are better on the new days in 11 and 9 of 12 (−£3.4 and −£0.8), so the backtest and the new days agree in sign.
+3. **The Saturday fallback pattern is not baseline luck either way:** better in 10 of 12 in the backtest (−£2.8 to −£4.4) and worse on the new days in 10 to 11 of 12 (+£11.7 to +£13.0) against every baseline. Unresolved: the new days hold 8 Saturdays, and the piece is used only when Saturday's inputs are not yet known.
+4. **A method caveat for Series 46-58:** a baseline's own seed noise on the 56 new days is about £1.5 to £5 a day per piece, as large as the effects judged there, so "the new days disagree" carries less weight than it was given. The conclusions do not change, because the backtest results were inside the noise on their own.
+5. **The expectation written beforehand was partly wrong:** the hydro baseline did not move, where the other two moved by £1.4 and £1.6.
+6. **Caveats:** the 12 variants share their baseline and are not independent; the variants themselves were not refitted; the post model's four baselines were not refitted.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
@@ -4142,7 +4425,7 @@ baseline with CatBoost learning the leftovers (Series 57) is £99 to £246 a day
 and fitting that baseline across blocks so CatBoost sees realistic leftovers
 (Series 58) changes nothing.
 
-**Payday columns re-examined (Series 59-65), all four kept as deployed:** `days_since_payday`,
+**Payday columns re-examined (Series 59-72), all four kept as deployed:** `days_since_payday`,
 `is_payday_window_pm3`, `is_payday` and `days_to_payday`, all built on the last working day. The two known
 flaws (`days_since_payday` reads 28-33 on payday itself; `days_to_payday` goes negative on the days after
 an early payday) were repaired in Series 59, and the repair is £3 to £5 a day worse; dropping the four
@@ -4151,8 +4434,15 @@ mix of the last working day, 25th and 28th found in the model's own errors (Seri
 a graded distance and the 25th, 28th and 15th as full column sets (Series 64) and a payday-Saturday
 correction instead of a feature (Series 65) all fail to beat them. The deployed `days_since_payday` is the
 day of the month plus 0 to 3 days, but plain day of month is £3 worse and splitting the offset out is worse
-still (Series 62-63), so why the deployed columns work is not explained. Untested ideas are listed in the
-README's Future Work.
+still (Series 62-63), so why the deployed columns work is not explained. A pay-cycle phase (Series 67), working days
+to payday (Series 68) and a payday intensity summed over the pay dates (Series 70) did not help either; the best of
+those, a triangle intensity, is £3.3 to £3.8 better in the backtest with intervals that include zero and better on the
+56 new days, and is on the to-do list with signed distance (Series 71 could not amplify it: a narrower triangle is a little
+weaker, a wider one or a 7-day sum loses it, and the gain fades from £5.1 on the first half of the days to £1.7 on the second; a placebo test, Series 72, found it better than all 16 placebo
+columns in the Saturday piece, and the placebos fade the same way, so part of the fade is generic). The manager's forecast against the mean of the sales 14,
+21 and 28 days earlier (Series 66, 69) is not a payday idea: it replicates on fresh seeds (about £4.4 a day better)
+but sits in 2025 and is worse on the new days. Ideas that wait for more data are in the README's Future Work
+(to-do list and watch list).
 
 **Never a candidate (leakage or non-feature intermediate):**
 `forecast_error`, `payday`, `prev_payday`, `next_payday`.
