@@ -674,6 +674,7 @@ Several future directions emerged from the project. Items marked **done** or **t
 
 **Watch list (waits for a date)**
 - recheck the `year` column before any retrain in January to March 2027 (see Adaptive modelling below)
+- low priority: v1.11's gain sits mostly in July and December (61% of it; two Julys and one December in the backtest); read the log's Q4 for July and December Saturdays apart from the other Saturdays once December 2026 and July 2027 have an actual
 
 **CatBoost settings not yet tuned**
 - iterations, learning rate and depth have been searched on the final model (Series 1, 8, 14 and 21, 60 combinations in the last: nothing beats 300 / 0.05 / 4, and depths 2-6 are not better), and so have the loss function (Series 13) and the log target (Series 14); these others have never been searched and sit at CatBoost's defaults: `l2_leaf_reg` (regularisation strength, default 3), `rsm` (the share of columns each split may look at, default all), `min_data_in_leaf` (smallest leaf, only with the lossguide and depthwise grow policies), `grow_policy` (symmetric trees by default; depthwise and lossguide are alternatives), `border_count` (how finely a numeric column is cut, default 254), `bagging_temperature` / `subsample` (row sampling), `random_strength` (default 1) and `one_hot_max_size`. The weekly log's Friday, Saturday and Sunday pieces also reuse the final model's settings without a search of their own. Any search needs the 25-seed protocol, a fresh-seed confirmation and the net-effect reading; the Series 21 plateau suggests small gains at best

@@ -77,8 +77,8 @@ def test_registration_refuses_what_the_log_rules_forbid(tmp_path, monkeypatch):
         v1_11.fit_v1_11(log_repo)
 
 
-def _scored(models: list[str]) -> pd.DataFrame:
-    days = pd.date_range("2026-11-02", periods=28, freq="D")
+def _scored(models: list[str], start: str = "2026-11-02") -> pd.DataFrame:
+    days = pd.date_range(start, periods=28, freq="D")
     rows = []
     for d in days:
         for m in models:
@@ -100,3 +100,17 @@ def test_q4_is_scored_only_once_v1_11_rows_exist_and_is_zero_off_saturdays():
     assert q4["days"] == 4 and q4["change"] == pytest.approx(-40.0) and q4["better_days"] == 4  # 60 off against 100 off on every Saturday
     every = score_forecasts.paired_difference(frame, ("hydro_v1.11", "no_manager"), ("hydro", "no_manager"), "TW")
     assert every["days"] == 28 and every["better_days"] == 4  # identical on the other 24 days, as v1.11's other pieces are v1's own files
+
+
+def test_q4_is_also_reported_for_july_and_december_saturdays_and_for_the_others():
+    november, _ = score_forecasts.build_report(_scored(["portfolio", "post", "hydro", "hydro_v1.11"]))
+    assert "other Saturdays" in november and "July and December Saturdays" not in november  # no July or December Saturday has an actual yet
+    december, _ = score_forecasts.build_report(_scored(["portfolio", "post", "hydro", "hydro_v1.11"], start="2026-11-30"))  # 30 Nov to 27 Dec: Saturdays 5, 12 and 19 and 26 December
+    assert "July and December Saturdays" in december and "other Saturdays" not in december  # all four Saturdays of that window are in December
+    mixed = pd.concat([_scored(["hydro", "hydro_v1.11"], start="2026-11-16"), _scored(["hydro", "hydro_v1.11"], start="2026-12-14")], ignore_index=True)
+    mixed = mixed.drop_duplicates(["forecast_type", "target_date", "model", "variant"])
+    sat = {d for d in mixed["target_date"].unique() if pd.Timestamp(d).dayofweek == 5}
+    december_saturdays = {d for d in sat if pd.Timestamp(d).month == 12}
+    assert december_saturdays and december_saturdays != sat  # a window holding both kinds of Saturday
+    q4 = score_forecasts.paired_difference(mixed, ("hydro_v1.11", "no_manager"), ("hydro", "no_manager"), "TW", december_saturdays)
+    assert q4["days"] == len(december_saturdays) and q4["change"] == pytest.approx(-40.0)

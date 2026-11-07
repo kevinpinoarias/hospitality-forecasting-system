@@ -148,10 +148,15 @@ def build_report(frame: pd.DataFrame) -> tuple[str, pd.DataFrame]:
                      "sign_test_p": sign_test_p(hy["better_days"], hy["days"])})
         if "hydro_v1.11" in set(frame["model"]):  # Q4, added by the pre-registration amendment for v1.11: the same hydro arm with the payday intensity in the Saturday pieces
             saturdays = {d for d in frame["target_date"].unique() if pd.Timestamp(d).dayofweek == 5}
-            for label, days in (("all days", None), ("Saturdays", saturdays)):
+            # the amendment of 8 November 2026: the backtest gain sat mostly in July and December, so Q4 is also reported for those Saturdays and for all the others
+            july_december = {d for d in saturdays if pd.Timestamp(d).month in (7, 12)}
+            groups = (("all days", None), ("Saturdays", saturdays), ("July and December Saturdays", july_december), ("other Saturdays", saturdays - july_december))
+            for label, days in groups:
+                if days is not None and not days:
+                    continue  # no such Saturday has an actual yet
                 q4 = paired_difference(frame, ("hydro_v1.11", "no_manager"), ("hydro", "no_manager"), ftype, days)
                 rows.append({"type": ftype, "question": f"Q4 v1.11 hydro vs v1 hydro, {label} (no-manager variant)", **q4,
-                             **({"sign_test_p": sign_test_p(q4["better_days"], q4["days"])} if label == "Saturdays" else {})})
+                             **({"sign_test_p": sign_test_p(q4["better_days"], q4["days"])} if days is not None else {})})
     result = pd.DataFrame(rows)
     lines.append(result.round(2).to_markdown(index=False))
     lines += ["", "Change = mean of (|first's error| - |second's error|) in £ a day; the interval is a 95% moving-block bootstrap and is shown once there are at least "
