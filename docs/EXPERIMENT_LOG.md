@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-58** use the same protocol and JSONL files (`reports/experiments/series44/` to `series58/`) and
+**Series 44-64** use the same protocol and JSONL files (`reports/experiments/series44/` to `series64/`; Series 65 fits no model and reads the saved predictions) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -3874,6 +3874,217 @@ The hydro model is the same within £3 (+£120.10 to +£283.39). Every piece is 
 4. **Nothing in production changes.**
 5. **Caveats:** one baseline family (weekday-specific waves, ridge 1.0, blocks of 56 days); the intervals are about ±£40 to ±£80.
 
+## Series 59 — Repairing the Payday Columns, and What the Family Is Worth
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series59_payday_repair.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series59/`
+
+### Context
+
+The model carries four payday columns (`days_since_payday`, `is_payday_window_pm3`, `is_payday`, `days_to_payday`), all built on one rule: payday is the last working day of the month, on the Scottish bank-holiday calendar. Two of them misbehave. `days_since_payday` counts from the previous month's payday, so it reads 28-33 on payday itself and about 29-31 on the weekend or bank-holiday days after an early payday, where it should read 0, 1 or 2. `days_to_payday` is negative (-1, -2) on those days, because the date arithmetic rolls forward to the end of the same month and finds the payday that has already gone; the window flag is built from the two. Earlier evidence for the family was weak (Series 2: removing `days_since_payday` helped; Series 26: a weekend × payday interaction gave nothing; Series 54 and 56: day of month and month-edge flags, which would pick up a fixed-date payday, gave nothing). Written down beforehand: little expected, because the repair changes the columns on only about 50 of 1,006 days.
+
+### Method
+
+Series 54's design: every variant in every piece of the weekly log (the post model's four pieces, the hydro Monday-to-Thursday piece, the raw Saturday fallback), 100 seeds (200-299), 585 days and the 56 new days, the two models assembled and corrected, read by judgment on the net effect. Variants, with the repaired columns replacing the old ones in the same positions: `fix_since_only` (`days_since_payday` counted from the most recent payday, 0 on payday); `repair_all` (also `days_to_payday` to the next payday on or after the day, never negative, and the window flag recomputed from the two); `drop_all_payday` (the four columns removed: what the family is worth). 540 fits.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `fix_since_only` | +5.43 (+1.6 to +9.7) | +3.17 (−0.3 to +6.9) | 2 / 5 | −3.0 / −0.7 |
+| `repair_all` | +4.87 (+0.7 to +9.6) | +3.30 (−0.6 to +7.4) | 3 / 3 | −0.6 / +1.8 |
+| `drop_all_payday` | +7.81 (−1.6 to +16.7) | +5.17 (−4.6 to +14.0) | 4 / 4 | +9.7 / +4.8 |
+
+### Conclusion
+
+1. **The repair is not better; it is probably slightly worse.** Both repairs cost £3 to £5 a day in the backtest (the post-model intervals exclude zero, the hydro ones do not), and the deployed columns, flaw included, beat the correct ones.
+2. **The family is worth about £8 a day.** Dropping all four costs +£7.8 (post) and +£5.2 (hydro), mostly on Friday (+£29), with intervals that include zero.
+3. **The 56 new days do not agree with the backtest:** the repairs are slightly better there for the post model (−£3.0 and −£0.6), so "the repair is worse" is not firm; dropping the columns is worse on both.
+4. **Nothing in production changes.** The deployed columns stay as they are.
+5. **Not established:** why the flawed columns do better. An untested guess is that `days_since_payday` is a smooth ramp close to a day-of-month signal, which the repair breaks by resetting it on payday (see Series 62).
+
+## Series 60 — Making the "Weekend After an Early Payday" Signal Explicit
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series60_payday_weekend.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series60/`
+
+### Context
+
+Series 59's repair changes the columns on about 50 days, 17 of them the days after an early payday inside the same month. On those days the deployed columns read values no ordinary day produces (the stopwatch at 29-31, the countdown negative), so they may work as an accidental flag for "the weekend after an early payday". On the deployed model's backtest errors these are the hardest days: 9 of the 585, mean absolute error £1,546 against £845 for the rest. Written down beforehand: little expected, since the backtest holds only 9 such days.
+
+### Method
+
+Series 54's design (every variant in every piece, 100 seeds, 585 days and the 56 new days; 720 fits). Three variants add one column to the deployed columns, flaw included: `after_payday_flag` (1 on a day after this month's payday, inside the same month), `after_payday_count` (the same days counted 1, 2, 3), `payday_weekend_wide` (1 on a Friday to Sunday whose Monday-to-Sunday week holds the latest payday, which also catches a Friday payday whose weekend falls in the next month). A fourth, `repair_plus_flag`, applies Series 59's `repair_all` and adds `after_payday_flag`, to put back the signal the repair removed. Each is run on its own, never in combination.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `after_payday_flag` | +2.66 (+0.3 to +5.2) | +0.87 (−1.4 to +3.2) | 1 | +1.8 / +2.7 |
+| `after_payday_count` | +2.32 (−0.4 to +5.4) | +1.30 (−1.5 to +4.3) | 4 | −0.2 / −1.2 |
+| `payday_weekend_wide` | +3.72 (+1.3 to +6.1) | +1.58 (−0.9 to +4.0) | 1 | +2.1 / +2.0 |
+| `repair_plus_flag` | +4.84 (+0.5 to +9.4) | +4.26 (+0.2 to +8.7) | 1 | +2.4 / +4.1 |
+
+`repair_plus_flag` against Series 59's `repair_all`: −0.03 (−2.4 to +2.3) for the post model and +0.95 (−1.2 to +3.2) for the hydro model.
+
+### Conclusion
+
+1. **No explicit flag helps.** Every variant is level or worse than the deployed columns (+£0.9 to +£3.7 for the first three), better in at most 4 of 10 folds.
+2. **The flag does not recover what the repair lost.** `repair_plus_flag` is the same as `repair_all` (−£0.03), so the accidental-flag reading explains nothing.
+3. **Nothing in production changes.**
+
+## Series 61 — Payday Dates and Windows Taken From the Model's Own Errors
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series61_payday_rules.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series61/`
+
+### Context
+
+A look at where the deployed post model's errors sit (written into the script before it was built): errors by day of month are flat on days 1-24 and high for Friday to Sunday on the 25th (+£837) and the 28th (+£1,035); the strongest pattern is the day after a payday under any of the last working day, the 25th or the 28th (Friday to Sunday, +£810, 25 days, 2.9 standard errors), and the 15th is flat. The Friday to Sunday days at 0 to 1 days after a payday are 23 paydays that fall on a Friday (+£377) and the 23 Saturdays right after them (+£912). Payday dates from the CIPP Payslip Statistics Survey 2023 (payroll teams, UK, multi-select, no stated sample size): last working day 34%, 25th 30%, 28th 30%, 15th 18%; ONS ASHE puts 75-78% of jobs on monthly pay. No Scottish or hospitality split was found. **Caution written down beforehand:** the patterns were found on the same 585 days they are scored on, so the backtest is optimistic by construction; only the 56 new days (three Friday paydays and their Saturdays) were not seen.
+
+### Method
+
+Series 54's design (1,260 fits, about 85 minutes). Seven variants, each ONE column added on top of the deployed 38 and run on its own: `mix_since_capped` (days since the latest payday of the three month-end rules, capped at 2), `mix_window01` (the payday and the day after, any of the three), `friday_payday_weekend` (a Friday payday under any rule and the Saturday after it), `mix_signed_distance` (signed days to the nearest of the three, -7 to +7), and `rule_25_window01`, `rule_28_window01`, `rule_15_window01` (the payday and the day after, one rule each; the 15th is the control).
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `mix_since_capped` | −0.17 (−4.5 to +3.8) | −1.08 (−5.2 to +2.5) | 5 | +0.5 / +2.6 |
+| `mix_window01` | −0.28 (−4.6 to +3.5) | −1.01 (−4.7 to +2.4) | 3 | +2.3 / +4.1 |
+| `friday_payday_weekend` | −2.44 (−6.2 to +1.2) | −3.33 (−7.0 to +0.2) | 6 | **+11.8 / +12.4** |
+| `mix_signed_distance` | −0.10 (−3.2 to +3.0) | −1.65 (−5.2 to +1.8) | 5 | −2.6 / −0.6 |
+| `rule_25_window01` | +3.18 (+0.6 to +5.8) | +1.49 (−1.0 to +3.9) | 1 | +1.6 / +1.9 |
+| `rule_28_window01` | +2.04 (−0.8 to +4.7) | +0.53 (−1.8 to +2.7) | 3 | +1.0 / +2.2 |
+| `rule_15_window01` | +1.49 (−0.9 to +4.0) | +0.39 (−2.2 to +2.8) | 2 | +2.1 / +2.7 |
+
+### Conclusion
+
+1. **Nothing helps.** The three mix variants move the post model by less than £0.3 with intervals about ±£4; the single-rule windows are worse (the 25th by +£3.2, interval above zero).
+2. **The best backtest result, `friday_payday_weekend`, fails on the new days.** It is −£2.4 (post) in the backtest, with intervals that include zero, and +£11.8 on the 56 new days, where its Saturday piece goes from −£10.8 in the backtest to +£45.7: the signature of a pattern found on the same data.
+3. **The 15th control is flat (+£1.5)**, so nothing here shows a general benefit from adding a window column.
+4. **Caveats:** exploratory, selection bias as stated; the new days hold three Friday paydays, two of which were exceptional (see Series 65).
+
+## Series 62 — Is the Deployed `days_since_payday` Just a Day-of-Month Ramp?
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series62_payday_ramp.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series62/`
+
+### Context
+
+Series 59 to 61 left the deployed columns unbeaten. The untested explanation was that the deployed `days_since_payday`, which never resets inside the month and climbs from about 1 to about 30, works as a day-of-month ramp, and that the repair breaks it by resetting to 0 on payday. A check made while writing the script: the deployed column equals `day_of_month` plus an offset of 0 to 3 on all 1,006 days (0 on 687, 1 on 151, 2 on 138, 3 on 30; correlation 0.995). The offset is the number of days between the previous month's payday and that month's end.
+
+### Method
+
+Series 54's design (540 fits). Three variants swap columns in the same positions: `since_as_dom` (`days_since_payday` replaced by `day_of_month`), `repair_keep_ramp` (`days_to_payday` and the window flag repaired as in Series 59, `days_since_payday` as deployed), `repair_dom_ramp` (the two repaired and the ramp replaced by `day_of_month`). Series 54 had added `day_of_month` on top of the deployed columns and found nothing; this replaces the column. Reading set beforehand: the ramp holds if `since_as_dom` is within about £1 of the deployed model.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `since_as_dom` | +2.98 (+0.7 to +5.2) | +1.89 (−0.3 to +4.1) | 1 | +2.6 / +1.1 |
+| `repair_keep_ramp` | +2.64 (−0.0 to +5.2) | +1.35 (−1.0 to +3.5) | 2 | +2.4 / +2.4 |
+| `repair_dom_ramp` | +6.23 (+2.5 to +9.5) | +4.41 (+1.2 to +7.3) | 2 | +2.5 / +0.7 |
+
+### Conclusion
+
+1. **The ramp reading is rejected.** Plain day of month is £3 worse (interval above zero, better in 1 of 10 folds), so the column carries something day of month does not.
+2. **The reset in `days_since_payday` explains about half of Series 59's loss:** `repair_keep_ramp` is +£2.6 against +£4.9 for `repair_all`.
+3. **The "cleanest" design is the worst:** a true ramp with true payday distances (`repair_dom_ramp`) is +£6.2.
+4. **Nothing in production changes.**
+
+## Series 63 — Is the 0-to-3-Day Offset What Makes `days_since_payday` Work?
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series63_payday_gap.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series63/`
+
+### Context
+
+Series 62 showed the deployed column is day of month plus an offset of 0 to 3 days, and that plain day of month is worse. The offset (`prev_payday_gap` = deployed `days_since_payday` minus `day_of_month`, constant within a calendar month, 35 months) is the obvious carrier of what is left.
+
+### Method
+
+Series 54's design (360 fits). `dom_plus_gap`: `days_since_payday` replaced by two columns, `day_of_month` and `prev_payday_gap`; `deployed_plus_gap`: the deployed columns with `prev_payday_gap` added. Reading set beforehand: the offset is the signal if `dom_plus_gap` lands within about £1 of the deployed model.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval): `dom_plus_gap` +6.84 (−0.4 to +14.8) post and +4.00 (−3.1 to +11.7) hydro, better in 3 and 3 of 10 folds, new days +3.2 / +1.9; `deployed_plus_gap` +2.90 (−3.5 to +10.2) post and +1.45 (−5.1 to +8.7) hydro, 5 and 5 of 10 folds, new days −1.2 / +1.2. These intervals are about twice as wide as in Series 62.
+
+### Conclusion
+
+1. **The offset on its own is not the signal.** Splitting the deployed column's information into two columns is worse than plain day of month (+£6.8 against +£3.0), not equal to the deployed model.
+2. **A redundant column moves the score by about £3 the wrong way** (`deployed_plus_gap`, interval −3.5 to +10.2). Together with Series 19 (column order alone moves the 25-seed model by about £2) this points to fit-to-fit variation and the incumbent's advantage, not to the offset.
+3. **Why the deployed columns work is not explained.** Four attempts (the repair, the flags, the ramp, the offset) have not explained it; the payday columns are best treated as a fitted object to leave alone.
+
+## Series 64 — The Rest of the Payday Plan: Symmetric Windows, a Graded Distance and Other Payday Dates
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series64_payday_plan_rest.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series64/`
+
+### Context
+
+The payday plan written before Series 59 had four items: fix the flaw (Series 59), other payday definitions, window shapes, and the payday weekend (Series 60-61). Series 61 had run only a narrow slice of the second and third (a "payday and the day after" flag, and a mix of three rules). This runs what was left, as written, with no pattern taken from the errors. Written down beforehand: little expected; replacing the deployed columns costs £3 to £6 (Series 59 and 62), so the other dates are read against Series 59's `repair_all`, not against the deployed model.
+
+### Method
+
+Series 54's design (1,260 fits; the run was killed once by a session restart and rerun from the start). **A**, each added as one column next to the deployed 38, flaw included: `lwd_window_pm1`, `lwd_window_pm2`, `lwd_window_pm5` (within 1, 2 or 5 days of the last-working-day payday, either side), `lwd_signed_distance` (signed days to the nearest payday, -7 to +7). **B**, replacing the four deployed payday columns in their positions with correct versions under another rule: `def_25`, `def_28`, `def_15` (that day of the month, or the working day before it on a weekend or bank holiday). The last-working-day distances built here equal Series 59's repair on every day.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `lwd_window_pm1` | +2.47 (−0.1 to +5.2) | +0.79 (−1.8 to +3.4) | 3 | +3.5 / +6.0 |
+| `lwd_window_pm2` | +1.23 (−1.3 to +3.8) | −0.31 (−2.9 to +2.1) | 3 | +4.7 / +4.7 |
+| `lwd_window_pm5` | +1.79 (−0.7 to +4.3) | +0.54 (−1.8 to +2.7) | 2 | +0.7 / +2.0 |
+| `lwd_signed_distance` | +0.69 (−1.9 to +3.4) | −0.98 (−3.6 to +1.8) | 5 | −3.6 / −2.9 |
+| `def_25` | +4.49 (−4.8 to +13.1) | +4.01 (−5.2 to +12.5) | 3 | +10.9 / +11.3 |
+| `def_28` | +6.81 (−2.3 to +15.5) | +6.65 (−1.8 to +14.7) | 4 | +4.1 / +6.8 |
+| `def_15` | +5.03 (−4.2 to +14.6) | +2.57 (−6.9 to +12.3) | 4 | +9.4 / +8.6 |
+
+The three other dates against `repair_all` (post / hydro): `def_25` −0.38 (−10.1 to +7.9) / +0.70, `def_28` +1.95 (−7.6 to +10.3) / +3.34, `def_15` +0.16 (−9.1 to +9.5) / −0.74.
+
+### Conclusion
+
+1. **No window or distance helps.** Every interval includes zero and none meets the bar set beforehand. `lwd_signed_distance` is the only one better on the new days for both models (−£3.6 and −£2.9), but it is +£0.7 (post) in the backtest; kept on the ideas list.
+2. **No payday date is distinguishable from the last working day.** Against `repair_all` all three are within £2 to £3 with intervals about ±£8 to ±£10; against the deployed model all three are £4.5 to £6.8 worse, which is the usual cost of replacing the columns; all are worse on the new days.
+3. **The payday-feature line is closed:** the repair, flags, windows, graded distances and other dates (Series 59-64) all fail to beat the deployed columns.
+4. **Caveat:** the Series 64 intervals for the date rules are wide (about ±£10), so a small difference would not show.
+
+## Series 65 — A Payday-Saturday Correction Instead of a Payday Feature
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series65_payday_saturday_correction.py` · Results: printed by `report` (the saved predictions of the deployed pieces are reused; no model is fitted)
+
+### Context
+
+Of the 26 Saturdays that follow a Friday payday (last working day, 25th or 28th), the deployed model under-predicted 20 (77%, against 59% of other Saturdays), by a mean of £653 and a median of £597 (£148 and £304 on other Saturdays). A tree cannot learn from about 20 rows, which may be why the features failed. The weekend correction already in the package (half-life 8 weeks, strength 0.5, Saturday and Sunday) learns ONE bias for all Saturdays and lifts payday and other Saturdays by about the same (+£221 and +£256 on folds 1-9), while the payday Saturdays still miss by +£701 and the others by −£93 after it. Written down beforehand: a gain of a few pounds at most; it would matter only with an interval below zero, a placebo rank under 5% and no worse on the new days.
+
+### Method
+
+Two rules, both from earlier folds only. **Split (primary):** Saturdays corrected as two groups, each from its own history with the deployed formula; the payday group falls back to the all-Saturday bias until it has 4 earlier events (fold 3); Sunday and other days as deployed. **Stacked (secondary):** the deployed correction plus an extra offset n / (n + 10) × the mean residual of the payday Saturdays in earlier folds. The new days are scored as an 11th block by the same rule. Placebo: the payday label shuffled over 1,000 random sets of backtest Saturdays of the same size. With an empty label the split reproduces the deployed correction exactly.
+
+### Results
+
+Change in MAE against the deployed package, all 585 days (£ a day, 95% interval; the hydro model is identical because only Saturdays change):
+
+| Rule | All 585 days | Payday Saturdays | Placebo rank | New days (all 56) |
+|---|---|---|---|---|
+| Split | −2.14 (−7.5 to +3.7) | 17 days changed; helped on 10 (£3,255 saved, £2,327 lost on the other 7) | 5th percentile | +7.76 |
+| Stacked, K = 10 | −2.47 (−9.1 to +4.2) | 17 days changed; helped on 11 | 1st percentile | +8.73 |
+
+In about 75% of bootstrap resamples either rule gains. Of the 17 changed backtest days, 11 were still under-predicted after the deployed correction (the bump helped on 10) and 6 were over-predicted (any bump hurts). Of the three new payday Saturdays, 26 September improved (error £614 to £318) while 24 and 31 October got worse (−£2,046 to −£2,342 and −£2,261 to −£2,557). Both were unusual: 24 October had 24.0 mm of rain in the weather data and named storms (Austen and Boelo) hit Scotland that weekend, with an amber wind warning; 31 October was dry and was Halloween (not verifiable from the data). The manager's forecast was too high on both days too (by £4,183 and £2,863).
+
+### Conclusion
+
+1. **Not adopted.** The backtest gain (£2.1 to £2.5 on £865, 0.3%) has an interval that includes zero, the split's placebo rank is about 5%, not under it, and the unseen days, after setting aside the two exceptional Saturdays, are one day.
+2. **The new days are inconclusive, not damning:** two of the three had reasons to be unusual, though a flat bump cannot know about a storm, so that cost is real.
+3. **A 75% chance of a small gain is overstated:** the payday label was found on the same days, so the true odds are lower.
+4. **Next evidence:** Friday 27 November 2026 is a payday under the 28th rule (the 28th is a Saturday), so Saturday 28 November is the next payday Saturday; revisit after about 8 to 10 more.
+5. **Caveat:** 22 backtest events; the intervals come from a moving-block bootstrap of the 585 days.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
@@ -3930,6 +4141,18 @@ How the season is represented was tested too: a smooth weekday-specific wave
 baseline with CatBoost learning the leftovers (Series 57) is £99 to £246 a day worse,
 and fitting that baseline across blocks so CatBoost sees realistic leftovers
 (Series 58) changes nothing.
+
+**Payday columns re-examined (Series 59-65), all four kept as deployed:** `days_since_payday`,
+`is_payday_window_pm3`, `is_payday` and `days_to_payday`, all built on the last working day. The two known
+flaws (`days_since_payday` reads 28-33 on payday itself; `days_to_payday` goes negative on the days after
+an early payday) were repaired in Series 59, and the repair is £3 to £5 a day worse; dropping the four
+columns is £5 to £8 worse. Explicit flags for the weekend after an early payday (Series 60), a window and a
+mix of the last working day, 25th and 28th found in the model's own errors (Series 61), symmetric windows,
+a graded distance and the 25th, 28th and 15th as full column sets (Series 64) and a payday-Saturday
+correction instead of a feature (Series 65) all fail to beat them. The deployed `days_since_payday` is the
+day of the month plus 0 to 3 days, but plain day of month is £3 worse and splitting the offset out is worse
+still (Series 62-63), so why the deployed columns work is not explained. Untested ideas are listed in the
+README's Future Work.
 
 **Never a candidate (leakage or non-feature intermediate):**
 `forecast_error`, `payday`, `prev_payday`, `next_payday`.
