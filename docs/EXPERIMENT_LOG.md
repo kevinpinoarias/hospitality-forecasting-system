@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-72** use the same protocol and JSONL files (`reports/experiments/series44/` to `series72/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+**Series 44-73** use the same protocol and JSONL files (`reports/experiments/series44/` to `series73/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -4317,6 +4317,66 @@ The real column is better than all 16 placebos on both measures (0 of 16 as good
 4. **Limits:** 16 placebos give a smallest p of 0.06; the date-shifted placebos are not clean nulls (with four pay rules a shift of 7 or 14 days often lands near another rule's real payday, which makes the test conservative); the real column was itself the best of four shapes, and the best of four placebos would typically reach about −£6 on the Saturday piece against its −£16; the Saturday piece only, the same 585 days and seeds for all columns; the effect is about £2.6 to £3.0 a day on the package (0.3%), and its interval against the deployed model still includes zero.
 5. **Nothing is adopted.** The to-do item stays: recheck `intensity_sym` in the Saturday pieces (and in every piece) on about 90 unseen days; this test raises the odds that a real payday-timing signal is there. Eight more placebos (shifts of 56 to 77 days, about 20 minutes) would take the smallest p under 0.05.
 
+## Series 73 — Three Stress Tests of the Triangle Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series73_intensity_stress_tests.py` · Results: `reports/experiments/series73/`
+
+### Context
+
+Series 72's placebos were not clean nulls (a shift of 7 or 14 days often lands near another rule's real payday), 16 placebos give a smallest p of 0.06, and the real column was fitted on the same seeds as its placebos.
+These three tests tighten that, in the Saturday piece (where forecast-log version v1.11 puts the column). Written down beforehand: the real column supports payday dates if it beats at least 15 of 16 placebos on both
+measures; the month-end rules carry it if the three-rule version keeps at least 80% of the gain and the 15th alone gains least; it replicates on fresh seeds if the Saturday piece is at least £8 and the post model at least £1.5
+better. Expected: all three.
+
+### Method
+
+500 fits (backtest only), seeds 200-299 unless stated. **1. Pay rules at the wrong dates:** 16 columns built exactly like the real one (four rules, the same triangle of width 4, the same weights 0.34 / 0.30 / 0.30 /
+0.18, the same rolling back from weekends and Scottish bank holidays) with the four paydays on days of the month drawn (seed 73) from {3, 4, 5, 6, 7, 8, 9, 10, 20}, clear of the real heat; they correlate −0.3 to −0.7 with the
+real column on Saturdays. **2. One rule at a time:** the triangle from the last working day only, the 25th only, the 28th only, the 15th only, and the three month-end rules without the 15th (`month_end3`). **3. Fresh seeds:**
+the deployed Saturday piece and the piece with `intensity_sym`, and the same two for the raw Saturday fallback, on seeds 300-399.
+
+### Results
+
+Part 1 (Saturday piece before the correction on the 84 Saturdays; post model after the correction on 585 days; £ a day, negative = better):
+
+| Column | Saturday piece | Post model |
+|---|---|---|
+| **Real `intensity_sym`** | **−16.06** | **−2.99** |
+| Best wrong-date placebo (`wd_plc3`, days 3/4/10/20) | −8.88 | −2.05 |
+| Next (`wd_plc7`) | −7.11 | −1.25 |
+| Wrong-date placebos, mean (16) | −1.56 | −0.46 |
+
+0 of 16 placebos are as good on either measure (p = 0.059); pooled with Series 72's 16 placebos, 0 of 32 (p = 0.030).
+
+Part 2 (share of the real column's gain in brackets):
+
+| Rule | Saturday piece | Post model |
+|---|---|---|
+| All four rules (real) | −16.06 (1.00) | −2.99 (1.00) |
+| `month_end3` (last working day, 25th, 28th) | −15.79 (0.98) | −3.06 (1.02) |
+| Last working day only | −6.74 (0.42) | −0.64 (0.21) |
+| 28th only | −4.33 (0.27) | −1.03 (0.34) |
+| 25th only | +0.40 (−0.03) | +0.38 (−0.13) |
+| 15th only | +2.37 (−0.15) | +0.15 (−0.05) |
+
+Part 3 (Saturday piece against the deployed piece on the same seeds):
+
+| | Seeds 200-299 | Seeds 300-399 |
+|---|---|---|
+| Saturday piece, before the correction | −16.06 | −18.43 |
+| Post model, after the correction | −2.99 | −3.25 |
+| Folds better (of 10) | 8 | 7 |
+| 2025 / 2026 | −4.55 / −0.88 | −3.65 / −2.70 |
+| Raw Saturday fallback, before the correction | −24.79 | −21.38 |
+
+### Conclusion
+
+1. **Payday dates carry something:** the real column beats all 16 wrong-date placebos on both measures, and with Series 72's all 32 (p = 0.03). The reading set beforehand says "supports payday dates".
+2. **The month-end cluster carries it, not the 15th.** `month_end3` keeps 98% and 102% of the gain; the 15th alone gains nothing and dropping it loses nothing; the single month-end rules are weaker (last working day 42%, 28th 27%, 25th none), so it is the overlapping window at the end of the month that counts, not one date. The script printed "in between" only because its second condition (the 15th alone gains least on both measures) failed narrowly: the 25th alone is a little worse than the 15th on the post-model measure.
+3. **It replicates on fresh seeds** (−£18.43 and −£3.25, 7 folds), and the 2026 gain on fresh seeds is −£2.70 against −£0.88, so part of the 2026 fade in Series 70-71 was seed noise.
+4. **Nothing is changed by this.** Forecast-log v1.11 keeps the four-rule definition it was decided with (tested in Series 72 and Part 1 and 3 here); `month_end3` is as good, but choosing it now would be a new post-hoc choice and can be tried in a later version.
+5. **Limits:** the same 585 days and folds throughout; the effect is about 0.3% of the daily error and its interval against the deployed model, in the Saturday piece, is wide; the 56 days from 7 September were worse on Saturdays in Series 70.
+
 ## Descriptive checks around Series 66-70 (no model fits)
 
 **Run**: 2026-11-07 · scripts kept outside the project
@@ -4425,7 +4485,7 @@ baseline with CatBoost learning the leftovers (Series 57) is £99 to £246 a day
 and fitting that baseline across blocks so CatBoost sees realistic leftovers
 (Series 58) changes nothing.
 
-**Payday columns re-examined (Series 59-72), all four kept as deployed:** `days_since_payday`,
+**Payday columns re-examined (Series 59-73), all four kept as deployed:** `days_since_payday`,
 `is_payday_window_pm3`, `is_payday` and `days_to_payday`, all built on the last working day. The two known
 flaws (`days_since_payday` reads 28-33 on payday itself; `days_to_payday` goes negative on the days after
 an early payday) were repaired in Series 59, and the repair is £3 to £5 a day worse; dropping the four
@@ -4439,7 +4499,8 @@ to payday (Series 68) and a payday intensity summed over the pay dates (Series 7
 those, a triangle intensity, is £3.3 to £3.8 better in the backtest with intervals that include zero and better on the
 56 new days, and is on the to-do list with signed distance (Series 71 could not amplify it: a narrower triangle is a little
 weaker, a wider one or a 7-day sum loses it, and the gain fades from £5.1 on the first half of the days to £1.7 on the second; a placebo test, Series 72, found it better than all 16 placebo
-columns in the Saturday piece, and the placebos fade the same way, so part of the fade is generic). The manager's forecast against the mean of the sales 14,
+columns in the Saturday piece, and the placebos fade the same way, so part of the fade is generic; Series 73 found it better than 32 of 32 placebos, carried by the month-end rules, and
+replicated on fresh seeds, and forecast-log version v1.11 puts it in the Saturday pieces). The manager's forecast against the mean of the sales 14,
 21 and 28 days earlier (Series 66, 69) is not a payday idea: it replicates on fresh seeds (about £4.4 a day better)
 but sits in 2025 and is worse on the new days. Ideas that wait for more data are in the README's Future Work
 (to-do list and watch list).

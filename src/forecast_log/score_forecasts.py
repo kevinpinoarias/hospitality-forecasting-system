@@ -8,8 +8,8 @@ Scoring the forecast log: add the actual sales that have arrived, then compare t
   (it was never an input to any forecast in the log).
 * Scores are written to `log/scores/latest.md` and `log/scores/tables.csv` (derived outputs, rewritten each time); forecasts are never touched.
 * Every table is on matched days: the two things compared are scored on the same target dates, same forecast type and same variant.
-* Q1 portfolio vs manager; Q2 post vs portfolio; Q3 hydro vs post on Hydro Thursdays (sign test). Before the pre-registered reading times (26 weeks; 20 Hydro Thursdays or 52 weeks) the
-  tallies are descriptive only, and the report says so.
+* Q1 portfolio vs manager; Q2 post vs portfolio; Q3 hydro vs post on Hydro Thursdays (sign test); Q4 (once v1.11 rows exist) the v1.11 hydro arm vs the v1 hydro arm, on all days and on
+  Saturdays (sign test). Before the pre-registered reading times (26 weeks; 20 Hydro Thursdays or 52 weeks; Q4 as the amendment says) the tallies are descriptive only, and the report says so.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ MANAGER_COL = "forecast_sales"  # the manager's forecast column of the engineere
 ACTUAL_COLUMNS = ["target_date", "actual_sales", "recorded_at", "source"]
 MANAGER_COLUMNS = ["target_date", "manager_forecast", "recorded_at", "source"]
 MIN_DAYS_FOR_INTERVAL = 14
-FORMAL_READING = "26 weeks of forecasts (Q1, Q2); 20 Hydro Thursdays or 52 weeks (Q3)"
+FORMAL_READING = "26 weeks of forecasts (Q1, Q2); 20 Hydro Thursdays or 52 weeks (Q3); 52 Saturdays (Q4, descriptive until then)"
 
 
 def update_actuals(log_repo: Path, features_path: Path = FEATURES) -> int:
@@ -146,6 +146,12 @@ def build_report(frame: pd.DataFrame) -> tuple[str, pd.DataFrame]:
         hy = paired_difference(frame, ("hydro", "no_manager"), ("post", "no_manager"), ftype, hydro_thursdays(sorted(frame["target_date"].unique())))
         rows.append({"type": ftype, "question": "Q3 hydro vs post on Hydro Thursdays (no-manager variant)", **hy,
                      "sign_test_p": sign_test_p(hy["better_days"], hy["days"])})
+        if "hydro_v1.11" in set(frame["model"]):  # Q4, added by the pre-registration amendment for v1.11: the same hydro arm with the payday intensity in the Saturday pieces
+            saturdays = {d for d in frame["target_date"].unique() if pd.Timestamp(d).dayofweek == 5}
+            for label, days in (("all days", None), ("Saturdays", saturdays)):
+                q4 = paired_difference(frame, ("hydro_v1.11", "no_manager"), ("hydro", "no_manager"), ftype, days)
+                rows.append({"type": ftype, "question": f"Q4 v1.11 hydro vs v1 hydro, {label} (no-manager variant)", **q4,
+                             **({"sign_test_p": sign_test_p(q4["better_days"], q4["days"])} if label == "Saturdays" else {})})
     result = pd.DataFrame(rows)
     lines.append(result.round(2).to_markdown(index=False))
     lines += ["", "Change = mean of (|first's error| - |second's error|) in £ a day; the interval is a 95% moving-block bootstrap and is shown once there are at least "

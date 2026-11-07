@@ -26,6 +26,7 @@ import pandas as pd
 from src.api.weather import fetch_live_weather, live_weather_end
 from src.config import CONFIG
 from src.experiments import run_series35_holdout as h
+from src.features.payday_intensity import add_payday_intensity
 from src.features.serving_features import WEATHER_COLS, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features
 from src.forecast_log import v1
 from src.models.final_model import DATE_COL, TARGET_COL, BaggedCatBoost
@@ -36,9 +37,9 @@ MODELS = ("portfolio", "post", "hydro")
 @dataclass
 class Models:
     version: str
-    portfolio: h.Bag
+    portfolio: h.Bag | None  # None for a version without a portfolio arm (v1.11 is a hydro arm only)
     pieces: dict[str, h.Bag]
-    portfolio_fingerprint: str
+    portfolio_fingerprint: str | None
     piece_fingerprints: dict[str, str]
 
     @property
@@ -63,6 +64,8 @@ def load_models(log_repo: Path, version: str = v1.VERSION, models_root: Path | N
             raise RuntimeError(f"model piece {name} of {version} does not match its recorded fingerprint ({got[:16]}... against {spec['fingerprint'][:16]}...)")
         pieces[name] = h.Bag.load(root / name)
         prints[name] = got
+    if "portfolio_model" not in entry:  # a version without a portfolio arm (v1.11): the pieces are all it has
+        return Models(version, None, pieces, None, prints)
     portfolio_print = h.fingerprint(CONFIG.path("final_model_dir"))
     if portfolio_print != entry["portfolio_model"]["fingerprint"]:
         raise RuntimeError("the deployed model files do not match the fingerprint recorded for the portfolio model")
@@ -131,17 +134,27 @@ def route_post(models: Models, rows: pd.DataFrame, sales_known: pd.Series, hydro
     return np.where(wd == "Sunday", models.pieces["sun_B"].predict(w), out)
 
 
+def extra_arm_name(version: str) -> str:
+    """The model name of an extra version's hydro arm in the log (`hydro_v1.11`): the log's de-duplication key is (type, day, model, variant), with no version."""
+    return f"hydro_{version}"
+
+
 def forecast_days(models: Models, full: pd.DataFrame, last_known_day: pd.Timestamp, targets: list[pd.Timestamp], history: tuple[pd.DataFrame, np.ndarray],
-                  weather: pd.DataFrame) -> pd.DataFrame:
-    """Portfolio, post and hydro forecasts for `targets`, without the manager's number (the stand-in in its place), with the live weather where it exists."""
+                  weather: pd.DataFrame, extras: list[tuple[Models, tuple[pd.DataFrame, np.ndarray]]] | None = None) -> pd.DataFrame:
+    """Portfolio, post and hydro forecasts for `targets`, without the manager's number (the stand-in in its place), with the live weather where it exists. `extras` are further versions,
+    each with its own correction history, whose hydro arm is added as a column named `hydro_<version>` (the same rows, the same weather, the payday intensity added for the pieces that use it)."""
     hist_days, hist_pred = history
     sales_known = h.sales_known_series(full, last_known_day, max(targets))
     rows_v2 = v1.add_hydro_thu(served_rows(full, last_known_day, targets, "v2", weather))
     rows_v1 = served_rows(full, last_known_day, targets, "v1", weather)
     post = h.correct_new_block(hist_days, hist_pred, targets, route_post(models, rows_v2, sales_known, hydro=False))
     hydro = h.correct_new_block(hist_days, hist_pred, targets, route_post(models, rows_v2, sales_known, hydro=True))
-    return pd.DataFrame({"target_date": [pd.Timestamp(t).date() for t in targets], "portfolio": models.portfolio.predict(rows_v1), "post": post, "hydro": hydro,
-                         "forecast_sales_input": rows_v2["forecast_sales"].to_numpy()})
+    out = pd.DataFrame({"target_date": [pd.Timestamp(t).date() for t in targets], "portfolio": models.portfolio.predict(rows_v1), "post": post, "hydro": hydro,
+                        "forecast_sales_input": rows_v2["forecast_sales"].to_numpy()})
+    for extra, (extra_days, extra_pred) in extras or []:
+        rows_extra = add_payday_intensity(rows_v2, DATE_COL)  # computed from the date alone; the pieces that do not use it ignore it
+        out[extra_arm_name(extra.version)] = h.correct_new_block(extra_days, extra_pred, targets, route_post(extra, rows_extra, sales_known, hydro=True))
+    return out
 
 
 def seasonal_baseline(full: pd.DataFrame, last_known_day: pd.Timestamp, targets: list[pd.Timestamp]) -> np.ndarray:

@@ -9,6 +9,8 @@ For every forecast type the run makes the three models (portfolio, post, hydro) 
 weather the live API would use, and logs the seasonal baseline as a benchmark; the manager's own number is added afterwards, when the export brings it (score_forecasts.py). The weather the run
 used is saved to log/weather_used.csv. A run issued after its deadline is labelled `late`. A run that cannot proceed (models changed, features missing, ...) writes an `aborted` line to runs.csv
 with the reason and makes no forecast. Settings: config/forecast_log.yaml (the log repository and the model version to use), overridden by config/forecast_log.local.yaml (not tracked).
+`also_run: [v1.11]` (a setting, off by default) issues a further registered version's hydro arm beside the main version, as rows named `hydro_v1.11`; the version must be registered and its models and
+correction history present, or the run aborts and says so.
 """
 
 from __future__ import annotations
@@ -67,13 +69,16 @@ def weather_rows(run_id: str, weather: pd.DataFrame) -> list[dict]:
             for d, t, r, s in zip(weather[DATE_COL], weather["max_temp"], weather["rain_mm"], weather["sun_hours"])]
 
 
-def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, version: str, commit: str) -> tuple[list[dict], list[str], pd.Timestamp, list[dict]]:
-    """The log rows this run would write, notes about what was skipped, the date the sales data runs through, and the weather the run used."""
+def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, version: str, commit: str,
+               also_run: tuple[str, ...] = ()) -> tuple[list[dict], list[str], pd.Timestamp, list[dict]]:
+    """The log rows this run would write, notes about what was skipped, the date the sales data runs through, and the weather the run used.
+    `also_run` lists further registered versions (v1.11) whose hydro arm is issued beside the main version's three models, as rows of their own."""
     full = h.load_engineered(FEATURES)
     known = full.dropna(subset=[TARGET_COL])
     last_known = known[DATE_COL].max()
     models = predict.load_models(log_repo, version)
     history = v1.load_correction_history(v1.correction_history_path(version))
+    extras = [(m, v1.load_correction_history(v1.correction_history_path(m.version))) for m in (predict.load_models(log_repo, v) for v in also_run)]
     features_sha = h.file_sha256(FEATURES)
     weather, errored = predict.fetch_run_weather(last_known, issue.date())
     through = inputs.hydro_list_through()
@@ -90,7 +95,7 @@ def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, versi
             notes.append(f"{ftype}: hydro model skipped on {sorted(str(d) for d in unknown)} (the Hydro list reaches {through})")
         base = {"run_id": run_id, "issue_time": issue.isoformat(timespec="seconds"), "forecast_type": ftype, "model_version": models.version, "data_through": str(last_known.date()),
                 "hydro_list_through": str(through), "code_commit": commit, "on_time": label, "input_hash": input_hash(features_sha, weather), "manager_arrived_at": ""}
-        result = predict.forecast_days(models, full, last_known, [pd.Timestamp(d) for d in targets], history, weather)
+        result = predict.forecast_days(models, full, last_known, [pd.Timestamp(d) for d in targets], history, weather, extras)
         for i, d in enumerate(targets):
             common = {**base, "target_date": str(d), "lead_days": (d - issue.date()).days, "variant": "no_manager", "weather_source": predict.weather_label(d, weather, errored, issue.date()),
                       "manager_forecast_used": round(float(result["forecast_sales_input"].iloc[i]), 2)}
@@ -99,6 +104,11 @@ def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, versi
                     continue
                 fingerprint = models.portfolio_fingerprint if model == "portfolio" else models.combined_fingerprint
                 rows.append({**common, "model": model, "forecast": round(float(result[model].iloc[i]), 2), "model_fingerprint": fingerprint})
+            for extra, _ in extras:  # a further version's hydro arm: its own model name and version, and no forecast on a Hydro Thursday the list does not cover
+                if d in unknown:
+                    continue
+                arm = predict.extra_arm_name(extra.version)
+                rows.append({**common, "model": arm, "model_version": extra.version, "forecast": round(float(result[arm].iloc[i]), 2), "model_fingerprint": extra.combined_fingerprint})
         # the benchmark that needs no model, once per forecast type and day (the manager's number is added by the scoring once the export brings it)
         seasonal = predict.seasonal_baseline(full, last_known, [pd.Timestamp(d) for d in targets])
         for i, d in enumerate(targets):
@@ -107,7 +117,7 @@ def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, versi
     return rows, notes, last_known, weather_rows(run_id, weather)
 
 
-def run(trigger: str, now: datetime, dry_run: bool, log_repo: Path, version: str) -> int:
+def run(trigger: str, now: datetime, dry_run: bool, log_repo: Path, version: str, also_run: tuple[str, ...] = ()) -> int:
     run_id = f"{now:%Y%m%dT%H%M}-{trigger}"
     commit = v1.code_commit()
     types = "+".join(schedule.forecast_types_for(trigger))
@@ -120,7 +130,7 @@ def run(trigger: str, now: datetime, dry_run: bool, log_repo: Path, version: str
             pending = logio.push_pending(log_repo)
             if pending == "push_failed":
                 print("[run] warning: an earlier commit could not be pushed; will retry after this run")
-        rows, notes, last_known, weather = build_rows(now, trigger, run_id, log_repo, version, commit)
+        rows, notes, last_known, weather = build_rows(now, trigger, run_id, log_repo, version, commit, also_run)
         run_row["data_through"] = str(last_known.date())
         rows = logio.new_rows_only(rows, log_repo / "log" / "forecasts.csv")
         if not rows:
@@ -165,7 +175,7 @@ def main() -> int:
     if now.tzinfo is None:
         now = now.astimezone()
     with RunLock():
-        return run(args.trigger, now, args.dry_run, Path(settings["log_repo"]), str(settings["model_version"]))
+        return run(args.trigger, now, args.dry_run, Path(settings["log_repo"]), str(settings["model_version"]), tuple(str(v) for v in (settings.get("also_run") or ())))
 
 
 if __name__ == "__main__":
