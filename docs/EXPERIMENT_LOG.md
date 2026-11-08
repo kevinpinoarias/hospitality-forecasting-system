@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-73** use the same protocol and JSONL files (`reports/experiments/series44/` to `series73/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+**Series 44-78** use the same protocol and JSONL files (`reports/experiments/series44/` to `series78/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -4391,6 +4391,162 @@ Part 3 (Saturday piece against the deployed piece on the same seeds):
    So the real column beats every placebo within July and December (both Julys show it), but outside them its gain is about £4 a day and three placebos match it. The backtest holds two Julys and one December,
    so Conclusion 1 should be read as "payday dates carry something, mostly in July and December". Disclosed in the forecast log's second amendment of 8 November 2026 (log repository commit 5be3dca), which also has
    Q4 reported for July and December Saturdays apart from the other Saturdays; the next tests are December 2026 and July 2027.
+
+## Series 74 — The Forecast Ratio in the Monday-to-Friday Pieces Only, on a Third Seed Set
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series74_ratio_weekdays.py` · Results: `reports/experiments/series74/`
+
+### Context
+
+Series 66 and 69 (seeds 200-299 and 300-399): the 3-week forecast ratio `fc_ratio_3wk` was about £4.4 a day better after the correction, better on Monday to Thursday and Friday, flat on Saturday and worse on Sunday (+£19.9 and +£26.2);
+by calendar year its gain sat in 2025 and was about zero in 2026, and the 56 new days were worse, mostly on Friday. This tests the obvious package, the ratio only where it helped. **The catch, written first in the script:** the
+weekdays were chosen after seeing Series 66 and 69 on the same 585 days, so even a good result carries that bias.
+
+### Method
+
+The ratio column in the Monday-to-Thursday, hydro Monday-to-Thursday and Friday pieces; Saturday, Sunday and the rest as deployed. Seeds 200-299 and 300-399 are Series 66's and 69's own fits (not refitted); seeds 400-499, which no earlier
+series used, are fitted here for those three pieces with and without the ratio (180 fits); the three sets are pooled into 300 seeds. Saturday and Sunday use the same deployed bags in the package and its baseline, so they cancel and the
+correction is identical in both. Rule set before any new number: expected about −£7 a day (post, before the correction), weaker in 2026, worse on the new days because of Friday; "replicates" if each model is at least £3.5 better on the third
+seed set; "supported" if, on the pooled 300 seeds in BOTH models, folds 5-9 are at least £2.0 better, at least 3 of those 5 folds are better, 2026 is no worse than 0 and the 56 new days no worse than +£1.0 (before the correction).
+
+### Results
+
+After the correction, change against the deployed pieces on the same seeds (£ a day, 95% interval; new days before the correction):
+
+| Seeds | Post model | Hydro model | New days (post / hydro) |
+|---|---|---|---|
+| 200-299 (Series 66) | −7.13 (−14.8 to −0.3) | −7.59 (−15.3 to −0.6) | +1.48 / +0.55 |
+| 300-399 (Series 69) | −8.38 (−16.6 to −1.2) | −7.32 (−15.3 to −0.3) | +4.33 / −0.89 |
+| 400-499 (new) | −7.68 (−16.1 to −0.0) | −6.41 (−13.8 to +0.5) | +2.81 / +0.35 |
+| **Pooled, 300 seeds** | **−7.76 (−15.8 to −0.7)** | **−7.05 (−14.6 to −0.1)** | **+2.87 / 0.00** |
+
+Pooled, post / hydro: folds 0-4 −5.36 / −5.16, folds 5-9 −10.04 / −8.85 (5 and 4 of 5 folds better), 2026 −0.02 / −0.31, 8 and 7 of 10 folds better over all.
+
+### Conclusion
+
+1. **It replicates on the third seed set** (−7.68 and −6.41 against the bar of −3.5), so the gain is not seed luck; at about −£7 to −£8 a day it is larger than the all-weekday ratio's −£4.4 because Sunday's loss is gone, as expected.
+2. **The pooled intervals exclude zero in both models,** the first time for this idea, but the weekdays were chosen on these same days, so the intervals are optimistic.
+3. **The rule says "not supported", on one condition:** the post model's 56 new days are +£2.87 against the bar of +£1.0 (the hydro model's are 0.00 and pass). Every other condition holds in both models.
+4. **The gain is in the second half of the days, but not in 2026:** −£10.0 and −£8.9 on folds 5-9 yet −£0.02 and −£0.31 in 2026, so it sits in the last months of 2025, as in Series 66 and 69.
+5. **Not adopted; on the watch list, low priority.** With the 56 newest days alone the pooled change is +2.87 (−5.7 to +9.7) for the post model and 0.00 (−6.3 to +6.2) for the hydro model, only 32% and 38% of those days are better, Fridays are +£16 on 8 days and Monday to Thursday +£1.0 (post) and −£4.0 (hydro) on 32; with them added, the 641 days are −£6.8 and −£6.4 with intervals just below zero.
+6. **A check afterwards (no fits) on whether the ratio's information faded.** On Monday-to-Friday days the rank correlation of the ratio with the deployed model's error after the correction is +0.12 in 2025 (by quarter 0.07, 0.30, 0.00, 0.11) and −0.01 in 2026 (−0.06, 0.11, −0.08), while the model's own mean absolute error on those days fell from £836 to £729 and the manager's stayed near £950. So the likelier reading is that the model learned more as its training window grew and left less for the ratio to explain, not necessarily that the relationship drifted; chance in 2025 is also possible (a weak correlation, mostly from one quarter). A recheck on about 120 unseen days with this design is the next test.
+
+## Series 75 — Does the Signed Distance Add Anything on Top of the Triangle Intensity?
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series75_signed_distance_on_intensity.py` · Results: `reports/experiments/series75/`
+
+### Context
+
+The signed distance to payday (negative before, positive after, clipped to −7..+7) was tried alone in Series 61 (`mix_signed_distance`) and 64 (`lwd_signed_distance`): level in the backtest, better on the 56 newest days. The triangle intensity has since taken over most of that ground (Saturday piece −16.06 pounds a day before the correction, post model −2.99 after it, against −1.69 for the lwd signed distance) and forecast-log version v1.11 runs it. The open question: does the signed distance add anything ON TOP of the intensity? The two correlate only −0.26 and −0.10 on Saturdays, so they are not copies (the signed distance knows before from after, the intensity does not). Written down beforehand: expected to add nothing.
+
+### Method
+
+Saturday piece only (the piece v1.11 puts the column in), judged against **A**, the Saturday piece with `intensity_sym` (Series 70's fits on seeds 200-299, Series 73's on seeds 300-399, reused); 320 fits, backtest only. **B1** = A plus `sd_lwd` (signed distance to the nearest last-working-day payday), **B2** = A plus `sd_mix` (nearest of the last working day, 25th and 28th); **12 placebo add-ons** = A plus a signed distance built the same way to paydays at the wrong dates (nine single-day rules, the 3rd to the 10th and the 20th, and three triples of those days, seed 75), to show what adding a signed-distance-shaped column does when it carries no payday information; B1 and B2 again on fresh seeds 300-399. The rule: it adds value only if it beats at least 11 of the 12 placebo add-ons on both measures (the Saturday piece's change on the 84 Saturdays before the correction, and the post model's change after the correction), the post model's change is at most −0.5, and it replicates on fresh seeds at the same sign and at least half the size; it adds nothing if the Saturday-piece change is above −1.0 or 4 or more placebos are as good.
+
+### Results
+
+Change against A (£ a day; negative = better than A):
+
+| Add-on | Saturday piece, before the correction | Post model, after the correction | Placebo add-ons at least as good (Saturday piece / post) | On fresh seeds 300-399 (Saturday piece / post) |
+|---|---|---|---|---|
+| `sd_lwd` | +2.64 | +0.89 | 10 of 12 / 10 of 12 (p = 0.85) | −5.92 / −0.38 |
+| `sd_mix` | −1.02 | +0.21 | 2 of 12 / 0 of 12 (p = 0.23 / 0.08) | −6.39 / −0.48 |
+| Placebo add-ons, mean (range) | +0.80 (−7.62 to +9.22) | +0.74 (+0.29 to +2.66) | | |
+
+The script's reading: `sd_lwd` adds nothing; `sd_mix` is "in between" (its Saturday-piece change of −1.02 just clears the −1.0 line, and 2 of 12 placebos are as good).
+
+### Conclusion
+
+1. **The signed distance adds nothing measurable on top of the intensity.** On seeds 200-299 `sd_lwd` is £0.89 worse for the post model and `sd_mix` £0.21 worse; `sd_mix` is the best of the 13 add-ons on that measure (0 of 12 placebos better, p = 0.08), but still not an improvement on A.
+2. **The fresh seeds go the other way** (−£0.38 and −£0.48), while the Saturday piece's change swings from +2.6 to −5.9 and from −1.0 to −6.4 between seed sets: a swing of about £5 to £6 is seed noise, the size of the placebo spread (−7.6 to +9.2), so neither set shows a signal.
+3. **Adding any such column costs about £0.7 on the post package on these seeds** (placebo mean +0.74), so a real add-on near zero is no worse than noise.
+4. **Signed distance is closed.** It is not in v1.11 and the triangle intensity covers the pay-cycle position; the only payday-family item still waiting is December pay and the December correction.
+5. **Limits:** the same 585 days and folds; Saturday piece only; 12 placebos give a smallest p of 0.08.
+
+## Series 76 — An Early Payday in December: the 20th, Replace or Add
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series76_december_early_pay.py` · Results: `reports/experiments/series76/`
+
+### Context
+
+The triangle intensity pays three of its four rules at the end of the month (the last working day, the 25th and the 28th), which in December puts the pay heat on Christmas Eve and the last days of the month. The sales data show the strong stretch in the third week (19 to 23 December, 2024 and 2025), and payroll surveys put early Christmas pay at about 19 to 23 December. Kevin's December rule (8 November 2026): payday is the end of the third week. Two ways to write it, the 20th moved back to the previous working day (A) and the Friday of the week containing the 20th (B), give the same date in 2024, 2025 and 2026 (Fri 20, Fri 19, Fri 18 December), so one fit covers both; they differ only in midweek Decembers (2021-23, 2027-29).
+
+### Method
+
+Saturday piece only, the intensity column swapped for a December column, against A0 (the piece with `intensity_sym`, Series 70 and 73's fits). **dec_replace**: in December the three month-end rules are paid on the early date (combined share 0.94); **dec_add**: they stay and the early date is added with share 0.34 (an assumption). Eight placebo versions of each, with the early date at the 3rd to the 10th of December. 18 columns x 100 seeds (200-299) plus the two real ones on fresh seeds 300-399 = 400 tasks, backtest only (585 days). The one December in the backtest (2025) has four Saturdays; December 2024 is the only December in training. Reading written beforehand: adds value if at least 7 of 8 placebos are worse on both the December-Saturday and the net measure, net at most -0.3, fresh seeds the same sign.
+
+### Results
+
+Change against A0 (pounds a day; negative = better):
+
+| Column | 4 December 2025 Saturdays | Other 80 Saturdays | Net, post model, 585 days | Placebos at least as good (Saturdays / net) | Fresh seeds (Saturdays / net) |
+|---|---|---|---|---|---|
+| `dec_replace` | -70.17 | -1.69 | -0.86 | 4 of 8 / 2 of 8 | -73.71 / -0.95 |
+| `dec_add` | -32.25 | +2.02 | -0.03 | 0 of 8 / 6 of 8 | -31.62 / -0.36 |
+
+Per Saturday, `dec_replace` moved Saturday 20 December closer by 274 pounds, the best of all 17 versions on that day (the best placebo: 80), and made Saturday 27 December worse by 99; the placebos on the 4th to the 8th gained as much on Saturday 6 December (about 300). Both readings: ADDS NOTHING.
+
+### Conclusion
+
+1. **The 20th is not distinguishable from wrong dates.** Under replace, placebos on the 4th, 6th, 7th and 8th did as well on the four December Saturdays; what every replace version shares is removing the month-end heat from 24 to 31 December.
+2. **The effects are tiny**: 30 to 70 pounds on four Saturdays whose misses were 700 to 2,800 (6 and 13 December, the party weekends, were missed by 1,500 and 2,700 by every version).
+3. **Add** is the cleaner idea (it improved both 20 and 27 December) but its net effect is zero.
+4. **Limits:** one December in the backtest and one in training; A and B cannot be told apart; the deployed payday columns were not changed; the second weekend of December sold strongly in both years, so a placebo near it can look good for reasons that are not pay.
+
+## Series 77 — Series 76 Again, with the Closed Days and Boxing Day Fixed
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series77_christmas_closed_days.py` · Results: `reports/experiments/series77/`
+
+### Context
+
+The data show zero sales on 25 December (2024, 2025) and 1 January (2025, 2026), yet `intensity_sym` gives them 0.26 to 0.60 of pay heat (the 25th and 28th rules roll back onto Christmas Eve). Boxing Day is open but slow (4,321 in 2024, 2,919 in 2025) and gets heat too. The fix: the intensity is 0 on 25 December and 1 January and -0.5 on 26 December (a penalty; the value is an untuned placeholder). The Saturday piece is trained on every day, so these rows reach it even though it is scored on Saturdays only.
+
+### Method
+
+As Series 76, with the fix applied to every column: `xmas_only` (the fix alone), `xmas_replace` and `xmas_add` (the fix plus Series 76's two versions), 16 wrong-date placebos of the last two, 440 tasks. The Christmas fix is judged by what it adds to the column it is built on (xmas_only against A0; xmas_replace against dec_replace; xmas_add against dec_add): helps if the net change is at most -0.3 in at least 2 of 3 with the same sign on fresh seeds.
+
+### Results
+
+Net change of the post model, pounds a day:
+
+| Comparison | Net | Fresh seeds | 4 December Saturdays | Other 80 Saturdays |
+|---|---|---|---|---|
+| `xmas_only` against A0 | **-1.58** | -1.54 | -20.15 | -7.51 |
+| `xmas_replace` against `dec_replace` | +0.12 | +0.61 | +10.85 | +0.92 |
+| `xmas_add` against `dec_add` | -1.48 | -1.06 | -5.43 | -8.96 |
+
+Reading set beforehand: **the Christmas fix HELPS**. The early date on top of the fix: `xmas_replace` (-0.74 net; 3 of 8 placebos as good, 4 of 8 on the December Saturdays) and `xmas_add` (-1.50; 6 of 8 and 4 of 8): ADDS NOTHING. The Saturday piece's forecast on days it is not scored on barely moved: Christmas Day 3,154 to 3,075 (actual 0), Boxing Day 2025 8,313 to 7,980 (actual 2,919), 1 January 2026 2,281 to 2,340 (actual 0).
+
+### Conclusion
+
+1. **The closed-day fix is the one thing that works**: about 1.6 pounds a day net (half again as much as the intensity's own -3.0), mostly on ordinary Saturdays; the explanation (untested) is that closed days with pay heat and zero sales taught the model that moderate heat can mean no sales.
+2. **It does not teach the model Boxing Day**: with two examples a tree cannot learn that the day is slow. A Saturday Boxing Day (26 December 2026) and a Saturday Christmas Day (25 December 2027) are days the data cannot test.
+3. **The early pay date adds nothing once the fix is in.**
+
+## Series 78 — The 15th Removed, a Single Pay Day (the 20th or the 27th), a Larger Boxing Day Penalty
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series78_december_single_day.py` · Results: `reports/experiments/series78/`
+
+### Method
+
+On top of the fix, six columns, each judged against the column it is built on (seeds 200-299 and fresh seeds 300-399, 240 tasks): `dec_base` (the 15th rule switched off in December only, its heat on 10 to 18 December removed), `dec_x20_tri` and `dec_x20_flat` (a pay day on the 20th rolled back, as a triangle or that day only, share 0.34), `dec_x27_tri` and `dec_x27_flat` (the 27th as it stands), `xmas_box4` (the Boxing Day penalty -2.0 instead of -0.5). "27" was said without saying 27th or 20th, so both were run.
+
+### Results
+
+| Column | Net against its base | Fresh seeds | Reading |
+|---|---|---|---|
+| `dec_base` (against the fix alone) | -0.35 | +0.22 | in between |
+| `dec_x20_tri` | +0.64 | +0.12 | worse |
+| `dec_x20_flat` | +0.30 | +0.19 | nothing |
+| `dec_x27_tri` | +1.66 | +0.47 | worse |
+| `dec_x27_flat` | +1.46 | +1.07 | worse |
+| `xmas_box4` | 0.00 | 0.00 | identical (largest forecast difference 0.00 pounds) |
+
+### Conclusion
+
+1. **Nothing beat the fix alone.** The 27th is clearly worse (it raised Saturday 27 December's forecast from 15,154 to 15,516, against an actual 14,358); dropping the 15th in December is within noise.
+2. **The Boxing Day penalty's size is irrelevant**: a tree sees only the order of a column's values, so -2.0 gives the same trees as -0.5. A stronger Boxing Day effect needs a different mechanism (a heavier weight on those rows, a direct flag, or a rule outside the model).
+3. **Outcome**: forecast-log version v1.12 = v1.11 with the closed-day fix in the Saturday pieces, plus the holiday rule (0 on 25 December and 1 January, the earlier Boxing Days' mean on 26 December) issued beside the models (see the CHANGELOG and the log's PREREGISTRATION.md).
 
 ## Descriptive checks around Series 66-70 (no model fits)
 
