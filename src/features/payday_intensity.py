@@ -58,3 +58,32 @@ def add_payday_intensity(frame: pd.DataFrame, date_col: str = "date") -> pd.Data
     out = frame.copy()
     out[COLUMN] = payday_intensity(out[date_col])
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# The closed-day version (forecast-log version v1.12): the same intensity, but 0 on the days the venue is closed and a penalty on Boxing Day. Series 77 in docs/EXPERIMENT_LOG.md is the evidence: the column
+# `xmas_only` there is this one (the fix alone, December's pay dates left as they are); Series 78 found nothing better on top of it (the early pay dates, the 27th, the 15th removed, a larger penalty).
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+COLUMN_FIXED = "intensity_fixed"
+CLOSED_DAYS = ((12, 25), (1, 1))  # (month, day): zero sales in the data (25 December 2024 and 2025, 1 January 2025 and 2026): no pay can arrive on a shut day, so the intensity is 0
+BOXING_DAY = (12, 26)
+BOXING_DAY_PENALTY = -0.5  # an untuned placeholder: below every other value of the column (0 to about 1.1); a tree model only sees the order of the values (Series 78: -2.0 gave identical forecasts)
+
+
+def payday_intensity_fixed(dates: pd.Series | pd.DatetimeIndex) -> np.ndarray:
+    """`intensity_sym` with 25 December and 1 January set to 0 and 26 December set to the penalty; every other day keeps its value."""
+    values = payday_intensity(dates)
+    idx = pd.DatetimeIndex(pd.to_datetime(pd.Series(list(dates))))
+    month, day = np.asarray(idx.month), np.asarray(idx.day)
+    for m, d in CLOSED_DAYS:
+        values[(month == m) & (day == d)] = 0.0
+    values[(month == BOXING_DAY[0]) & (day == BOXING_DAY[1])] = BOXING_DAY_PENALTY
+    return values
+
+
+def add_payday_intensity_fixed(frame: pd.DataFrame, date_col: str = "date") -> pd.DataFrame:
+    """A copy of `frame` with the `intensity_fixed` column appended (last, after every existing column)."""
+    out = frame.copy()
+    out[COLUMN_FIXED] = payday_intensity_fixed(out[date_col])
+    return out

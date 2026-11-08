@@ -9,7 +9,9 @@ Scoring the forecast log: add the actual sales that have arrived, then compare t
 * Scores are written to `log/scores/latest.md` and `log/scores/tables.csv` (derived outputs, rewritten each time); forecasts are never touched.
 * Every table is on matched days: the two things compared are scored on the same target dates, same forecast type and same variant.
 * Q1 portfolio vs manager; Q2 post vs portfolio; Q3 hydro vs post on Hydro Thursdays (sign test); Q4 (once v1.11 rows exist) the v1.11 hydro arm vs the v1 hydro arm, on all days and on
-  Saturdays (sign test). Before the pre-registered reading times (26 weeks; 20 Hydro Thursdays or 52 weeks; Q4 as the amendment says) the tallies are descriptive only, and the report says so.
+  Saturdays (sign test); Q5 (once holiday_rule rows exist) the holiday rule (0 on the closed days, the earlier Boxing Days' mean on Boxing Day) against each model and the manager on those days only.
+  Q6 (once v1.12 rows exist) the v1.12 hydro arm vs the v1.11 hydro arm, reported as Q4 is.
+  Before the pre-registered reading times (26 weeks; 20 Hydro Thursdays or 52 weeks; Q4 as the amendment says) the tallies are descriptive only, and the report says so.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import pandas as pd
 from src.config import PROJECT_ROOT
 from src.experiments.run_series23_log_vs_raw_peaks import masked_block_bootstrap
 from src.features.events import concert_calendar
+from src.forecast_log import holiday_rule as hrule
 from src.forecast_log import logio
 from src.forecast_log.run_forecasts import FEATURES, load_settings
 from src.models.final_model import DATE_COL, TARGET_COL
@@ -33,7 +36,7 @@ MANAGER_COL = "forecast_sales"  # the manager's forecast column of the engineere
 ACTUAL_COLUMNS = ["target_date", "actual_sales", "recorded_at", "source"]
 MANAGER_COLUMNS = ["target_date", "manager_forecast", "recorded_at", "source"]
 MIN_DAYS_FOR_INTERVAL = 14
-FORMAL_READING = "26 weeks of forecasts (Q1, Q2); 20 Hydro Thursdays or 52 weeks (Q3); 52 Saturdays (Q4, descriptive until then)"
+FORMAL_READING = "26 weeks of forecasts (Q1, Q2); 20 Hydro Thursdays or 52 weeks (Q3); 52 Saturdays (Q4, and Q6 the same for v1.12 against v1.11, descriptive until then); Q5 (the holiday rule) is three days a year, so descriptive after the first Christmas"
 
 
 def update_actuals(log_repo: Path, features_path: Path = FEATURES) -> int:
@@ -146,17 +149,23 @@ def build_report(frame: pd.DataFrame) -> tuple[str, pd.DataFrame]:
         hy = paired_difference(frame, ("hydro", "no_manager"), ("post", "no_manager"), ftype, hydro_thursdays(sorted(frame["target_date"].unique())))
         rows.append({"type": ftype, "question": "Q3 hydro vs post on Hydro Thursdays (no-manager variant)", **hy,
                      "sign_test_p": sign_test_p(hy["better_days"], hy["days"])})
-        if "hydro_v1.11" in set(frame["model"]):  # Q4, added by the pre-registration amendment for v1.11: the same hydro arm with the payday intensity in the Saturday pieces
+        # Q4 (the amendment for v1.11) and Q6 (the amendment for v1.12), each the same comparison of a version's hydro arm with its parent's: all days, Saturdays, and Saturdays by season. The amendment of
+        # 8 November 2026: the v1.11 backtest gain sat mostly in July and December, so each is also reported for those Saturdays and for all the others.
+        for name, arm, parent_arm in (("Q4 v1.11 hydro vs v1 hydro", "hydro_v1.11", "hydro"), ("Q6 v1.12 hydro vs v1.11 hydro", "hydro_v1.12", "hydro_v1.11")):
+            if arm not in set(frame["model"]):
+                continue
             saturdays = {d for d in frame["target_date"].unique() if pd.Timestamp(d).dayofweek == 5}
-            # the amendment of 8 November 2026: the backtest gain sat mostly in July and December, so Q4 is also reported for those Saturdays and for all the others
             july_december = {d for d in saturdays if pd.Timestamp(d).month in (7, 12)}
             groups = (("all days", None), ("Saturdays", saturdays), ("July and December Saturdays", july_december), ("other Saturdays", saturdays - july_december))
             for label, days in groups:
                 if days is not None and not days:
                     continue  # no such Saturday has an actual yet
-                q4 = paired_difference(frame, ("hydro_v1.11", "no_manager"), ("hydro", "no_manager"), ftype, days)
-                rows.append({"type": ftype, "question": f"Q4 v1.11 hydro vs v1 hydro, {label} (no-manager variant)", **q4,
-                             **({"sign_test_p": sign_test_p(q4["better_days"], q4["days"])} if days is not None else {})})
+                q = paired_difference(frame, (arm, "no_manager"), (parent_arm, "no_manager"), ftype, days)
+                rows.append({"type": ftype, "question": f"{name}, {label} (no-manager variant)", **q, **({"sign_test_p": sign_test_p(q["better_days"], q["days"])} if days is not None else {})})
+        if hrule.RULE_MODEL in set(frame["model"]):  # Q5, the holiday rule: the closed days and Boxing Day only, a few days a year, so no sign test and an interval only once there are 14 days
+            rule_days = set(frame.loc[frame["model"] == hrule.RULE_MODEL, "target_date"])
+            for label, other in (("portfolio", ("portfolio", "no_manager")), ("post", ("post", "no_manager")), ("hydro", ("hydro", "no_manager")), ("the manager", ("manager", ""))):
+                rows.append({"type": ftype, "question": f"Q5 holiday rule vs {label}, closed days and Boxing Day", **paired_difference(frame, (hrule.RULE_MODEL, "no_manager"), other, ftype, rule_days)})
     result = pd.DataFrame(rows)
     lines.append(result.round(2).to_markdown(index=False))
     lines += ["", "Change = mean of (|first's error| - |second's error|) in £ a day; the interval is a 95% moving-block bootstrap and is shown once there are at least "

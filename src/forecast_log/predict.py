@@ -26,7 +26,7 @@ import pandas as pd
 from src.api.weather import fetch_live_weather, live_weather_end
 from src.config import CONFIG
 from src.experiments import run_series35_holdout as h
-from src.features.payday_intensity import add_payday_intensity
+from src.features.payday_intensity import add_payday_intensity, add_payday_intensity_fixed
 from src.features.serving_features import WEATHER_COLS, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features
 from src.forecast_log import v1
 from src.models.final_model import DATE_COL, TARGET_COL, BaggedCatBoost
@@ -152,7 +152,7 @@ def forecast_days(models: Models, full: pd.DataFrame, last_known_day: pd.Timesta
     out = pd.DataFrame({"target_date": [pd.Timestamp(t).date() for t in targets], "portfolio": models.portfolio.predict(rows_v1), "post": post, "hydro": hydro,
                         "forecast_sales_input": rows_v2["forecast_sales"].to_numpy()})
     for extra, (extra_days, extra_pred) in extras or []:
-        rows_extra = add_payday_intensity(rows_v2, DATE_COL)  # computed from the date alone; the pieces that do not use it ignore it
+        rows_extra = add_payday_intensity_fixed(add_payday_intensity(rows_v2, DATE_COL), DATE_COL)  # both columns computed from the date alone; a piece uses the one it was fitted with and ignores the other
         out[extra_arm_name(extra.version)] = h.correct_new_block(extra_days, extra_pred, targets, route_post(extra, rows_extra, sales_known, hydro=True))
     return out
 

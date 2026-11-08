@@ -11,6 +11,8 @@ used is saved to log/weather_used.csv. A run issued after its deadline is labell
 with the reason and makes no forecast. Settings: config/forecast_log.yaml (the log repository and the model version to use), overridden by config/forecast_log.local.yaml (not tracked).
 `also_run: [v1.11]` (a setting, off by default) issues a further registered version's hydro arm beside the main version, as rows named `hydro_v1.11`; the version must be registered and its models and
 correction history present, or the run aborts and says so.
+`holiday_rule: true` (a setting, off by default) adds the holiday rule's rows (model `holiday_rule`, src/forecast_log/holiday_rule.py: 0 on 25 December and 1 January, the earlier Boxing Days' mean on 26 December)
+for those days only, beside the models' own rows.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ import yaml
 
 from src.config import PROJECT_ROOT
 from src.experiments import run_series35_holdout as h
+from src.forecast_log import holiday_rule as hrule
 from src.forecast_log import inputs, logio, predict, schedule, v1
 from src.models.final_model import DATE_COL, TARGET_COL
 
@@ -70,9 +73,10 @@ def weather_rows(run_id: str, weather: pd.DataFrame) -> list[dict]:
 
 
 def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, version: str, commit: str,
-               also_run: tuple[str, ...] = ()) -> tuple[list[dict], list[str], pd.Timestamp, list[dict]]:
+               also_run: tuple[str, ...] = (), with_holiday_rule: bool = False) -> tuple[list[dict], list[str], pd.Timestamp, list[dict]]:
     """The log rows this run would write, notes about what was skipped, the date the sales data runs through, and the weather the run used.
-    `also_run` lists further registered versions (v1.11) whose hydro arm is issued beside the main version's three models, as rows of their own."""
+    `also_run` lists further registered versions (v1.11) whose hydro arm is issued beside the main version's three models, as rows of their own.
+    `with_holiday_rule` adds the holiday rule's row (model `holiday_rule`) on 25 December, 26 December and 1 January."""
     full = h.load_engineered(FEATURES)
     known = full.dropna(subset=[TARGET_COL])
     last_known = known[DATE_COL].max()
@@ -109,6 +113,10 @@ def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, versi
                     continue
                 arm = predict.extra_arm_name(extra.version)
                 rows.append({**common, "model": arm, "model_version": extra.version, "forecast": round(float(result[arm].iloc[i]), 2), "model_fingerprint": extra.combined_fingerprint})
+            if with_holiday_rule:  # the rule's number on the closed days and Boxing Day only; the models' rows above stay what the models said
+                value = hrule.rule_forecast(pd.Timestamp(d), hrule.boxing_day_level(known, pd.Timestamp(d), DATE_COL, TARGET_COL))
+                if value is not None:
+                    rows.append({**common, "model": hrule.RULE_MODEL, "model_version": hrule.RULE_VERSION, "forecast": round(value, 2), "model_fingerprint": hrule.fingerprint()})
         # the benchmark that needs no model, once per forecast type and day (the manager's number is added by the scoring once the export brings it)
         seasonal = predict.seasonal_baseline(full, last_known, [pd.Timestamp(d) for d in targets])
         for i, d in enumerate(targets):
@@ -117,7 +125,7 @@ def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, versi
     return rows, notes, last_known, weather_rows(run_id, weather)
 
 
-def run(trigger: str, now: datetime, dry_run: bool, log_repo: Path, version: str, also_run: tuple[str, ...] = ()) -> int:
+def run(trigger: str, now: datetime, dry_run: bool, log_repo: Path, version: str, also_run: tuple[str, ...] = (), with_holiday_rule: bool = False) -> int:
     run_id = f"{now:%Y%m%dT%H%M}-{trigger}"
     commit = v1.code_commit()
     types = "+".join(schedule.forecast_types_for(trigger))
@@ -130,7 +138,7 @@ def run(trigger: str, now: datetime, dry_run: bool, log_repo: Path, version: str
             pending = logio.push_pending(log_repo)
             if pending == "push_failed":
                 print("[run] warning: an earlier commit could not be pushed; will retry after this run")
-        rows, notes, last_known, weather = build_rows(now, trigger, run_id, log_repo, version, commit, also_run)
+        rows, notes, last_known, weather = build_rows(now, trigger, run_id, log_repo, version, commit, also_run, with_holiday_rule)
         run_row["data_through"] = str(last_known.date())
         rows = logio.new_rows_only(rows, log_repo / "log" / "forecasts.csv")
         if not rows:
@@ -175,7 +183,8 @@ def main() -> int:
     if now.tzinfo is None:
         now = now.astimezone()
     with RunLock():
-        return run(args.trigger, now, args.dry_run, Path(settings["log_repo"]), str(settings["model_version"]), tuple(str(v) for v in (settings.get("also_run") or ())))
+        return run(args.trigger, now, args.dry_run, Path(settings["log_repo"]), str(settings["model_version"]), tuple(str(v) for v in (settings.get("also_run") or ())),
+                   bool(settings.get("holiday_rule")))
 
 
 if __name__ == "__main__":
