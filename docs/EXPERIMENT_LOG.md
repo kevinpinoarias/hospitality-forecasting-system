@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-78** use the same protocol and JSONL files (`reports/experiments/series44/` to `series78/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+**Series 44-82** use the same protocol and JSONL files (`reports/experiments/series44/` to `series82/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -4547,6 +4547,145 @@ On top of the fix, six columns, each judged against the column it is built on (s
 1. **Nothing beat the fix alone.** The 27th is clearly worse (it raised Saturday 27 December's forecast from 15,154 to 15,516, against an actual 14,358); dropping the 15th in December is within noise.
 2. **The Boxing Day penalty's size is irrelevant**: a tree sees only the order of a column's values, so -2.0 gives the same trees as -0.5. A stronger Boxing Day effect needs a different mechanism (a heavier weight on those rows, a direct flag, or a rule outside the model).
 3. **Outcome**: forecast-log version v1.12 = v1.11 with the closed-day fix in the Saturday pieces, plus the holiday rule (0 on 25 December and 1 January, the earlier Boxing Days' mean on 26 December) issued beside the models (see the CHANGELOG and the log's PREREGISTRATION.md).
+
+## Series 79 — A Penalty on the Payday Intensity for 2 to 15 January
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series79_january_penalty.py` · Results: `reports/experiments/series79/`
+
+### Context
+
+Kevin's reading: after the end-of-year pay the month is lean, so early January should carry a penalty in the intensity rather than a little pay heat (2 January 0.17, 3 January 0.08 from the 31 December payday's triangle; from 12 January the 15th rule's). In 2026 the post package was over-forecast by 504 pounds a day on the 14 open days of 2 to 15 January (the manager by 693), mostly the lean weekdays of 5 to 9 January (over by 1,000 to 2,700); in 2025 the picture was mixed (ours +127, the manager -313), so the case was not definitive. The intensity lives only in the Saturday pieces, so it can reach only the two Saturdays in the window (3 January 2026, over-forecast by 4,383, and 10 January, under-forecast by 1,719).
+
+### Method
+
+On top of the closed-day fix (`xmas_only`, forecast-log version v1.12's column; Series 77's fits as the reference), three columns: `jan_pen_15` (2 to 15 January set to -0.25, a penalty below every heat value and above Boxing Day's -0.5), `jan_pen_8` (2 to 8 January only), `jan_zero_15` (2 to 15 January set to 0, heat removed, no penalty); ten placebos with the same penalty on the 2nd to the 15th of February to November; 320 tasks, seeds 200-299 and fresh seeds 300-399, 585 days. Reading written beforehand: adds value if the net change is at most -0.3, at most 1 of 10 placebos is as good, the fresh-seed net change is below zero and the two January Saturdays improve; nothing if the net change is within 0.3 of zero or 3 or more placebos are as good.
+
+### Results
+
+Change against `xmas_only` (pounds a day; negative = better):
+
+| Column | 2 January Saturdays | Other 82 Saturdays | Net, post model, 585 days | Placebos as good on the net change | Fresh seeds (Saturdays / net) |
+|---|---|---|---|---|---|
+| `jan_pen_15` | -17.0 | -0.4 | -0.03 | 3 of 10 | -39.6 / -0.12 |
+| `jan_pen_8` | -41.1 | +0.7 | +0.01 | 3 of 10 | -60.1 / +0.25 |
+| `jan_zero_15` | -40.5 | -1.1 | -0.20 | 0 of 10 | -48.7 / +0.10 |
+| Placebo penalty windows in other months, mean | -11.5 | | +0.18 | | |
+
+All three readings: NOTHING. The Saturday piece's forecasts for the two Saturdays barely moved (3 January 14,293 to 14,267 against an actual 10,147; 10 January 11,358 to 11,365 against 13,293), and the weekday forecasts of the window cannot change at all.
+
+### Conclusion
+
+1. **A January penalty in the Saturday pieces does nothing measurable**: the net change is within 0.2 of zero, and a penalty window of the same shape placed in any other month gives a similar change on its own two Saturdays.
+2. **The model barely reacts to it**: two training Januaries' worth of 14 days are too few examples for it to learn "lean".
+3. **The over-forecast of the lean January weekdays is out of this column's reach**: the weekday pieces do not use the intensity. Whether a penalty or closed-day column belongs in them is part of the to-do list's final joint feature check (item 4b), to be judged on unseen days.
+4. **Limits:** one January window and two Saturdays in it; the penalty value is untuned (and for a tree only the order matters); the same 585 days.
+
+## Series 80 — Switching Off the Recent-Sales Inputs for 1 to 15 January, and Whether the January Rows Are Special
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series80_january_lags_masked.py` · Results: `reports/experiments/series80/` (100 seeds; the last series run that way)
+
+### Context
+
+After Series 79 (a January penalty in the Saturday pieces: nothing) Kevin's idea: in early January the recent-sales inputs still hold the busy Christmas fortnight, so switch them off from 1 to 15 January and let the model use the calendar, weather and the rest. A check without fits: over the 14 open days of 2 to 15 January the 14-day average input stood about 1,700 to 2,000 pounds (about 30%) above the level the days sold (2025: 8,457 against 6,484; 2026: 7,485 against 5,760); on the 2026 Monday-Thursday days the error followed it (+0.90, 8 days), in 2025 it did not (+0.34).
+
+### Method
+
+All four pieces of the current package (Monday-Thursday with the hydro flag, Friday, Saturday with `intensity_fixed`, Sunday) refitted with ten lag, rolling and recent-same-weekday inputs set to missing on every row dated 1 to 15 January, in the training rows as well as the forecast days (`lag_7_sales`, `rolling_7_sales`, `rolling_14_sales`, `lag_1_fe`, `lag_7_fe`, `rolling_7_fe`, and the Friday and Saturday pieces' `lag_14_sales`, `lag_21_sales`, `same_wd_mean4`, `same_wd_max4`); the manager's forecast is left in. 100 seeds (200-299), 585 days, against the same package unmasked. Stage one's reading (helps: the 14-day change at most -100 and the other days within +-1) gave NOTHING, but the other 571 days improved by 5.7 a day, which it did not anticipate. Stage two, written before it ran: the same masks on the 1st to the 15th of each other month (ten placebos) and the January mask on fresh seeds 300-399; the January rows are special if its net change beats at least 9 of 10 placebos and replicates, refit noise if at least 3 are as good.
+
+### Results
+
+Change in the post package against the unmasked package (pounds a day; negative = better):
+
+| Window masked | Test days in the window | Own window | All other days | Net, 585 days |
+|---|---|---|---|---|
+| **January (1-15)** | 16 | -21.6 | -6.15 | **-6.57** |
+| February | 23 | +356 | +0.84 | +14.80 |
+| March | 30 | +196 | +1.81 | +11.77 |
+| April | 30 | +165 | +8.35 | +16.41 |
+| May | 30 | +6 | +2.47 | +2.66 |
+| June | 30 | +189 | +7.84 | +17.13 |
+| July | 30 | +64 | +4.36 | +7.43 |
+| August | 30 | +245 | -1.59 | +11.07 |
+| September | 21 | -40 | +5.36 | +3.72 |
+| October | 15 | +5 | -2.44 | -2.24 |
+| November | 15 | +153 | -1.11 | +2.84 |
+
+January's net change beats all 10 placebos (placebo mean +8.56, best -2.24, worst +17.13); on fresh seeds it is -7.09 (own window -19.3, all other days -6.74). Stage one's 14 open days of 2 to 15 January 2026: -42 a day (average miss 1,424 to 1,382; bias +498 to +182). Reading set beforehand: **JANUARY ROWS ARE SPECIAL**.
+
+### Conclusion
+
+1. **Masking the recent-sales inputs in early January improves the whole package by 6.6 pounds a day over the 585 days** (fresh seeds 7.1), more than the payday intensity (-3.0) and the closed-day fix (-1.6) put together. Nothing like it appears when any other month's first fortnight is masked: those mostly get worse, both in their own windows (up to +356) and overall.
+2. **The gain is not on the January days** (-42 a day on 14 days, about -1.0 over the 585) **but on the other 571 days** (-5.7): the January rows in the training data teach the model a wrong lesson about its recent-sales inputs (they read high while sales are lean) and it carries that into every month. This is the first of the two explanations in the script's header; the refit-noise explanation is rejected by the placebos.
+3. **The mechanism is not isolated.** Two candidates are mixed in the mask: the Christmas level inflating the averages (+30%), and closed days with zero sales inside the inputs (for example `lag_7_sales` is 0 on 8 January because 1 January is closed, and the rolling averages contain the zero days). The next test separates them: closed days treated as missing in the lag and rolling inputs, against the January mask.
+4. **Limits:** one January in the backtest and two in all, the same 585 days, a smallest p-value of 0.09 from ten placebos, the manager's forecast left in, and it cannot be used without refitting (a new forecast-log version; the decision to retrain is Kevin's).
+
+## Series 81 — Closed Days Inside the Recent-Sales Inputs: the Zeros, or the Christmas Level?
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series81_closed_days_in_lags.py` · Results: `reports/experiments/series81/` (25 seeds, 200-224: the earlier standard, restored on 8 November 2026)
+
+### Context
+
+Series 80's mask (ten recent-sales inputs set to missing on 1 to 15 January) improved the package by 6.6 pounds a day over the 585 days and beat all ten placebo windows, mixing two candidate causes: closed days with zero sales sitting inside the inputs (`lag_7_sales` is 0 on 8 January because 1 January is closed; the rolling averages hold the zeros), and the busy Christmas level inflating the averages (the 14-day input stood about 30% above the level the early-January days sold).
+
+### Method
+
+Five variants refitted in all four pieces of the current package, in the training rows and the forecast days, from the full daily sales series recomputed as the pipeline computes it (checked equal on every row): `base` (unmasked, refitted on the same 25 seeds), `closed_nan` (25 December and 1 January set to missing in the sales and forecast-error series before the lags and rolling averages; averages use the days that exist, from half the window), `closed_fill` (those days replaced by the same weekday a week earlier, chained), `jan_mask` (Series 80's mask) and `both` (fill, then the mask). 100 tasks, 585 days. Reading written beforehand: the closed days explain most of it if a closed variant reaches at least 60% of the January mask's gain; the level (or something else in those rows) if both closed variants stay under 30% and the mask keeps its gain.
+
+### Results
+
+Change in the post package against the unmasked package, same 25 seeds (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 22 days with a closed day in their 14-day window | All other days | 2-15 January 2026 (14 days) |
+|---|---|---|---|---|
+| `closed_nan` | **+3.13** | +10.4 | +2.84 | +80.0 |
+| `closed_fill` | **+8.92** | +94.8 | +5.57 | +142.3 |
+| `jan_mask` | **-6.08** | -5.5 | -6.10 | -39.5 |
+| `both` | -5.99 | +31.5 | -7.45 | -29.9 |
+
+The January mask replicates Series 80 on 25 seeds (-6.08 against -6.57 on 100). Reading set beforehand: **LEVEL: the closed days explain little, the January mask keeps its gain**. Placebo days were not triggered.
+
+### Conclusion
+
+1. **The zero-sales closed days are not the cause.** Repairing them makes the package worse (+3.1 by treating them as missing, +8.9 by filling them), and `both` is no better than the mask alone (-5.99 against -6.08).
+2. **The zeros may even help**: in the Christmas window they pull the averages down, against the inflated level, and filling them removes that (the 14-day input on 5 January goes from 8,423 to 9,834 under the fill).
+3. **What the mask fixes is the transition after Christmas itself**, the rows where the recent level (high) and the sales (lean) disagree, not any one bad value in the inputs. The mask lets the model fall back on the calendar for those rows.
+4. **Next** (not run): where the lesson sits (the mask on 1 to 8, 1 to 22 January and 26 December to 15 January), and a repair that keeps the information: leave the Christmas-break days out of the source series before the averages are taken (a holiday-aware level), which would also apply to Easter and the summer break. Any use needs a refit, a new forecast-log version and Kevin's decision.
+5. **Limits:** 25 seeds (a change of 2 or less is within the noise); one January in the backtest; the same 585 days.
+
+## Series 82 — Where the Recent-Sales Inputs Should Be Switched Off Around the New Year
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series82_mask_windows.py` · Results: `reports/experiments/series82/` (25 seeds, 200-224)
+
+### Context
+
+Series 80 and 81 switched ten recent-sales inputs off for 1 to 15 January (-6.1 pounds a day on 25 seeds) but 1 to 15 January was a guess. The inputs reach back different distances (the 7-day average clears Christmas by about 8 January, the 14-day one by about 15 January, the same-weekday inputs by about 29 January) and the days after Christmas have the same problem.
+
+### Method
+
+Six windows, each refitted in all four pieces of the current package with the ten inputs missing on every row inside the window, training rows and forecast days alike: 1 to 8, 1 to 22 and 1 to 29 January, and 26 December to 8, 15 and 22 January; compared with the unmasked package and with the 1 to 15 January mask (both Series 81's fits on the same seeds). 120 tasks. Reading written beforehand: the best window has the most negative net change over the 585 days, windows within 1.0 of it are tied (25 seeds cannot separate less), starting on 26 December helps only if it is at least 1.0 better than the 1 January twin.
+
+### Results
+
+Change in the post package against the unmasked package (pounds a day; negative = better):
+
+| Window | Test days in it | Net, 585 days | Inside the window | Outside it |
+|---|---|---|---|---|
+| **1 to 8 January** | 8 | **-9.07** | -313 | -4.86 |
+| 1 to 15 January (Series 81) | 16 | -6.08 | -19 | -5.72 |
+| 1 to 22 January | 30 | +9.84 | +175 | +0.93 |
+| 1 to 29 January | 38 | +12.55 | +197 | -0.24 |
+| 26 December to 8 January | 14 | -8.34 | -372 | +0.58 |
+| 26 December to 15 January | 22 | -5.64 | -176 | +1.03 |
+| 26 December to 22 January | 36 | +10.99 | +50 | +8.43 |
+
+Best: 1 to 8 January, tied with 26 December to 8 January (within 1.0). Starting on 26 December: no clear difference at 8 and 15 January (+0.7, +0.4), it costs at 22 January (+1.2).
+
+### Conclusion
+
+1. **The distortion is the first week.** Switching the inputs off for 1 to 8 January gives the largest gain (-9.07 a day over the 585 days, and -313 a day on the eight January days themselves); the gain shrinks at 15 January and **turns into a loss from 22 January** (+9.8, +12.6): once Christmas has left the 7-day average the inputs are informative again, and masking them costs.
+2. **Starting on 26 December adds nothing clear.**
+3. **The size**: about 1% of the average daily miss, the largest single step after the weekend pieces in the staircase (weekend correction -7.7, hydro flag -6.6, payday intensity -3.0, closed-day fix -1.6).
+4. **Limits:** 25 seeds (a difference of 2 or less is noise, so 1 to 8 against 1 to 15 January, 3.0 apart, is only just beyond it); one January in the backtest, two in all; the same 585 days; the window is the best of six tries, so 1 to 8 January is a candidate for a rule written down beforehand and read on January 2027, not a result; using it needs a refit (a new forecast-log version) and Kevin's decision.
 
 ## Descriptive checks around Series 66-70 (no model fits)
 
