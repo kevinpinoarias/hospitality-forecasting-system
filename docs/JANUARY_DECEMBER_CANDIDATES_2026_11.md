@@ -54,4 +54,18 @@ Registered here: the candidates and the reading above (this file, committed befo
 
 ## Results
 
-(To be added after Series 90.)
+Series 90 (9 November 2026, 25 seeds, served with S6; the reading above was written before the run). Net change against the unmasked package served with S6, pounds a day:
+
+| Candidate (served with S6; 25 seeds) | Net, 585 days | 26-31 Dec | 1-8 Jan | All other days | Reading set beforehand |
+|---|---|---|---|---|---|
+| M1 specialist windows (the reference) | **-10.11** | -522 | -331 | -0.23 | |
+| B year-ago sales input (`sales_364`) | -3.02 | +81 | -56 | -3.16 | HELPS |
+| C days-since-Christmas input | +5.34 | +86 | +4 | +4.51 | HURTS |
+| D history inputs without the Christmas break | -4.76 | -139 | -322 | +1.09 | HELPS |
+| E specialist windows with the lean companion | -6.22 | -124 | -331 | -0.43 | WORSE than M1 |
+| F closed-day column in every piece | -1.31 | +83 | +41 | -2.78 | NOTHING |
+| H random training masks, masked at forecast time | +9.68 | -228 | -240 | +15.67 | HURTS |
+
+Combinations built afterwards from the stored forecasts (not fitted, not in the reading): D + the companion on 26-31 December -8.62 (26-31 Dec -518, 1-8 Jan -322, other days +1.13); D + the masked model on 1-8 January + the companion -8.77; B + the companion -8.83 (other days -2.91).
+
+Ranking: M1 (specialist windows) -10.11; then the combinations D + companion -8.62 and B + companion -8.83; then E -6.22 (worse than M1); D -4.76; B -3.02; F -1.31 (nothing); C +5.34 and H +9.68 hurt. The simplest candidate that gets most of M1's gain is D (one model, an input change, no second model). Status: no candidate is registered in the forecast log; D and B are candidates to repeat on 100 and fresh seeds. See `docs/EXPERIMENT_LOG.md`, Series 90.

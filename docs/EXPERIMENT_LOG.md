@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-82** use the same protocol and JSONL files (`reports/experiments/series44/` to `series82/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+**Series 44-90** use the same protocol and JSONL files (`reports/experiments/series44/` to `series90/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -4686,6 +4686,267 @@ Best: 1 to 8 January, tied with 26 December to 8 January (within 1.0). Starting 
 2. **Starting on 26 December adds nothing clear.**
 3. **The size**: about 1% of the average daily miss, the largest single step after the weekend pieces in the staircase (weekend correction -7.7, hydro flag -6.6, payday intensity -3.0, closed-day fix -1.6).
 4. **Limits:** 25 seeds (a difference of 2 or less is noise, so 1 to 8 against 1 to 15 January, 3.0 apart, is only just beyond it); one January in the backtest, two in all; the same 585 days; the window is the best of six tries, so 1 to 8 January is a candidate for a rule written down beforehand and read on January 2027, not a result; using it needs a refit (a new forecast-log version) and Kevin's decision.
+
+## Series 83 — The Two Best Mask Windows on the Rest of the Seeds
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series83_mask_windows_repeat.py` · Results: `reports/experiments/series83/` (seeds 225-299 and fresh seeds 300-399)
+
+### Context
+
+Series 82 (25 seeds) found two windows within 1.0 pounds a day of each other for switching the ten recent-sales inputs off around the new year: 1 to 8 January (-9.07 over the 585 days) and 26 December to 8 January (-8.34), against -6.08 for 1 to 15 January; a difference of 2 or less is within 25-seed noise. Kevin asked for the two to be repeated on the other seeds.
+
+### Method
+
+The same masks, pieces and folds as Series 82, on seeds 225-299 (the other 75 of the old 100-seed set, giving each window all 100 seeds, compared with the existing 100-seed baseline: the unmasked package with Saturday on Series 77's closed-day column) and on fresh seeds 300-399 (against the unmasked package on the same seeds): 280 tasks. Reading written beforehand: replicates if both the 100-seed and the fresh-seed net change are negative and each at least half the size of the 25-seed result; tied if within 1.0 on both.
+
+### Results
+
+Net change in the post package against the unmasked package (pounds a day; negative = better):
+
+| Window | 25 seeds (Series 82) | All 100 seeds | Fresh 300-399 | Own days, 100 seeds / fresh | Outside the window, 100 seeds / fresh |
+|---|---|---|---|---|---|
+| 1 to 8 January | -9.07 | **-8.35** | **-10.09** | -324 / -321 (8 days) | -3.97 / -5.78 |
+| 26 December to 8 January | -8.34 | **-8.57** | **-7.33** | -383 / -375 (14 days) | +0.61 / +1.70 |
+
+Readings set beforehand: both REPLICATE. The two windows differ by 0.22 on the 100 seeds and 2.76 on the fresh seeds, so they are not tied by the rule; 1 to 8 January is ahead on the average of the two (-9.22 against -7.95).
+
+### Conclusion
+
+1. **Both windows replicate on 175 more seeds**: the gain of about 8 to 10 pounds a day over the 585 days is not a 25-seed accident.
+2. **1 to 8 January is the simpler and slightly better window.** It also improves the days outside the window (-4 to -6 a day: the January rows stop teaching the model the wrong lesson), while the window that starts on 26 December gains more on its own 14 days (-383) but slightly worsens the other days (+0.6, +1.7): masking the late-December rows costs elsewhere.
+3. **Limits**: the same 585 days, so this checks the seeds and not the days; the window is the best of six tries; one January in the backtest. The real test is a rule written down beforehand and read on January 2027; using it needs a refit (a new forecast-log version) and Kevin's decision.
+
+## Series 84 — Adding the Six Late-December Days to the 1 to 8 January Mask, Input Group by Input Group
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series84_late_december_subsets.py` · Results: `reports/experiments/series84/` (25 seeds, 200-224)
+
+### Context
+
+Series 83 confirmed two mask windows: 1 to 8 January (-8.35 pounds a day over the 585 days on 100 seeds) and 26 December to 8 January (-8.57). They differ in where the gain is: the six extra late-December days gain about 460 pounds a day each from the mask, but masking those rows in training removes the gain on the other days (+0.6 to +1.7 outside the window, against -4 to -6 for 1 to 8 January alone). Kevin asked whether the six days can be included and the benefit kept.
+
+### Method
+
+Option 1: on 26 to 31 December mask only one group of inputs, keeping the full ten-input mask on 1 to 8 January: `g_levels` (`rolling_7_sales`, `rolling_14_sales`), `g_lags` (`lag_7_sales`, `lag_14_sales`, `lag_21_sales`), `g_fe` (`lag_1_fe`, `lag_7_fe`, `rolling_7_fe`), `g_wd` (`same_wd_mean4`, `same_wd_max4`; only the Friday piece carries them); training rows and forecast days alike; 80 tasks, compared with Series 81/82's fits on the same 25 seeds. Reading written beforehand: a group captures both if its net change is at least 2.0 better than 1 to 8 January's and the change outside 26 December to 8 January is no more than 1.0 above it.
+
+### Results
+
+Change against the unmasked package (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 14 days 26 Dec-8 Jan | All other days |
+|---|---|---|---|
+| 1 to 8 January (all ten) | -9.07 | -206 | -4.23 |
+| 26 Dec to 8 Jan (all ten) | -8.34 | -372 | +0.58 |
+| + `g_levels` on 26-31 Dec | -3.40 | -191 | +1.20 |
+| + `g_lags` | -8.39 | -338 | -0.31 |
+| + `g_fe` | -10.07 | -244 | -4.33 |
+| + `g_wd` | -10.34 | -256 | -4.31 |
+| + `g_fe` and `g_wd` together (added after Kevin's question) | -10.47 | -293 | -3.55 |
+
+Readings set beforehand: `g_levels` COSTS; `g_lags` NO GAIN over 1 to 8 January; `g_fe` and `g_wd` NO GAIN (-0.99 and -1.27 against 1 to 8 January, inside the 2.0 noise); the two together do not add up either (-1.40, with a weaker outside gain, -3.55 against -4.23): NO GAIN.
+
+### Conclusion
+
+1. **The inputs that carry the late-December gain are the ones whose late-December rows are good lessons.** Masking the recent averages or the single lags on 26 to 31 December gains on those days (-338 for the lags) but costs everywhere else (outside -0.31 and +1.20 against -4.23).
+2. **The forecast-error inputs and the same-weekday summaries can be masked on those days for free** (they keep the outside gain, -4.3) **but they gain little** (about 1.0 to 1.3 a day net, inside the noise): only a quarter of the late-December days' gain.
+3. **So option 1 does not capture both.** Next on the working list: option 2b, a companion model trained without the history inputs and used only on 26 to 31 December (the main model keeps its normal training rows), then option 3 (a rule after the model) as a last resort.
+4. **Limits:** 25 seeds; one December and one January in the backtest; the same 585 days; each group is one more try on top of the six windows.
+
+## Series 85 — A Companion Model Without the History Inputs for the Late-December Days
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series85_companion_model.py` · Results: `reports/experiments/series85/` (25 seeds, 200-224)
+
+### Context
+
+Series 83 and 84: switching the ten recent-sales inputs off for 1 to 8 January gains about 8 to 10 pounds a day over the 585 days; the six late-December days (26 to 31 December) would gain about 460 pounds a day each from a mask too, but masking those rows in training costs the gain on every other day, and masking only some inputs there captures little. Option 2b: a companion model, each piece refitted without the ten history inputs on all rows (calendar, weather, hydro flag, closed-day intensity on Saturday and the manager's number), its forecast used only on chosen days while the main model keeps its normal training rows.
+
+### Method
+
+One new fit (20 tasks, 25 seeds); the variants are built from stored forecasts: `comp_dec` (main model = the 1 to 8 January mask of Series 82/83; the companion replaces it on 26 to 31 December), `comp_dec_jan` (the companion replaces it on 26 December to 8 January), `comp_only` (the main model unmasked, the companion on 26 December to 8 January); compared with Series 81/82's fits on the same seeds. Reading written beforehand: `comp_dec` captures both if its net change is at least 2.0 better than the 1 to 8 January mask's (about 195 pounds a day on the six days).
+
+### Results
+
+Change against the unmasked package (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 6 days 26-31 Dec | All other days |
+|---|---|---|---|
+| 1 to 8 January mask alone | -9.07 | -64 | -4.23 |
+| **mask + the companion on 26-31 December** | **-11.30** | **-301** | -4.02 |
+| mask + the companion on 26 December to 8 January | -9.15 | -301 | -3.86 |
+| the companion on 26 December to 8 January, no mask | -5.02 | -305 | +0.43 |
+| the companion on every day | +38.60 | -300 | +45.05 |
+
+Readings set beforehand: `comp_dec` CAPTURES BOTH (-2.22 against the mask alone); `comp_dec_jan` NO GAIN; `comp_only` COSTS. The companion alone on every day has an average miss of 893 against 854 for the unmasked package (+5%). By day, on 26 to 31 December the unmasked, masked and companion errors were: 29 December -3,111 / -2,201 / -912; 30 December -2,380 / -1,656 / -367; 31 December -900 / -343 / +260; but 27 December +1,018 / +1,223 / +2,138 and 28 December -72 / +986 / +2,230.
+
+### Conclusion
+
+1. **The companion is the first approach to capture both**: the late-December days gain while the other days keep the gain of the January mask. It needs the masked main model (without the masked January rows in training the gain elsewhere is lost, `comp_only` +0.43) and it is not a general model (5% worse on every day: no recent-sales information).
+2. **The six days are mixed**: it gains on 29 to 31 December (the days the unmasked model under-forecast by 0.9 to 3.1 thousand) and loses on 27 and 28 December.
+3. **The main caveat**: in the backtest the companion leans on the manager's number for the day, which for 29 to 31 December was almost exact (12,500, 12,500 and 9,700 against 13,035, 12,369 and 9,849 actual); in the live log it is a weekday-and-season median stand-in, so a live companion would probably be weaker and part of this gain is the manager's knowledge (the cost of the missing number: Series 42-43).
+4. **Limits:** one December in the backtest (six days); 25 seeds; the same 585 days; a refit would be a new forecast-log version and Kevin's decision. Next: repeat on seeds 225-299 and fresh seeds 300-399.
+
+## Series 86 — The Companion Model on the Rest of the Seeds
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series86_companion_repeat.py` · Results: `reports/experiments/series86/`
+
+Series 85's companion (each piece refitted without the ten history inputs, used on 26 to 31 December beside the 1 to 8 January mask) repeated on seeds 225-299 (with Series 85's 25 it has all 100) and on fresh seeds 300-399, compared with the 100-seed baseline and the mask alone on the same seeds; 140 tasks. Reading written beforehand: replicates if it beats the mask alone by at least 1.1 (half of 2.22) on both seed sets.
+
+| Seeds | Mask alone, net | Mask + companion on 26-31 Dec, net | Difference | The 6 days (mask alone / with the companion) |
+|---|---|---|---|---|
+| All 100 | -8.35 | -11.35 | **-3.00** | -37 / -363 |
+| Fresh 300-399 | -10.09 | -13.17 | **-3.09** | -60 / -379 |
+
+Reading set beforehand: **REPLICATES** (larger than Series 85's -2.22). The other days keep the mask's gain (-7.7 against -8.1 on the 100 seeds). Limits: the same 585 days and the same one December (six days); the manager's real number is an input throughout (Series 87).
+
+## Series 87 — The Companion Model and the January Mask When the Manager's Number Is Not Available
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series87_companion_without_manager.py` · Results: `reports/experiments/series87/` (25 seeds, 200-224)
+
+### Context
+
+Every backtest so far gave the models the manager's real forecast for the day (`forecast_sales`); the live log cannot (it reaches us after the day, Series 42-43), so each log forecast is served with a stand-in, the weekday-and-season median of the manager's past forecasts (`seasonal_medians`). In late December the manager's number was almost exact (29 to 31 December 2025: 12,500, 12,500 and 9,700 against 13,035, 12,369 and 9,849 sold).
+
+### Method
+
+Each fold's models fitted on the real training rows (the log's deployed set-up, N0 of Series 42) and served with the stand-in on the test days, computed from the training rows only; the weather is still the actual weather. Variants served with the stand-in: unmasked, the 1 to 8 January mask, the companion; 60 tasks. A sanity step reproduces the stored backtest to the penny with the real number put back. Reading written beforehand: the mask holds if at least 4.5 better than unmasked (half of -9.07); the companion survives if at least 1.1 better than the mask alone.
+
+### Results
+
+Change against the unmasked package, all served with the stand-in (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 6 days 26-31 Dec | All other days |
+|---|---|---|---|
+| unmasked, stand-in | 0.00 | 0.00 | 0.00 |
+| 1 to 8 January mask | **+0.37** | +160 | -1.28 |
+| mask + the companion on 26-31 December | -2.05 | -103 | -1.00 |
+| the companion on every day | +39.56 | -79 | +40.79 |
+
+Serving the stand-in costs the unmasked package 91 pounds a day (average miss 945 against 854; Series 43: about 99). Readings set beforehand: the mask **does not hold** (+0.37 against -9.07 with the real number); the companion against the mask alone SURVIVES (-2.42 against -2.22). On 26 to 31 December 2025 the real manager numbers were 4,700, 15,500, 13,000, 12,500, 12,500 and 9,700 and the stand-ins 9,700, 13,500, 12,500, 11,600, 9,700 and 0 (the fold's history holds the closed Wednesdays, 25 December 2024 and 1 January 2025, so the median for 31 December was 0, and every variant forecast about 10 pounds for a day that sold 9,849).
+
+### Conclusion
+
+1. **The January mask's whole gain depended on the manager's real number.** With the number the model could lean on the manager's knowledge that January is lean once the misleading history inputs were off; with the stand-in, which does not know about January, switching the history off removes the only thing that partly compensated. Series 80-86's January and late-December gains (about 8 to 13 pounds a day) are therefore backtest figures that the live log, which has no real number, should not be expected to reach.
+2. **The companion still beats the mask alone under the stand-in** (-2.42) and takes the six days from +160 to -103, but the combination is only -2.05 against unmasked, and the late-December forecasts stay poor (26 December about 12,700 against 2,919 sold).
+3. **The stand-in itself is weak around the holidays.** The median over the same weekday within 10 days of the same day of the year, from two years of history, is contaminated by closed-day zeros and the quiet days after Christmas. Checked on the live pipeline (a dry run issued 28 December 2026): stand-ins of 11,650, 9,700, 4,600 and 5,200 for Monday 28 to Thursday 31 December 2026 and forecasts of 9,811, 9,164, 4,848 and 5,558 (earlier years sold about 12,500 to 13,000 on 29 and 30 December and 9,800 on New Year's Eve), so late December 2026 will be forecast well below what recent years sold, with or without a companion.
+4. **Next**: tests in the stand-in world, starting with a better stand-in for the holidays (exclude closed days, or use the same date's actual sales a year earlier) and year-ago inputs (idea 3 of the January working list), before any refit. Any change to the stand-in alters an input of the pre-registered log and needs an amendment first.
+5. **Limits:** 25 seeds; one December and one January; the stand-in is computed from the fold's training rows (staler than the live log's); the weather is the real weather; the same 585 days.
+
+### Afterwards: specialist windows (from the stored stand-in forecasts, no new fits)
+
+Splitting the same forecasts by window, served with the stand-in, change against the unmasked package (pounds a day; negative = better):
+
+| Variant | Net | The 6 days 26-31 Dec | The 8 days 1-8 Jan | All other days |
+|---|---|---|---|---|
+| the mask alone (a whole-model mask) | +0.37 | +160 | -298 | +2.88 |
+| the companion on 26-31 Dec, unmasked main | -0.74 | -108 | 0 | +0.38 |
+| the companion on 26 Dec-8 Jan, unmasked main | +0.60 | -108 | +108 | +0.23 |
+| the masked model on 1-8 Jan only, unmasked elsewhere | **-4.60** | 0 | -302 | -0.48 |
+| the masked model on 1-8 Jan + the companion on 26-31 Dec, unmasked elsewhere | **-5.34** | -108 | -302 | -0.10 |
+
+So with the stand-in the whole-model mask is a wash (it helps the eight January days a lot, by 298 pounds a day, and costs +2.9 a day on the rest of the year and +160 on the six December days), and the companion alone gains only -0.74 net; but two **specialist models, each used only on its own window** (the masked model on 1 to 8 January, the companion on 26 to 31 December, the unmasked model everywhere else) give -5.34 with no harm elsewhere. This is a combination chosen after the results, from 14 days of one December and one January, 25 seeds: a candidate to repeat on the other seeds and in a better stand-in world, not a result.
+
+## Series 88 — A Better Stand-In for the Manager's Number Around the Holidays
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series88_better_standin.py` · Results: `reports/experiments/series88/` (25 seeds, 200-224)
+
+### Context
+
+The live forecast log serves every forecast with a stand-in for the manager's number (the weekday-and-season median of the manager's past forecasts: the same weekday within 10 days of the same day of the year). Series 87 showed it costs the unmasked package 91 pounds a day, and that it is weak around the holidays (with two years of history the median is contaminated by closed-day zeros and the quiet days after Christmas: for 24 and 25 December 2025 it gave 0 and 7,100, for 31 December 0).
+
+### Method
+
+The models are fitted on the real training rows (N0 of Series 42) and each fold's test days are predicted once per stand-in, so only the number fed in changes: **S0** the current one (reproduces Series 87, checked to the penny); **S1** the same median with the closed days (manager number 0) left out of the history, and 0 on 25 December and 1 January; **S2** the manager's number 364 days earlier (same weekday a year ago) inside the holiday window 24 December to 15 January, S0 elsewhere; **S3** the number 365 days earlier (same date a year ago) inside the window, S0 elsewhere; **S4** S1 everywhere and S3 inside the window; **S5** S1 everywhere and, inside the window, the number 364 days earlier unless that day was closed; plus the real number as the floor. Three model variants (unmasked, the 1 to 8 January mask, the companion), 60 tasks. Reading written beforehand: a stand-in is better than S0 if it lowers the unmasked package's all-days miss by at least 5 pounds a day and lowers the holiday-window miss.
+
+### Results
+
+Average daily miss of the unmasked package served with each stand-in (pounds; lower is better):
+
+| Stand-in | All 585 days | The 24 holiday-window days | 26-31 Dec (6 days) | 1-8 Jan (8 days) |
+|---|---|---|---|---|
+| S0 current | 945 | 2,739 | 4,623 | 1,886 |
+| **S1 closed-day-aware median** | **902** | 1,687 | 3,621 | **1,275** |
+| S2 same weekday a year ago | 941 | 2,656 | 4,629 | 1,838 |
+| S3 same date a year ago | 903 | 1,712 | **2,190** | 1,502 |
+| S4 S1 + S3 in the window | 903 | 1,712 | 2,190 | 1,502 |
+| S5 S1 + weekday-aligned year-ago | 920 | 2,130 | 3,627 | 1,838 |
+| real manager number (floor) | 854 | 1,393 | 2,016 | 1,484 |
+
+Readings set beforehand: S1, S3, S4 and S5 BETTER than S0 (-43, -42, -41 and -25 pounds a day overall); S2 NO BETTER (-3.4). The model tricks (specialist windows: the masked model on 1 to 8 January and the companion on 26 to 31 December, the unmasked model elsewhere), net change against the unmasked package served with the same stand-in: S0 -5.34, S1 -6.01, S2 -4.64, S3 -8.70, S4 -8.70, S5 -4.82: STILL HELPS with every stand-in (the whole-model mask stays a wash, -1.3 to +0.9).
+
+### Conclusion
+
+1. **A closed-day-aware stand-in is a free win**: it removes about 43 of the 91 pounds a day the stand-in costs (all of it inside the 24-day holiday window, 2,739 to 1,687), with no refit: the models are unchanged and only the number fed in differs. It changes the stand-in only for days whose history window holds a closed day.
+2. **The same date a year ago** is as good overall (-42) and much better on 26 to 31 December (2,190 against 3,621, near the real number's 2,016: it knows the end-of-year pattern and Boxing Day) but worse in early January (1,502 against 1,275): lining up the date puts the wrong weekday on weekends (Sunday 4 January 2026 takes last year's Saturday, 12,100, against a real 4,350). A hybrid (S3 for the Christmas week, S1 from the new year) is plausible but would be tuned on this one window.
+3. **The specialist windows keep their gain with every stand-in**, and most with the date-aligned one (-8.70, the companion gaining 522 pounds a day on the six days).
+4. **Still short of the floor**: S1 902 against 854 with the real number.
+5. **Limits:** one December and one January (the window is 24 test days); 25 seeds; the stand-in is built from the fold's training rows (staler than the live log's); the weather is the real weather; the same 585 days. A different stand-in changes an input of the pre-registered log, so an amendment comes first; no refit.
+
+## Series 89 — The Better Stand-Ins on the Rest of the Seeds, and a Hybrid
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series89_standin_repeat_hybrid.py` · Results: `reports/experiments/series89/` (all 100 seeds 200-299 and fresh seeds 300-399)
+
+### Context
+
+Series 88 (25 seeds) found two stand-ins for the manager's number that cut the live log's average miss by about 43 pounds a day (the closed-day-aware median S1, and the same date a year earlier inside the holiday window S3) with opposite weak spots (S1 weak on 26-31 December, S3 weak in early January where lining up the date puts the wrong weekday on weekends), and the specialist windows kept their gain under every stand-in. Kevin asked for the seeds to be repeated and for a hybrid.
+
+### Method
+
+Stand-ins as Series 88: **S0** the current one, **S1** the closed-day-aware median (closed days left out of the history, 0 on 25 December and 1 January), **S3** the same date a year earlier inside 24 December to 15 January (S0 elsewhere), plus the new **S6 hybrid**: the same date a year earlier (365 days) for the Christmas week, 24 December to 2 January, and S1 everywhere else; and the real number as the floor. Models fitted on the real training rows and served with each stand-in on the fold's test days (history from the training rows only); three model variants (unmasked, the 1 to 8 January mask, the companion); 480 tasks, each predicting every stand-in; a sanity step reproduced Series 88's stored forecasts to the penny. Reading written beforehand: S1 and S3 replicate if at least 5 pounds a day better than S0 on both seed sets; tied if within 5; the hybrid beats both if at least 5 lower than each on both seed sets; the specialist windows still help if at least 2.0 better under that stand-in.
+
+### Results
+
+The unmasked package's average daily miss (pounds), 585 days:
+
+| Stand-in | 100 seeds | Fresh seeds | The 24 holiday-window days (100 seeds) | 26-31 Dec | 1-8 Jan |
+|---|---|---|---|---|---|
+| S0 current | 946 | 946 | 2,755 | 4,657 | 1,895 |
+| S1 closed-day-aware | 903 | 903 | 1,703 | 3,659 | **1,283** |
+| S3 same date a year ago | 904 | 904 | 1,719 | **2,215** | 1,508 |
+| **S6 hybrid** | **892** | **892** | **1,441** | **2,215** | 1,479 |
+| real number (floor) | 854 | 855 | 1,408 | 2,061 | 1,489 |
+
+Readings set beforehand: S1 and S3 REPLICATE (-42.7 and -42.0 on the 100 seeds, -42.7 and -41.5 on the fresh seeds), TIED (S3 minus S1 +0.7 and +1.2), and the hybrid BEATS BOTH (11.2 and 11.3 lower than the better of the two). The specialist windows (the masked model on 1 to 8 January and the companion on 26 to 31 December, the unmasked model elsewhere) STILL HELP with every stand-in: net -5.9 / -6.3 (S0), -6.6 / -6.9 (S1), -9.6 / -9.5 (S3), -11.0 / -10.7 (S6); the whole-model mask stays a wash (-0.9 to -4.3).
+
+The live-like picture (average miss over the 585 days; change against today, the current stand-in with no tricks, 945.7): the specialist windows alone -5.9; S1 -42.7; S1 with the windows -49.3; S3 with the windows -51.6; the hybrid alone **-53.9**; the hybrid with the windows **-64.9**; the real-number floor -91.5 (so the hybrid with the windows closes about 71% of the gap).
+
+### Conclusion
+
+1. **Both better stand-ins replicate on 175 more seeds**, and the hybrid is clearly better than either (about 11 pounds a day), reaching 1,441 over the holiday window against the real number's 1,408.
+2. **A change to the stand-in alone is worth about 54 pounds a day** (the hybrid) with no refit: the models are unchanged and only the number fed in differs; the specialist windows add about 11 on top but need new fitted models (the masked model and the companion, a new forecast-log version).
+3. **Limits:** all of it rests on one December and one January (24 holiday-window days), the same 585 days; the hybrid was designed after seeing where S1 and S3 failed on those same days, so its extra 11 pounds is probably optimistic; the stand-in is built from the fold's training rows (staler than the live log's); the weather is the real weather. The real test is December 2026. A change to the stand-in alters an input of the pre-registered log: an amendment first (no refit), and the log has no version column for it, so the amendment must state the date from which it applies.
+
+## Series 90 — The Untested Year-End Candidates, Served with the Best Stand-In
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series90_year_end_candidates.py` · Results: `reports/experiments/series90/` (25 seeds, 200-224) · Register and reading: `docs/JANUARY_DECEMBER_CANDIDATES_2026_11.md` (committed before the run)
+
+### Context
+
+Before deciding on the hybrid stand-in and specialist windows (Series 89), Kevin asked for the other alternatives that had come up to be tested and registered. Six were untested: B (year-ago sales as an input), C (a days-since-Christmas input), D (the history inputs rebuilt without 24 December-2 January), E (a lean companion that keeps the forecast-error and same-weekday-summary inputs), F (the closed-day intensity column in every piece), H (random training masks, then masks at forecast time on 1-8 January and 26-31 December).
+
+### Method
+
+Each refitted in the four pieces of the current package, 25 seeds, 10 folds, 585 days, the deployed weekend correction, every one served with the S6 stand-in (the models fitted on the real training rows; only the test rows' `forecast_sales` differs), against the unmasked package served with S6 and the specialist windows (M1) served with S6, both Series 89's fits on the same seeds; 120 tasks; a sanity step reproduced Series 89's stored S6 forecast to the penny. Reading written beforehand: helps if the net change is at most -2.0, hurts above +2.0; beats M1 if at least 2.0 below it.
+
+### Results
+
+| Candidate (served with S6; 25 seeds) | Net, 585 days | 26-31 Dec | 1-8 Jan | All other days | Reading set beforehand |
+|---|---|---|---|---|---|
+| M1 specialist windows (the reference) | **-10.11** | -522 | -331 | -0.23 | |
+| B year-ago sales input (`sales_364`) | -3.02 | +81 | -56 | -3.16 | HELPS |
+| C days-since-Christmas input | +5.34 | +86 | +4 | +4.51 | HURTS |
+| D history inputs without the Christmas break | -4.76 | -139 | -322 | +1.09 | HELPS |
+| E specialist windows with the lean companion | -6.22 | -124 | -331 | -0.43 | WORSE than M1 |
+| F closed-day column in every piece | -1.31 | +83 | +41 | -2.78 | NOTHING |
+| H random training masks, masked at forecast time | +9.68 | -228 | -240 | +15.67 | HURTS |
+
+Combinations built afterwards from the stored forecasts (not fitted, not in the reading): D + the companion on 26-31 December -8.62 (26-31 Dec -518, 1-8 Jan -322, other days +1.13); D + the masked model on 1-8 January + the companion -8.77; B + the companion -8.83 (other days -2.91).
+
+### Conclusion
+
+1. **The specialist windows (M1) stay the best** at -10.11 a day; nothing beat them.
+2. **D is the best simple alternative**: leaving the Christmas break out of the history inputs gives -4.76 with one model and no second model, and it captures the whole 1-8 January gain (-322 against M1's -331) as well as part of late December (-139); it costs +1.09 on the other days. Adding the companion for 26-31 December brings it to -8.62, within 1.5 of M1 with the masked model for 1-8 January replaced by an input change.
+3. **B helps modestly and differently** (-3.02): it improves the other days (-3.16) but not late December (+81); with the companion -8.83.
+4. **C and H fail** (+5.34 and +9.68): a days-since-Christmas input teaches the trees nothing with two winters, and training with random masks damages the other days (+15.7). **F does nothing** (-1.31). **The full companion beats the lean one** (M1 -10.11 against E -6.22).
+5. **Limits:** 25 seeds; one December and one January; the same 585 days; a candidate that helps is a candidate to repeat on 100 and fresh seeds, not a result; the combinations were built after the results. Any adoption is Kevin's decision and needs an amendment (and, for a model change, a new forecast-log version) first.
 
 ## Descriptive checks around Series 66-70 (no model fits)
 
