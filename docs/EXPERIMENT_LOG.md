@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-92** use the same protocol and JSONL files (`reports/experiments/series44/` to `series94/` (Series 91 was not run; Series 93 fits nothing); Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+**Series 44-92** use the same protocol and JSONL files (`reports/experiments/series44/` to `series94/` (Series 91 was not run: the idea of repeating the tests on the original model as an anchor was discarded on 14 November 2026; Series 93 fits nothing); Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
