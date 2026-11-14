@@ -1,7 +1,10 @@
-# Forecast-log versions v1.131 and v1.141: built, not yet registered (14 November 2026)
+# Forecast-log versions v1.131 and v1.141: built and registered (14 November 2026)
 
-Status: **built and tested; not committed, not registered.** Kevin asked on 14 November 2026 for v1.13 and v1.14 to be registered again as `v1.131` and `v1.141` with the hybrid stand-in for the manager's number. Nothing
-is written to the log until the amendment below is committed to the log repository (rule 1: before the registration), the code is committed and the runner is on that commit.
+Status: **registered on 14 November 2026.** The amendment is in the log's `PREREGISTRATION.md` (log commit `35c1765`), v1.131 is registered (`89d83cb`) and v1.141 is registered (`fb3b008`), both from the runner's clean
+checkout at code commit `728f148` (copies of `v1.13`'s and `v1.14`'s 15 pieces, each fingerprint equal to its parent's). The back-run rows are in the log (`09bd38c`: 28 rows for each version, one replay for each of the Monday
+runs of 2 and 9 November, each reproducing the logged v1 numbers to the penny before anything was written). The runner's untracked `config/forecast_log.local.yaml` now has `also_run: [v1.11, v1.12, v1.13, v1.14, v1.131, v1.141]`,
+so the Monday 16 November run issues all seven arms (checked by building that run in memory: 140 rows, nothing written). On the 28 replayed days (2 to 22 November) v1.131 equals v1.13 and v1.141 equals v1.14 to the penny:
+the two stand-ins agree on ordinary days, and the Christmas week is weeks away. The sections below were written before the registration and are kept as they were; the steps at the end have been carried out.
 
 ## What they are
 
