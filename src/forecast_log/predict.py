@@ -29,10 +29,12 @@ from src.experiments import run_series35_holdout as h
 from src.features import year_ago
 from src.features.payday_intensity import add_payday_intensity, add_payday_intensity_fixed
 from src.features.serving_features import WEATHER_COLS, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features
+from src.forecast_log import standin as standin_module
 from src.forecast_log import v1, v1_13
 from src.models.final_model import DATE_COL, TARGET_COL, BaggedCatBoost
 
 MODELS = ("portfolio", "post", "hydro")
+STANDIN_SUFFIX = "_manager_input"  # forecast_days adds one column `<arm>_manager_input` per further version
 
 
 @dataclass
@@ -42,6 +44,7 @@ class Models:
     pieces: dict[str, h.Bag]
     portfolio_fingerprint: str | None
     piece_fingerprints: dict[str, str]
+    standin: str = "S0"  # the stand-in for the manager's number the version is served with: S0 (the weekday-and-season median, every version up to v1.14) or S6 (the hybrid, v1.131 and v1.141)
 
     @property
     def combined_fingerprint(self) -> str:
@@ -65,13 +68,16 @@ def load_models(log_repo: Path, version: str = v1.VERSION, models_root: Path | N
             raise RuntimeError(f"model piece {name} of {version} does not match its recorded fingerprint ({got[:16]}... against {spec['fingerprint'][:16]}...)")
         pieces[name] = h.Bag.load(root / name)
         prints[name] = got
+    standin = entry.get("standin", "S0")
+    if standin not in ("S0", standin_module.NAME):
+        raise RuntimeError(f"version {version} names the stand-in {standin}, which this code does not know")
     if "portfolio_model" not in entry:  # a version without a portfolio arm (v1.11): the pieces are all it has
-        return Models(version, None, pieces, None, prints)
+        return Models(version, None, pieces, None, prints, standin)
     portfolio_print = h.fingerprint(CONFIG.path("final_model_dir"))
     if portfolio_print != entry["portfolio_model"]["fingerprint"]:
         raise RuntimeError("the deployed model files do not match the fingerprint recorded for the portfolio model")
     b, _ = BaggedCatBoost.load(CONFIG.path("final_model_dir"))
-    return Models(version, h.Bag(b.models, b.features, "log1p"), pieces, portfolio_print, prints)
+    return Models(version, h.Bag(b.models, b.features, "log1p"), pieces, portfolio_print, prints, standin)
 
 
 # --------------------------------------------------------------------------- weather, as the live API takes it
@@ -177,8 +183,11 @@ def forecast_days(models: Models, full: pd.DataFrame, last_known_day: pd.Timesta
     for extra, (extra_days, extra_pred) in extras or []:
         rows_extra = add_payday_intensity_fixed(add_payday_intensity(rows_v2, DATE_COL), DATE_COL)  # both columns computed from the date alone; a piece uses the one it was fitted with and ignores the other
         rows_extra[year_ago.COLUMN] = year_ago.year_ago_sales(rows_extra[DATE_COL], sales_known).to_numpy()  # v1.14's input, the actual sales 364 days earlier; a piece without it ignores the column
+        if extra.standin == standin_module.NAME:  # v1.131 and v1.141: the hybrid stand-in in place of the weekday-and-season median, in the manager's-number input of the target rows only
+            rows_extra["forecast_sales"] = standin_module.hybrid_standin(full, last_known_day, rows_extra[DATE_COL])
         raw = with_year_end_specialists(extra, rows_extra, sales_known, route_post(extra, rows_extra, sales_known, hydro=True))
         out[extra_arm_name(extra.version)] = h.correct_new_block(extra_days, extra_pred, targets, raw)
+        out[extra_arm_name(extra.version) + STANDIN_SUFFIX] = rows_extra["forecast_sales"].to_numpy()  # the manager's-number input this arm was given, for the log's `manager_forecast_used`
     return out
 
 

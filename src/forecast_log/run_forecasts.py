@@ -112,7 +112,8 @@ def build_rows(issue: datetime, trigger: str, run_id: str, log_repo: Path, versi
                 if d in unknown:
                     continue
                 arm = predict.extra_arm_name(extra.version)
-                rows.append({**common, "model": arm, "model_version": extra.version, "forecast": round(float(result[arm].iloc[i]), 2), "model_fingerprint": extra.combined_fingerprint})
+                rows.append({**common, "model": arm, "model_version": extra.version, "forecast": round(float(result[arm].iloc[i]), 2), "model_fingerprint": extra.combined_fingerprint,
+                             "manager_forecast_used": round(float(result[arm + predict.STANDIN_SUFFIX].iloc[i]), 2)})  # the stand-in this version was given (the hybrid's differs from the main arm's)
             if with_holiday_rule:  # the rule's number on the closed days and Boxing Day only; the models' rows above stay what the models said
                 value = hrule.rule_forecast(pd.Timestamp(d), hrule.boxing_day_level(known, pd.Timestamp(d), DATE_COL, TARGET_COL))
                 if value is not None:

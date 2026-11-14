@@ -92,6 +92,7 @@ def _fake_replay(monkeypatch, offset=0.0):
             out[f"{model}_logged"] = 100.0 + offset
         for v in also:
             out[f"hydro_{v}"] = 123.456
+            out[f"hydro_{v}{replay_run.predict.STANDIN_SUFFIX}"] = 5000.0  # the manager's-number input the version was given (the same as the run's own for a version on the old stand-in)
         return out
 
     monkeypatch.setattr(replay_run, "replay", fake)
@@ -115,7 +116,7 @@ def test_replayed_rows_are_labelled_and_copy_the_runs_own_row(tmp_path, monkeypa
     row = rows[0]
     assert row["on_time"] == "replay" and row["forecast"] == 123.46 and row["model_version"] == "early" and row["model_fingerprint"] == "print-early" and row["code_commit"] == "new"
     assert row["issue_time"] == NOW.isoformat(timespec="seconds")  # when it was really made
-    assert row["data_through"] == "2026-11-01" and row["weather_source"] == "forecast" and row["manager_forecast_used"] == "5000.0"  # as of that Monday
+    assert row["data_through"] == "2026-11-01" and row["weather_source"] == "forecast" and row["manager_forecast_used"] == 5000.0  # as of that Monday; the stand-in the version itself was given
     assert run["trigger"] == "replay" and run["reason"] == "replay of a with early" and row["run_id"] == run["run_id"]
 
 

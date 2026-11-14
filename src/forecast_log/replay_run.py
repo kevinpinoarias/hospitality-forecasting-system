@@ -116,7 +116,8 @@ def replay_rows(out: pd.DataFrame, log_repo: Path, run_id: str, fingerprints: di
         for version, fingerprint in fingerprints.items():
             arm = predict.extra_arm_name(version)
             rows.append({**logged.loc[key].to_dict(), "run_id": replay_id, "issue_time": issued, "model": arm, "model_version": version, "forecast": round(float(day[arm]), 2),
-                         "model_fingerprint": fingerprint, "code_commit": commit, "on_time": REPLAY_LABEL})
+                         "model_fingerprint": fingerprint, "code_commit": commit, "on_time": REPLAY_LABEL,
+                         "manager_forecast_used": round(float(day[arm + predict.STANDIN_SUFFIX]), 2)})  # the stand-in this version was given
     return rows
 
 
