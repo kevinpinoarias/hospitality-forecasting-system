@@ -77,7 +77,7 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
 
-**Series 44-90** use the same protocol and JSONL files (`reports/experiments/series44/` to `series90/`; Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+**Series 44-92** use the same protocol and JSONL files (`reports/experiments/series44/` to `series94/` (Series 91 was not run; Series 93 fits nothing); Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
 are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
 each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
 checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
@@ -4947,6 +4947,109 @@ Combinations built afterwards from the stored forecasts (not fitted, not in the 
 3. **B helps modestly and differently** (-3.02): it improves the other days (-3.16) but not late December (+81); with the companion -8.83.
 4. **C and H fail** (+5.34 and +9.68): a days-since-Christmas input teaches the trees nothing with two winters, and training with random masks damages the other days (+15.7). **F does nothing** (-1.31). **The full companion beats the lean one** (M1 -10.11 against E -6.22).
 5. **Limits:** 25 seeds; one December and one January; the same 585 days; a candidate that helps is a candidate to repeat on 100 and fresh seeds, not a result; the combinations were built after the results. Any adoption is Kevin's decision and needs an amendment (and, for a model change, a new forecast-log version) first.
+
+## Series 92 — The Year-End Candidates on the Rest of the Seeds
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series92_year_end_seeds_repeat.py` · Results: `reports/experiments/series92/` (seeds 225-299 and fresh seeds 300-399)
+
+### Context
+
+Series 90 (25 seeds, served with the S6 stand-in) ranked the specialist windows M1 first (-10.11) with the combinations D + the companion (-8.62) and B + the companion (-8.83) within 1.5 of it, inside 25-seed noise. Kevin asked for the seeds to be repeated to see whether the difference was only noise.
+
+### Method
+
+D (the ten history inputs rebuilt without 24 December-2 January) and B (`sales_364`, the sales on the same weekday 364 days earlier, as an input) refitted in the four pieces on seeds 225-299 (with Series 90's 25, all 100 seeds) and on fresh seeds 300-399, served with S6; compared with the unmasked package, the 1 to 8 January masked model and the companion (Series 89's S6-served fits on the same seeds); 280 tasks. Packages: M1, D, D + the companion on 26-31 December, D + the masked model + the companion, B, B + the companion. Reading written beforehand: M1 ahead if better than the candidate by more than 2.0 on both seed sets; tied if within 2.0 on both; the candidate ahead if better by more than 2.0 on both; mixed otherwise.
+
+### Results
+
+Net change against the unmasked package (pounds a day; negative = better):
+
+| Package (served with S6) | 25 seeds (Series 90) | All 100 seeds | Fresh 300-399 | 26-31 Dec (100 / fresh) | 1-8 Jan (100 / fresh) | Other days (100 / fresh) |
+|---|---|---|---|---|---|---|
+| M1 specialist windows | -10.11 | **-10.95** | **-10.65** | -575 / -548 | -349 / -345 | -0.29 / -0.31 |
+| D history inputs without the Christmas break | -4.76 | -6.36 | -5.57 | -147 / -152 | -316 / -322 | -0.53 / +0.39 |
+| D + the companion on 26-31 Dec | -8.62 | -10.69 | -9.59 | -570 / -544 | -316 / -322 | -0.53 / +0.39 |
+| D + the masked model on 1-8 Jan + the companion | -8.77 | -11.43 | -10.17 | -570 / -544 | -349 / -343 | -0.84 / +0.10 |
+| B year-ago sales input | -3.02 | -6.42 | -8.33 | +7 / +43 | -52 / -52 | **-5.93 / -8.26** |
+| B + the companion on 26-31 Dec | -8.83 | **-12.00** | **-14.00** | -560 / -534 | -52 / -52 | -5.68 / -8.01 |
+
+Readings set beforehand: D against M1 **M1 AHEAD** (+4.60, +5.08); D + the companion **TIED** (+0.26, +1.06); D + the masked model + the companion **TIED** (-0.48, +0.49); B against M1 **M1 AHEAD** (+4.53, +2.32); B + the companion **MIXED** (-1.05 on the 100 seeds, -3.35 on the fresh seeds, the candidate ahead on both but by more than 2.0 only on the fresh seeds).
+
+### Conclusion
+
+1. **The specialist windows hold up** (-10.95 and -10.65 on 100 and fresh seeds), and **the 25-seed gap to the simpler alternatives was mostly noise**: D + the companion is tied with M1 (-10.69 and -9.59), so replacing the masked January model by the break-free history inputs loses nothing measurable. D alone does not match M1 (it lacks the late-December gain, -147 against -575).
+2. **B is not a year-end fix, but its gain is uneven rather than general**: year-ago sales as an input improve the days outside the windows by 5.9 and 8.3 pounds a day (100 and fresh seeds; 3.2 on 25 seeds) while doing nothing for late December (+7, +43); the spread below shows the gain sits on Monday to Thursday and Saturday, in December-February and June-August, and that Sundays and early 2025 get worse. B + the companion is the best package numerically (-12.00 and -14.00, 1.1 and 3.4 below M1), but its edge over M1 comes from B's gain on other days, not from the holidays, so it belongs to the general feature question (the joint feature check on the to-do list), not to the year-end fix.
+3. **What each choice would be**: M1 (a masked January model and the companion, two special models); D + the companion (an input change for every piece and the companion, one special model, equal to M1 within noise); either needs a refit and a new forecast-log version; B is an input change for every piece. The stand-in change (Series 89) is separate and needs no refit.
+4. **Limits:** the same 585 days, so this checks the seeds and not the days; one December and one January; the combinations were built after Series 90; B has no value for the first year of training rows (655 of 1,006 have it). Any adoption is Kevin's decision and needs an amendment (and, for a model change, a new forecast-log version) first.
+
+### Afterwards: how B's gain is spread (100 seeds, served with S6, from the stored forecasts)
+
+The package's average miss goes from 892 to 885 pounds a day (-6.42, 0.7%); 56% of the 585 days improve and 44% get worse. By weekday (change in the average miss; negative = better): Monday -12.0, Tuesday -15.1, Wednesday -6.4, Thursday -16.4, Friday -5.9, Saturday -7.9, **Sunday +18.6** (only 46% of Sundays improve). By month it is uneven: the gain is in December 2025 to February 2026 (-39, -40, -44) and June to August (-12 to -20 in both years), while January to March 2025 (+29, +31, +12: the early folds are trained on rows that mostly have no year-ago value, since the data starts in January 2024) and March to May 2026 (+7, +11, +16) get worse; by year 2025 -4.1 and 2026 -9.6. The 30 best days alone sum to -9,010 pounds against a total change of -3,758: single days swing by up to 400 to 560 pounds either way. So the input helps in the winter holiday season and the summer, hurts on Sundays and where the model has little year-ago history, and a version of it for v1.14 should be settled by a test that tries it without the Sunday piece.
+
+## Series 93 — The Form of v1.14 (the Year-Ago Sales Input) Against Its Parent v1.13
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series93_v114_form.py` (no new fits: composed from stored forecasts) · Results: `reports/experiments/series93/` · Chart: `reports/versions/sunday_v13_v14.png`
+
+### Context
+
+The version plan: v1.13 is the hydro arm of v1.12 with the year-end specialist models, v1.14 is v1.13 plus `sales_364` (the sales on the same weekday 364 days earlier). Series 90/92 found a modest, uneven gain with Sunday worse (+18.6 against the unmasked package). Kevin asked to run it for Monday to Saturday and to see the Sunday forecasts of v1.13 against v1.14, read against the parent, which is what the log's Q8 would compare.
+
+### Method
+
+Served with S6, the deployed weekend correction, 585 days, with v1.13's specialist routing in every package (the companion on 26-31 December, the masked model on 1-8 January; they are not refitted with the input). V13 = the unmasked pieces outside the windows; the forms put `sales_364` in all four pieces, in Monday-Thursday, Friday and Saturday, in Monday-Friday, or in Monday-Thursday only (Series 90's 25 seeds plus Series 92's 75, and the fresh seeds). Reading written beforehand: helps if the net change is at most -2.0 on both seed sets; leaving Sunday out is better than all pieces if lower by more than 2.0 on both.
+
+### Results
+
+Net change against v1.13 over the 585 days (pounds a day; negative = better); v1.13's own average miss is 881:
+
+| v1.14 form (against its parent v1.13; served with S6) | All 100 seeds | Fresh 300-399 | Sunday (100 / fresh) |
+|---|---|---|---|
+| the input in all four pieces | -5.95 | -8.18 | **+14.45 / +10.79** |
+| **Monday-Saturday (the Sunday piece stays v1.13's)** | **-8.03** | **-9.73** | 0.00 / 0.00 |
+| Monday-Friday | -7.07 | -6.92 | 0 |
+| Monday-Thursday only | -6.08 | -5.35 | 0 |
+
+Readings set beforehand: every form HELPS (at least 2.0 better on both seed sets); leaving Sunday out is **not clearly better** than all pieces (-2.07 on the 100 seeds, -1.55 on the fresh seeds). By weekday the gain with Monday-Saturday is Monday -7.6/-6.8, Tuesday -12.9/-13.7, Wednesday -6.0/-6.6, Thursday -16.1/-10.4, Friday -7.0/-11.1, Saturday -6.7/-19.5 (100 / fresh seeds). The Sunday chart (84 Sundays, 100 seeds): the average miss is 1,151 for v1.13, 1,166 with the input in the Sunday piece and 1,151 for Monday-Saturday (Sunday forecasts identical to v1.13's, the correction does not carry the other days' changes into them); with the input in the Sunday piece 44 Sundays get worse and 40 better, average +14.4.
+
+### Conclusion
+
+1. **The year-ago input helps v1.13 on Monday to Saturday**: -8.03 and -9.73 pounds a day (about 1% of the average miss), the best form tested, on both seed sets.
+2. **Sunday is a coin flip with a small cost**: +14 and +11 a day when the Sunday piece gets the input (44 of 84 Sundays worse); leaving it out gains 1.6 to 2.1 a day, short of the 2.0 bar on the fresh seeds, so excluding Sunday is a sensible default, not a proven necessity.
+3. **The comparison is the right one for the version**: v1.14 = v1.13 + the input, scored against v1.13; with Sunday left alone its Sunday forecasts equal v1.13's exactly.
+4. **Limits:** the same 585 days (one December, one January); the gain is uneven over the year (winter and summer better, early 2025 and spring 2026 worse); the specialist models are not refitted with the input, which is a registration question; v1.14 needs an amendment, a refit, forecasts back-run from 2 November, and Kevin's go-ahead. The exact form (the same weekday against, say, the average of the days around last year's date) is not yet tested.
+
+## Series 94 — The Exact Form of the Year-Ago Input of v1.14
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series94_year_ago_forms.py` · Results: `reports/experiments/series94/` (25 seeds, 200-224) · Plan and reading: `docs/JANUARY_DECEMBER_CANDIDATES_2026_11.md` (written before the run)
+
+### Context
+
+Series 93: v1.14 (v1.13 plus a year-ago sales input) is best as `sales_364`, the sales on the same weekday 364 days earlier, in the Monday-Thursday (hydro), Friday and Saturday pieces (-8.03 and -9.73 pounds a day on 100 and fresh seeds). Kevin asked for the exact form to be tested, for instance the average around last year's date, with any other candidates.
+
+### Method
+
+Five other forms, each a new input (F two) added to the three pieces, the Sunday piece being v1.13's own: B the same calendar date 365 days earlier; C the average of the same weekday 357, 364 and 371 days earlier; D the average of the 7 days centred on last year's date (361 to 367 days earlier); E `sales_364` over D; F `sales_364` and D together. 75 fits on seeds 200-224, served with S6, read against v1.13 with its specialist routing and against the reference A (Series 90's fits on the same seeds). Reading written beforehand: better than A if at least 2.0 below it, tied within 2.0, worse above.
+
+### Results
+
+| Form (Monday-Saturday; served with S6; 25 seeds) | Net against v1.13 | Against A | Reading |
+|---|---|---|---|
+| **A `sales_364`, the same weekday 364 days earlier (the reference)** | **-5.16** | | |
+| B `sales_365`, the same calendar date | +0.66 | +5.82 | WORSE than A |
+| C `ya_wk3`, the same weekday averaged over three weeks around last year's date | +1.40 | +6.56 | WORSE than A |
+| D `ya_c7`, the 7 days centred on last year's date (Kevin's suggestion) | +1.36 | +6.52 | WORSE than A |
+| E `ya_ratio`, last year's day over its own week | -1.46 | +3.70 | WORSE than A |
+| F `sales_364` and `ya_c7` together | -2.66 | +2.49 | WORSE than A (helps against v1.13) |
+
+Row counts: `sales_364` has a value on 655 of the 1,006 rows, `sales_365` on 654, C, D and E on 646. By weekday (change against v1.13) the forms disagree: D is +27 on Friday and +13 on Wednesday, C +21 on Saturday and +18 on Friday, while A is best on Thursday (-18) and Tuesday (-16) and weakest on Saturday (+5 on these seeds).
+
+### Conclusion
+
+1. **Nothing beat `sales_364`**: every other form is more than 2.0 pounds a day worse than the reference (by 2.5 to 6.6), and four of the five do not help v1.13 at all.
+2. **Smoothing the year-ago value loses the information**: the average around last year's date (D: +1.36) and the three-week same-weekday average (C: +1.40) are both worse than the single same weekday, which keeps last year's weekday pattern and its one-off events; lining up the date and losing the weekday (B: +0.66) is worse too.
+3. **Adding a second input does not help** (F, with both: -2.66 against A's -5.16): at about 650 rows with a value an extra noisy input dilutes the one that works. The ratio form (E: -1.46) is the best of the others and still 3.7 behind.
+4. **So v1.14 keeps `sales_364`** in the Monday-Thursday (hydro), Friday and Saturday pieces. A is -5.16 on these 25 seeds against -8.03 on the 100 seeds (seed noise of about 3); no form was close enough to A to warrant repeating on more seeds.
+5. **Limits:** 25 seeds; the same 585 days; one untested form of a different kind remains, a growth-adjusted year-ago value (last year's day scaled by how this year's recent level compares with last year's at the same time), which was not part of this series; the exact form is then a registration choice, Kevin's, with an amendment and a refit first.
 
 ## Descriptive checks around Series 66-70 (no model fits)
 
