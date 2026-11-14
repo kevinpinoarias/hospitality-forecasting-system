@@ -26,9 +26,10 @@ import pandas as pd
 from src.api.weather import fetch_live_weather, live_weather_end
 from src.config import CONFIG
 from src.experiments import run_series35_holdout as h
+from src.features import year_ago
 from src.features.payday_intensity import add_payday_intensity, add_payday_intensity_fixed
 from src.features.serving_features import WEATHER_COLS, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features
-from src.forecast_log import v1
+from src.forecast_log import v1, v1_13
 from src.models.final_model import DATE_COL, TARGET_COL, BaggedCatBoost
 
 MODELS = ("portfolio", "post", "hydro")
@@ -122,16 +123,38 @@ def lags_known(sales_known: pd.Series, dates: pd.Series, lags: tuple[int, ...]) 
     return ok.reindex(pd.DatetimeIndex(dates)).fillna(False).to_numpy()
 
 
-def route_post(models: Models, rows: pd.DataFrame, sales_known: pd.Series, hydro: bool) -> np.ndarray:
-    """The post (or hydro) model's raw forecasts for `rows` (before the weekend correction). `rows` must carry the `hydro_thu` column when hydro is True."""
+def route_post(models: Models, rows: pd.DataFrame, sales_known: pd.Series, hydro: bool, prefix: str = "", masked: tuple[str, ...] | list[str] = ()) -> np.ndarray:
+    """The post (or hydro) model's raw forecasts for `rows` (before the weekend correction). `rows` must carry the `hydro_thu` column when hydro is True.
+    `prefix` picks a specialist set of the same pieces (v1.13's `comp_` and `mask_`); `masked` lists inputs set to missing before the pieces predict (the routing itself is decided on the unmasked inputs)."""
     w = h.with_weekend(rows, sales_known)
     wd = h.weekday_names(rows[DATE_COL])
-    base = models.pieces["log_hydro_thu" if hydro else "log"].predict(rows)
-    out = np.where(wd == "Friday", np.where(lags_known(sales_known, rows[DATE_COL], (7, 14, 21, 28)), models.pieces["fri_A_all"].predict(w), base), base)
+    friday_ok = lags_known(sales_known, rows[DATE_COL], (7, 14, 21, 28))
     sat_ok = w[h.EXTRA["Saturday"]].notna().all(axis=1).to_numpy()
-    saturday = np.where(sat_ok, models.pieces["sat_A_lags"].predict(w), models.pieces["raw"].predict(rows))
+    if masked:
+        rows, w = rows.copy(), w.copy()
+        for frame in (rows, w):
+            for c in masked:
+                if c in frame.columns:
+                    frame[c] = np.nan
+    piece = lambda name: models.pieces[prefix + name]  # noqa: E731
+    base = piece("log_hydro_thu" if hydro else "log").predict(rows)
+    out = np.where(wd == "Friday", np.where(friday_ok, piece("fri_A_all").predict(w), base), base)
+    saturday = np.where(sat_ok, piece("sat_A_lags").predict(w), piece("raw").predict(rows))
     out = np.where(wd == "Saturday", saturday, out)
-    return np.where(wd == "Sunday", models.pieces["sun_B"].predict(w), out)
+    return np.where(wd == "Sunday", piece("sun_B").predict(w), out)
+
+
+def with_year_end_specialists(models: Models, rows: pd.DataFrame, sales_known: pd.Series, raw: np.ndarray) -> np.ndarray:
+    """v1.13's rule: on 26 to 31 December the companion pieces (no recent-sales inputs) forecast, on 1 to 8 January the masked pieces with the ten inputs set to missing; every other day keeps `raw`.
+    A version without the specialist pieces is returned unchanged."""
+    if v1_13.COMPANION_PREFIX + "log_hydro_thu" not in models.pieces:
+        return raw
+    out = np.array(raw, dtype=float)
+    for prefix, window, masked in ((v1_13.COMPANION_PREFIX, v1_13.COMPANION_WINDOW, ()), (v1_13.MASK_PREFIX, v1_13.MASK_WINDOW, v1_13.INPUTS)):
+        selected = v1_13.in_window(rows[DATE_COL], *window)
+        if selected.any():
+            out[selected] = route_post(models, rows[selected].reset_index(drop=True), sales_known, hydro=True, prefix=prefix, masked=masked)
+    return out
 
 
 def extra_arm_name(version: str) -> str:
@@ -153,7 +176,9 @@ def forecast_days(models: Models, full: pd.DataFrame, last_known_day: pd.Timesta
                         "forecast_sales_input": rows_v2["forecast_sales"].to_numpy()})
     for extra, (extra_days, extra_pred) in extras or []:
         rows_extra = add_payday_intensity_fixed(add_payday_intensity(rows_v2, DATE_COL), DATE_COL)  # both columns computed from the date alone; a piece uses the one it was fitted with and ignores the other
-        out[extra_arm_name(extra.version)] = h.correct_new_block(extra_days, extra_pred, targets, route_post(extra, rows_extra, sales_known, hydro=True))
+        rows_extra[year_ago.COLUMN] = year_ago.year_ago_sales(rows_extra[DATE_COL], sales_known).to_numpy()  # v1.14's input, the actual sales 364 days earlier; a piece without it ignores the column
+        raw = with_year_end_specialists(extra, rows_extra, sales_known, route_post(extra, rows_extra, sales_known, hydro=True))
+        out[extra_arm_name(extra.version)] = h.correct_new_block(extra_days, extra_pred, targets, raw)
     return out
 
 

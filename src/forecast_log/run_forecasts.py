@@ -9,8 +9,8 @@ For every forecast type the run makes the three models (portfolio, post, hydro) 
 weather the live API would use, and logs the seasonal baseline as a benchmark; the manager's own number is added afterwards, when the export brings it (score_forecasts.py). The weather the run
 used is saved to log/weather_used.csv. A run issued after its deadline is labelled `late`. A run that cannot proceed (models changed, features missing, ...) writes an `aborted` line to runs.csv
 with the reason and makes no forecast. Settings: config/forecast_log.yaml (the log repository and the model version to use), overridden by config/forecast_log.local.yaml (not tracked).
-`also_run: [v1.11]` (a setting, off by default) issues a further registered version's hydro arm beside the main version, as rows named `hydro_v1.11`; the version must be registered and its models and
-correction history present, or the run aborts and says so.
+`also_run: [v1.11, v1.12, v1.13, v1.14]` (a setting, off by default) issues further registered versions' hydro arms beside the main version, as rows named `hydro_v1.11` and so on; each version must be registered
+and its models and correction history present, or the run aborts and says so. v1.13 and v1.14 carry specialist pieces for 26 December to 8 January (predict.with_year_end_specialists).
 `holiday_rule: true` (a setting, off by default) adds the holiday rule's rows (model `holiday_rule`, src/forecast_log/holiday_rule.py: 0 on 25 December and 1 January, the earlier Boxing Days' mean on 26 December)
 for those days only, beside the models' own rows.
 """
