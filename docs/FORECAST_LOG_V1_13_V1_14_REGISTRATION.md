@@ -1,8 +1,10 @@
-# Forecast-log versions v1.13 and v1.14: built, not registered (14 November 2026)
+# Forecast-log versions v1.13 and v1.14: built and registered (14 November 2026)
 
-Status: the code, the tests and the dry-run fits are done. **Nothing is registered**: no amendment is in the log's `PREREGISTRATION.md`, `models/versions.json` has no v1.13 or v1.14, and no model file of either exists
-outside a scratch folder. Registration is a separate step (the amendment first, then the fits), and it is Kevin's decision. This file holds what was built, how it was checked, the amendment text ready to paste, and the
-steps to take.
+Status: **registered on 14 November 2026.** The amendment is in the log's `PREREGISTRATION.md` (log commit `e1f668b`), v1.13 is registered (`8472338`) and v1.14 is registered (`030d462`), both fitted from the runner's clean checkout at
+code commit `b22eeb9` on data to 1 November 2026, and the back-run rows are in the log (`f42be26`: 28 rows for each version, one replay for each of the Monday runs of 2 and 9 November, each made with only the sales
+data and the saved weather of that Monday, and each reproducing the logged v1 numbers to the penny before anything was written). The runner's untracked `config/forecast_log.local.yaml` now has `also_run: [v1.11, v1.12, v1.13, v1.14]`,
+so the Monday 16 November run issues all five arms. On the 28 matched days v1.13 equals v1.12 exactly (its windows are weeks away) and v1.14 differs from v1.13 Monday to Saturday and not on Sundays. The sections below were
+written before the registration and are kept as they were; the steps at the end have been carried out.
 
 ## What was built
 

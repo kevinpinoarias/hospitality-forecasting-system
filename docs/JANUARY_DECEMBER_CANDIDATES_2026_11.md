@@ -48,7 +48,7 @@ weekend correction. Every candidate is **served with the S6 stand-in** (the best
 * **limits**: one December and one January in the backtest; 25 seeds; the same 585 days; the weather is the real weather; the stand-in is built from the fold's training rows; a candidate that helps is a candidate to repeat on
   100 and fresh seeds, not a result; adopting any of them is Kevin's decision and needs an amendment (and, for a model change, a new forecast-log version) first.
 
-## The version plan (agreed with Kevin, 9 November 2026; built 14 November 2026 but not registered, see `docs/FORECAST_LOG_V1_13_V1_14_REGISTRATION.md`)
+## The version plan (agreed with Kevin, 9 November 2026; built and registered 14 November 2026, see `docs/FORECAST_LOG_V1_13_V1_14_REGISTRATION.md`)
 
 How the versions stack. Only the hydro arm is extended; the portfolio and post arms stay frozen as benchmarks. Each version is a copy of the previous hydro arm with one idea, runs beside its parent, and is scored against it.
 
