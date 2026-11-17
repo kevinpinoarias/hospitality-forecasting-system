@@ -130,3 +130,11 @@ def test_nothing_is_returned_when_a_replay_does_not_reproduce_the_log(tmp_path, 
     _fake_replay(monkeypatch, offset=5.0)
     with pytest.raises(RuntimeError, match="nothing is written"):
         replay_run.backfill(_backfill_log(tmp_path), ("early",), NOW, "new")
+
+
+def test_a_reissue_is_replayed_from_the_day_its_leads_point_back_to():
+    made = datetime.fromisoformat("2026-11-17T21:30:00+01:00")
+    logged = pd.DataFrame({"target_date": ["2026-11-16", "2026-11-23"], "lead_days": [0, 7]})
+    assert replay_run.issued_for(logged, made) == datetime.fromisoformat("2026-11-16T21:30:00+01:00")
+    normal = datetime.fromisoformat("2026-11-09T12:51:20+01:00")
+    assert replay_run.issued_for(pd.DataFrame({"target_date": ["2026-11-09"], "lead_days": [0]}), normal) == normal

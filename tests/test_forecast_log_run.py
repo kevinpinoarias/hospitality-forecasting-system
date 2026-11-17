@@ -239,3 +239,26 @@ def test_the_manager_number_is_recorded_once_when_the_export_brings_it(tmp_path)
     assert sf.update_manager(tmp_path, features) == 0  # never added twice
     recorded = pd.read_csv(tmp_path / "log" / "manager_forecasts.csv")
     assert list(recorded["target_date"]) == ["2026-11-09"] and list(recorded["manager_forecast"]) == [1000.0]
+
+
+def test_a_reissue_counts_its_days_from_the_withdrawn_run_and_is_late_when_made_after_the_deadline():
+    from src.forecast_log import run_forecasts
+    monday = at("2026-11-16T12:30:00")
+    assert run_forecasts.label(schedule.THIS_WEEK, monday, monday) == "on_time"
+    assert run_forecasts.label(schedule.THIS_WEEK, monday, at("2026-11-16T23:00:00")) == "on_time"  # the same day, before the deadline
+    assert run_forecasts.label(schedule.THIS_WEEK, monday, at("2026-11-17T21:30:00")) == "late"
+    assert run_forecasts.label(schedule.NEXT_WEEK, monday, at("2026-11-17T21:30:00")) == "late"
+
+
+def test_only_a_withdrawn_run_is_reissued_with_the_weather_it_saved(tmp_path):
+    from src.forecast_log import run_forecasts
+    (tmp_path / "log").mkdir()
+    pd.DataFrame({"run_id": ["w", "k"], "issue_time": ["2026-11-16T12:30:31+01:00", "2026-11-09T12:51:20+01:00"], "trigger": ["monday"] * 2, "status": ["withdrawn", "ok"], "reason": ["", ""],
+                  "data_through": ["2026-11-08"] * 2, "forecast_types_made": ["NW+TW"] * 2, "code_commit": ["c"] * 2}).to_csv(tmp_path / "log" / "runs.csv", index=False)
+    pd.DataFrame({"run_id": ["w", "w", "k"], "date": ["2026-11-16", "2026-11-17", "2026-11-16"], "max_temp": [3.7, 6.4, 99.0], "rain_mm": [0.0, 7.1, 0.0], "sun_hours": [8.0, 0.0, 0.0],
+                  "fetched_at": ["2026-11-16T12:31:04+01:00"] * 2 + ["x"]}).to_csv(tmp_path / "log" / "weather_used.csv", index=False)
+    issue, weather, fetched = run_forecasts.withdrawn_run(tmp_path, "w")
+    assert issue == datetime.fromisoformat("2026-11-16T12:30:31+01:00") and fetched == "2026-11-16T12:31:04+01:00"
+    assert weather["max_temp"].tolist() == [3.7, 6.4] and list(weather.columns) == ["date", "max_temp", "rain_mm", "sun_hours"]
+    with pytest.raises(RuntimeError, match="only a withdrawn run"):
+        run_forecasts.withdrawn_run(tmp_path, "k")

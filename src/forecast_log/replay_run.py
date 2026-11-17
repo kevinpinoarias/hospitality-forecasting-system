@@ -53,18 +53,26 @@ def features_as_of(full: pd.DataFrame, data_through: pd.Timestamp) -> pd.DataFra
     return full[full[DATE_COL] <= data_through].reset_index(drop=True)
 
 
+def issued_for(logged: pd.DataFrame, issue: datetime) -> datetime:
+    """The time a run's days and leads count from: its issue time, or for a reissue of a withdrawn run (made later, with the earlier run's days), the day its leads point back to."""
+    if logged.empty:
+        return issue
+    day = (pd.to_datetime(logged["target_date"]) - pd.to_timedelta(logged["lead_days"].astype(int), unit="D")).min().date()
+    return datetime.combine(day, issue.timetz()) if day < issue.date() else issue
+
+
 def replay(log_repo: Path, run_id: str, also: tuple[str, ...], version: str = v1.VERSION) -> pd.DataFrame:
     """One row per forecast type and target day: the main version's portfolio, post and hydro forecasts, the further versions' hydro arms, the stand-in manager number, and what the run logged."""
     row = run_row(log_repo, run_id)
-    issue = datetime.fromisoformat(row["issue_time"])
+    logged = pd.read_csv(log_repo / "log" / "forecasts.csv", dtype={"variant": str})
+    logged = logged[logged["run_id"] == run_id]
+    issue = issued_for(logged, datetime.fromisoformat(row["issue_time"]))
     last_known = pd.Timestamp(row["data_through"])
     full = features_as_of(h.load_engineered(run_forecasts.FEATURES), last_known)
     weather = run_weather(log_repo, run_id)
     models = predict.load_models(log_repo, version)
     history = v1.load_correction_history(v1.correction_history_path(version))
     extras = [(m, v1.load_correction_history(v1.correction_history_path(m.version))) for m in (predict.load_models(log_repo, v) for v in also)]
-    logged = pd.read_csv(log_repo / "log" / "forecasts.csv", dtype={"variant": str})
-    logged = logged[logged["run_id"] == run_id]
     frames = []
     for ftype in schedule.forecast_types_for(row["trigger"]):
         targets = [d for d in schedule.target_dates(ftype, issue) if pd.Timestamp(d) > last_known]
