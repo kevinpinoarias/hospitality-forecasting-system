@@ -1,6 +1,6 @@
 # MCP server for the forecasting tools (design record)
 
-Status: **accepted**, Phase 1 built on 21 November 2026 (branch `mcp-server`, from `Product-branch`). Decisions are Kevin's; the reasoning is recorded here so it can be picked up again.
+Status: **accepted**. Phase 1 built on 21 November 2026 (branch `mcp-server`), Phase 2 the same day (branch `mcp-phase2`), both from `Product-branch`. Decisions are Kevin's; the reasoning is recorded here so it can be picked up again.
 
 ## 1. Problem
 
@@ -42,15 +42,36 @@ An MCP server, `src/mcp_server/`, built with the official Python SDK (`mcp`, Fas
 - Each user runs the server on their own computer, so each needs the repository, Python and `requirements-mcp.txt`. For a team this is the point where a remote MCP server (HTTP, sign-in, shared data) would make sense - which would be a deployment, and is not part of this work.
 - The forecasting API has no authentication (a Phase 0 decision); the server reads only what that public API already serves.
 
-## 5. Where MCP is not needed
+## 5. Phase 2: the Gradio agent as an MCP client (21 November 2026)
+
+Built on Kevin's go, with his choices:
+
+- **A switch, off by default.** `ASSISTANT_TOOLS=mcp` makes the agent load its eight tools through the MCP server (`langchain-mcp-adapters`); anything else keeps the direct Python functions. The deployed app is unchanged: it does not set the switch, and its image needs neither the adapter nor the server. Turning it on in production belongs to the "publish later" step (the assistant image would then need `src/mcp_server/` and `mcp`).
+- **One shared session** (`src/assistant/mcp_tools.py`). The adapter's default opens a new session - a new server process - for every tool call. Instead the server is started once and one session stays open on a background thread with its own event loop. The adapter's tools only run asynchronously, so each agent call runs as `ainvoke` on that loop behind the same blocking `invoke` the app and the evaluation already use. The agent, its tool loop (LangChain's `create_agent`) and the system prompt are unchanged; the tool names are the same. Not handled yet: if the server process dies, calls fail until the app is restarted (no automatic reconnect).
+- **What Gemini sees differs slightly:** through MCP each tool's description is the MCP one (the assistant's docstring plus the reading rules and, for the two forecast tools, the "sales, not weather" lead-in), and a tool result arrives as a text block rather than a JSON string. The evaluator now reads both shapes.
+
+**Evaluation (the 19 cases, 20 turns), each mode run twice, same day, same questions:**
+
+| Run | Turns | Issues flagged | Tool choices |
+|---|---|---|---|
+| Direct, run 1 | 20 | 1 (turn 1: names "Monday") | baseline |
+| Direct, run 2 | 20 | 0 | identical to run 1 except turn 11 (run 1 also called `get_top_best_days`) |
+| MCP, run 1 | 11 of 20 | 1 (turn 1: names "Monday") | stopped by Gemini's rate limit (429), not by MCP |
+| MCP, run 2 | 20 | 0 | identical to direct run 2 |
+| MCP, run 3 (repeat of run 1) | 20 | 2 (turn 1: "Monday"; turn 10: "Friday") | identical to direct run 2 |
+
+No difference that can be put down to MCP: every MCP run chose exactly the tools the direct runs chose, and the only flags are one kind (a weekday named that is not the asked date's own) that appears in both modes. For a Saturday such as 28 November 2026 the tool result itself holds the Friday payday before it and the Monday St Andrew's Day bank holiday after it, so these flags are most likely the weekday check being too strict rather than wrong answers; the evaluation prints only the flag, not the answer, so this is not confirmed. Gemini's answers vary between runs either way.
+
+**Latency** (`scripts/measure_mcp_latency.py`, medians, 21 November 2026): a tool call through MCP over the shared session adds about **3 ms** with no network (get_model_comparison: 0.0 against 2.7 ms) and about **13 ms** on a live API call (get_forecast: 682 against 694 ms) - negligible next to the API and Gemini; the adapter's default of a new session per call adds about **2.7 s** to every call (starting a server process), which is why the session is shared.
+
+## 6. Where MCP is not needed
 
 - **The customer-facing Gradio app.** Its users chat with the Gemini agent; MCP adds nothing they can see. Phase 2 would make the agent an MCP client for the architectural gain (one tool layer), not for them.
 - **The maintainer's own questions.** Claude Code already answers them; the MCP adds consistency (tested tools instead of improvised scripts), not new reach.
 - **Multi-site support.** If all sites share one database, a site is a parameter of the existing tools and the API, not a reason for MCP.
 - **The forecasting itself.** Already a separate service; MCP changes nothing about how numbers are computed.
 
-## 6. Parked and later
+## 7. Parked and later
 
 - **Manager event flags (reason 3): parked by Kevin on 21 November 2026** so Phase 1 is read-only. The design when it comes back: a `propose_event_flag` MCP tool that stores a pending flag only; approval and rejection only through a CLI outside any AI client's reach; an append-only, hash-chained store; approved flags shown beside the unchanged model figure with a clamped, clearly labelled manager adjustment. Open: where the store lives (one machine or shared), and no Approve button on the public Gradio app (anonymous visitors; Cloud Run's disk is wiped on scale-to-zero).
-- **Phase 2** (only on Kevin's go): the Gradio agent loads the tools through `langchain-mcp-adapters`; re-run the 19-case evaluation against the direct-tool baseline; measure the per-call latency of MCP against direct calls and add it here.
 - **Going public:** `Product-branch` (and this branch) are published to the public repository later, as their own planned step, because merging into `main` also retrains and redeploys the live model.

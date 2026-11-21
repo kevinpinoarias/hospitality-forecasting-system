@@ -596,6 +596,8 @@ Run by hand it just waits on stdin - normally the MCP client starts it. By defau
 
 Restart Claude Desktop; the eight tools appear under the tools menu. Try "What's the forecast for Christmas Eve?", "Give me the forecast for every day of the week before Christmas" or "Which ten days did the manager's own forecast miss by the most?". The first answer after a while can take up to a minute: the API on Cloud Run scales to zero when idle.
 
+**The chat assistant through MCP (optional, local).** The Gemini assistant can load the same eight tools through this server instead of importing them: set `ASSISTANT_TOOLS=mcp` before `python -m src.assistant.app` (needs `pip install langchain-mcp-adapters`). The server starts once and one session is shared; a tool call costs about 3-13 ms more than a direct call. The deployed app does not use it. The evaluation runs either way: `ASSISTANT_TOOLS=mcp python -m src.assistant.evaluate_output`. Results and latency: design record, section 5.
+
 **Security choices.**
 - **Local only:** the server talks to its client over stdin/stdout (stdio). It opens no network port and is not deployed anywhere; CI never redeploys anything because of it.
 - **Read-only:** all eight tools only read, and are marked so for the client. There is no tool that writes or changes anything. (Manager event flags - a propose-only tool with approval outside any AI's reach - are designed but parked; see the design record.)
