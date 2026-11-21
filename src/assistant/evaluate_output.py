@@ -109,8 +109,14 @@ def extract_tool_data(messages) -> list[dict]:
     data = []
     for m in messages:
         if isinstance(m, ToolMessage):
+            content = m.content
+            if isinstance(content, list):
+                # Tools loaded through MCP (ASSISTANT_TOOLS=mcp) return
+                # content blocks, [{"type": "text", "text": "<json>"}], rather
+                # than the JSON string the direct tools give.
+                content = "".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
             try:
-                decoded = json.loads(m.content)
+                decoded = json.loads(content)
             except (json.JSONDecodeError, TypeError):
                 continue
             if isinstance(decoded, dict) and isinstance(decoded.get("results"), list):
@@ -489,11 +495,14 @@ def run_evaluation() -> None:
             tool_data = extract_tool_data(result["messages"])
 
             issues = run_turn_checks(question, answer_text, tool_data)
+            last_question = max(i for i, m in enumerate(result["messages"]) if getattr(m, "type", "") == "human")
+            tools_used = [c["name"] for m in result["messages"][last_question:] for c in (getattr(m, "tool_calls", None) or [])]
             total_turns += 1
             total_issues += len(issues)
 
             status = "PASS" if not issues else f"FAIL ({len(issues)} issue(s))"
             print(f"  Q: {question}")
+            print(f"  tools: {tools_used}")
             print(f"  [{status}]")
             for issue in issues:
                 print(f"    - {issue}")
