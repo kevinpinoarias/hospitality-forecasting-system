@@ -480,12 +480,17 @@ def run_turn_checks(question: str, answer_text: str, tool_data: list[dict]) -> l
     return issues
 
 
-def run_evaluation() -> None:
+def run_evaluation(only: str | None = None) -> None:
+    """Runs every test case, or only those whose name contains `only`. A
+    flagged turn also prints the answer itself, so a flag can be checked by
+    reading what was actually said."""
     agent = build_agent()
     total_turns = 0
     total_issues = 0
 
     for case_idx, case in enumerate(TEST_CASES):
+        if only and only.lower() not in case["name"].lower():
+            continue
         config = {"configurable": {"thread_id": f"eval-{case_idx}"}}
         print(f"\n=== {case['name']} ===")
 
@@ -506,6 +511,10 @@ def run_evaluation() -> None:
             print(f"  [{status}]")
             for issue in issues:
                 print(f"    - {issue}")
+            if issues:
+                print("    answer:")
+                for line in answer_text.splitlines():
+                    print(f"      | {line}")
 
     print(f"\n{'=' * 60}")
     print(f"Checked {total_turns} turns across {len(TEST_CASES)} test cases.")
@@ -513,4 +522,8 @@ def run_evaluation() -> None:
 
 
 if __name__ == "__main__":
-    run_evaluation()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the assistant's evaluation cases against the real agent.")
+    parser.add_argument("--only", help="run only the test cases whose name contains this text")
+    run_evaluation(parser.parse_args().only)
