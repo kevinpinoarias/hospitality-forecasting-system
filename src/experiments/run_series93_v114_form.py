@@ -81,7 +81,7 @@ def build() -> dict:
 
 def report() -> None:
     r = build()
-    days, a, dow = r["days"], r["a"], r["dow"]
+    a, dow = r["a"], r["dow"]
     pd.set_option("display.width", 250)
     tables, nets = {}, {}
     names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -99,7 +99,7 @@ def report() -> None:
         helps = all(nets[k][name] <= -2.0 for k in nets)
         print(f"READING SET BEFOREHAND, {name}: " + ", ".join(f"{k}: {nets[k][name]:+.2f}" for k in nets) + f"  ->  {'HELPS' if helps else 'does not clear -2.0 on both seed sets'}")
     sunday = all(nets[k]["V14 all"] - nets[k]["V14 Mon-Sat"] > 2.0 for k in nets)
-    print(f"READING SET BEFOREHAND, leaving Sunday out: Mon-Sat minus all = " + ", ".join(f"{k}: {nets[k]['V14 Mon-Sat'] - nets[k]['V14 all']:+.2f}" for k in nets) + f"  ->  {'BETTER (more than 2.0 on both)' if sunday else 'not clearly better'}")
+    print("READING SET BEFOREHAND, leaving Sunday out: Mon-Sat minus all = " + ", ".join(f"{k}: {nets[k]['V14 Mon-Sat'] - nets[k]['V14 all']:+.2f}" for k in nets) + f"  ->  {'BETTER (more than 2.0 on both)' if sunday else 'not clearly better'}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for k, t in tables.items():
         t.to_csv(OUT_DIR / f"forms_{'fresh' if 'fresh' in k else 'seeds100'}.csv")

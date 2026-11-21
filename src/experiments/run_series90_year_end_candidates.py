@@ -39,10 +39,8 @@ from src.experiments import run_series47_weekend_flags_in_pieces as s47
 from src.experiments import run_series54_day_of_month as s54
 from src.experiments import run_series81_closed_days_in_lags as s81
 from src.experiments import run_series82_mask_windows as s82
-from src.experiments import run_series87_companion_without_manager as s87
 from src.experiments import run_series89_standin_repeat_hybrid as s89
 from src.experiments.run_package_validation import CORRECTION
-from src.experiments.run_series46_calendar_confirmation import SEEDS
 from src.experiments.series19_21_common import _STATE, DATE_COL, load_protocol, read_done, run_parallel, test_days
 from src.features import payday_intensity as pi
 from src.forecast_log.v1 import add_hydro_thu

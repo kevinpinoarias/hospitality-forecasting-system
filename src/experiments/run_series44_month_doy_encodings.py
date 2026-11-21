@@ -117,7 +117,8 @@ def report() -> None:
     a = days["actual"].to_numpy()
     december = (pd.to_datetime(days["date"]).dt.month == 12).to_numpy()
     bags = load_bags()
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Test days {len(a)}, of which December {int(december.sum())}")
 

@@ -204,7 +204,8 @@ def main(workers: int) -> None:
     a, wd = days["actual"].to_numpy(), days["weekday"].to_numpy()
     phase = np.array([school_phase(pd.Timestamp(d), s29.LONG_BREAKS) for d in days["date"]])
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 260); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 260)
+    pd.set_option("display.max_columns", 30)
     base = s29.load_new_bags(s29.results_path("stage2"))
 
     run_parallel(make_tasks(all_variant_targets(), FINAL_SEEDS_25), fit_task, RESULTS, workers, init_worker30, "series30")

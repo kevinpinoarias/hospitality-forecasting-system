@@ -106,7 +106,8 @@ def report() -> None:
     days = test_days(df, folds)
     a, dow = days["actual"].to_numpy(), pd.to_datetime(days["date"]).dt.dayofweek.to_numpy()
     bags = load_bags()
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     old = series46_bags("backtest")  # the control must reproduce Series 46's two log-model fits

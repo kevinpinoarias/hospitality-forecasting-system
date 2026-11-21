@@ -146,7 +146,8 @@ def report() -> None:
             d_new = np.abs(nd[(piece, variant)] - a_new) - np.abs(nd[(piece, "none")] - a_new)
             rows.append({"piece": piece, "change": change, "lo": lo, "hi": hi, "folds_better": int(sum(d[own & (fold == k)].mean() < 0 for k in range(10))),
                          "new_days_change": float(d_new[own_new].mean())})
-        print(f"\n{variant}"); print(pd.DataFrame(rows).round(2).to_string(index=False))
+        print(f"\n{variant}")
+        print(pd.DataFrame(rows).round(2).to_string(index=False))
 
     results: dict[tuple[str, str], dict] = {}
     print("\n\nTHE WHOLE MODELS, after the correction (negative = better than the deployed pieces)")
@@ -164,7 +165,8 @@ def report() -> None:
                  "folds better 5-9": int(sum(diff[fold == k].mean() < 0 for k in range(5, 10))), "new days": new_change}
             rows.append(r)
             results[(model, variant)] = r
-        print(f"\n{model}"); print(pd.DataFrame(rows).round(2).to_string(index=False))
+        print(f"\n{model}")
+        print(pd.DataFrame(rows).round(2).to_string(index=False))
 
     print("\n\nTHE RULE SET BEFOREHAND")
     winner = min(CANDIDATES, key=lambda v: results[("post model", v)]["folds 0-4"])

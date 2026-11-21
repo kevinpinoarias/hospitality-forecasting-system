@@ -81,7 +81,8 @@ def report() -> None:
     old_bt, old_nd = s54.load_bags("backtest", s54.RESULTS), s54.load_bags("new_days", s54.RESULTS)
     series = {54: (s54.RESULTS, s54.VARIANT_COLUMNS), 55: (s55.RESULTS, s55.VARIANT_COLUMNS), 56: (s56.RESULTS, s56.VARIANT_COLUMNS)}
     variants = {s: (s54.load_bags("backtest", res, cols, s54.RESULTS), s54.load_bags("new_days", res, cols, s54.RESULTS)) for s, (res, cols) in series.items()}
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     print("THE BASELINE ON ITS OWN WEEKDAYS: seeds 200-299 against seeds 300-399 (difference = fresh minus old; negative = the fresh bag is better)")

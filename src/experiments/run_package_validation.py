@@ -28,7 +28,6 @@ import pandas as pd
 from src.config import CONFIG
 from src.experiments import run_series24_weekend_correction as s24
 from src.experiments import run_series25_weekend_training as s25
-from src.experiments import run_series26_weekend_features as s26
 from src.experiments import run_series27_weekend_per_weekday as s27
 from src.experiments.series19_21_common import load_protocol, read_done, test_days
 
@@ -103,7 +102,8 @@ def main(old: str, new: str) -> None:
     df, folds = load_protocol()
     days = test_days(df, folds)
     days["weekday"] = pd.to_datetime(days["date"]).dt.day_name()
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     out_dir = CONFIG.path("experiments_dir") / "package_validation"
     out_dir.mkdir(parents=True, exist_ok=True)
     frames = []

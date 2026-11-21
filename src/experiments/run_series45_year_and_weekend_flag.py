@@ -118,7 +118,8 @@ def report() -> None:
     a = days["actual"].to_numpy()
     dow = pd.to_datetime(days["date"]).dt.dayofweek.to_numpy()
     bags = load_bags()
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     base_name = variant_name(*BASELINE)
 

@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from src.experiments import run_package_validation as pv
+from src.experiments import run_series26_weekend_features as s26
 
 
 def _days(n: int = 140) -> pd.DataFrame:
@@ -38,7 +39,7 @@ def test_the_weekday_choice_uses_only_the_first_blocks():
     days = _days()
     a = days["actual"].to_numpy()
     log_raw = {"log1p_final": a + 300.0, "raw_same_params": a + 300.0}
-    features = {(v, t): a + 300.0 for v in pv.s26.VARIANTS for t in pv.s26.TARGETS}
+    features = {(v, t): a + 300.0 for v in s26.VARIANTS for t in s26.TARGETS}
     late = days["fold_id"].to_numpy() >= pv.s27.SELECTION_BLOCKS
     features[("A_lags", "raw")] = np.where(late, a, a + 5000.0)  # looks perfect only on the judging blocks
     assert pv.choose_on_first_blocks(days, log_raw, features)["Saturday"] == "none"

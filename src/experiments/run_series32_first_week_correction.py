@@ -237,7 +237,8 @@ def followup_first_week_only(days: pd.DataFrame, pkg: dict[str, np.ndarray], bre
         corrected, hit = forward_chained(days, pkg[seeds], breaks, "additive", strength, "first week")
         idx = np.concatenate(list(hit.values()))
         diff = np.abs(corrected - a) - np.abs(pkg[seeds] - a)
-        mask = np.zeros(len(a)); mask[idx] = 1.0
+        mask = np.zeros(len(a))
+        mask[idx] = 1.0
         mean, lo, hi = s23.masked_block_bootstrap(diff, mask, block=7)
         for r in per_break_table(days, pkg[seeds], corrected, hit).to_dict("records"):
             rows.append({"strength": strength, "seeds": seeds, "break": r["break"], "before_bias": r["before_bias"],
@@ -254,7 +255,8 @@ def main(workers: int, suffix: str) -> None:
     days["weekday"] = pd.to_datetime(days["date"]).dt.day_name()
     breaks = breaks_in_data(df[DATE_COL])
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     print(f"Easter and summer breaks with data: {breaks['name'].tolist()}")
 
     pkg = package_forecasts(days, suffix)
@@ -273,7 +275,8 @@ def main(workers: int, suffix: str) -> None:
     corrected_f, hit_f = forward_chained(days, pkg["fresh"], breaks, form, strength, scope)
     idx_f = np.concatenate(list(hit_f.values()))
     diff = np.abs(corrected_f - a) - np.abs(pkg["fresh"] - a)
-    mask = np.zeros(len(a)); mask[idx_f] = 1.0
+    mask = np.zeros(len(a))
+    mask[idx_f] = 1.0
     mean, lo, hi = s23.masked_block_bootstrap(diff, mask, block=7)
     per = per_break_table(days, pkg["fresh"], corrected_f, hit_f)
     per.to_csv(REPORT_DIR / "winner_fresh_seeds_by_break.csv", index=False)
@@ -293,8 +296,8 @@ def main(workers: int, suffix: str) -> None:
     for f, s, sc in product(FORMS, STRENGTHS, SCOPES):
         out = leave_one_out(frame, f, s, sc)
         by = out.groupby("break", sort=False).apply(lambda g: pd.Series({"days": len(g), "change": (g["corrected"] - g["actual"]).abs().mean() - (g["pred"] - g["actual"]).abs().mean()}), include_groups=False)
-        m, l, h = cluster_bootstrap(by["change"].to_numpy(), by["days"].to_numpy())
-        lo_rows.append({"form": f, "strength": s, "scope": sc, "days": int(by["days"].sum()), "change": m, "lo": l, "hi": h,
+        m, low, h = cluster_bootstrap(by["change"].to_numpy(), by["days"].to_numpy())
+        lo_rows.append({"form": f, "strength": s, "scope": sc, "days": int(by["days"].sum()), "change": m, "lo": low, "hi": h,
                         "breaks_improved": int((by["change"] < 0).sum()), "breaks": len(by)})
     loo = pd.DataFrame(lo_rows)
     loo.to_csv(REPORT_DIR / "leave_one_break_out.csv", index=False)

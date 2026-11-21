@@ -37,7 +37,6 @@ import pandas as pd
 from src.config import CONFIG
 from src.experiments import run_series54_day_of_month as s54
 from src.experiments import run_series57_seasonal_baseline as s57
-from src.experiments.run_series46_calendar_confirmation import SEEDS
 from src.experiments.series19_21_common import _STATE, DATE_COL, TARGET_COL, load_protocol, run_parallel
 
 OUT_DIR = CONFIG.path("experiments_dir") / "series58"

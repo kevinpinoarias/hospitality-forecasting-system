@@ -103,7 +103,8 @@ def main(workers: int) -> None:
     a, wd, fold = days["actual"].to_numpy(), days["weekday"].to_numpy(), days["fold_id"].to_numpy()
     sel, ev = fold < SELECTION_BLOCKS, fold >= SELECTION_BLOCKS
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
 
     b0 = s23.load_bags()
     bags = s26.load_bags(s26.RESULTS, 25, s26.all_variant_targets())

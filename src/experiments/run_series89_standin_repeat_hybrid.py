@@ -45,7 +45,6 @@ from src.experiments import run_series88_better_standin as s88
 from src.experiments.run_package_validation import CORRECTION
 from src.experiments.run_series46_calendar_confirmation import SEEDS
 from src.experiments.series19_21_common import _STATE, DATE_COL, load_protocol, read_done, run_parallel, test_days
-from src.features.serving_features import seasonal_medians
 from src.models.final_model import FINAL_PARAMS, TARGET_COL
 
 OUT_DIR = CONFIG.path("experiments_dir") / "series89"
@@ -153,7 +152,7 @@ def report() -> None:
         pred = np.select([dow == 4, dow == 5, dow == 6], [p["Friday"], p["Saturday"], p["Sunday"]], default=p["Monday-Thursday (hydro)"])
         return s24.correct(days, pred, CORRECTION["half_life_weeks"], CORRECTION["strength"], scope=CORRECTION["scope"])
 
-    tables, verdicts = {}, {}
+    tables = {}
     for label, suffix in (("all 100 seeds", ""), ("fresh seeds 300-399", "_fresh")):
         rows = {}
         for s in STANDINS:

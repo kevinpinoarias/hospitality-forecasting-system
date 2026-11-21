@@ -140,8 +140,9 @@ def report() -> None:
     new = df[df[DATE_COL] >= CUTOFF]
     a_new, dow_new = new[TARGET_COL].to_numpy(), new[DATE_COL].dt.dayofweek.to_numpy()
     bt, nd = load_bags("backtest"), load_bags("new_days")
-    log_bt, log_nd = load_log_model_bags("backtest"), load_log_model_bags("new_days")
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    log_bt, _log_nd = load_log_model_bags("backtest"), load_log_model_bags("new_days")
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     rows, supported = [], []
@@ -163,8 +164,7 @@ def report() -> None:
     print("Pieces on their own weekday, 585 backtest days, 100 seeds (change = flags minus as-today; negative = better)")
     print(table.round(2).to_string(index=False))
 
-    wd_names = days["weekday"].to_numpy()
-    packages, steps = {}, {}
+    packages = {}
     for version in VERSIONS:
         log = log_bt["final_model" if version == "as_today" else "single_day_flags"]
         pred = np.select([dow == 4, dow == 5, dow == 6],

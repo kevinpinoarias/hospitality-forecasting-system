@@ -236,7 +236,7 @@ def main(step: str, workers: int) -> None:
         r = frame[frame[DATE_COL].isin(pd.to_datetime(["2026-01-05", "2026-01-08", "2026-01-12"]))]
         print("\nlag_7_sales and rolling_14_sales on three January days, by variant:")
         for variant, prefix in {"base": "", **PREFIX}.items():
-            print(f"  {variant:12s}", {f"{x:%d %b}": (round(float(l), 0), round(float(rr), 0)) for x, l, rr in zip(r[DATE_COL], r[prefix + "lag_7_sales"], r[prefix + "rolling_14_sales"])})
+            print(f"  {variant:12s}", {f"{x:%d %b}": (round(float(lag), 0), round(float(rr), 0)) for x, lag, rr in zip(r[DATE_COL], r[prefix + "lag_7_sales"], r[prefix + "rolling_14_sales"])})
         print(f"closed days in the frame: {[f'{x:%d %b %Y}' for x in dt[closed]]}")
     elif step == "run":
         run_parallel(make_tasks(), s54.fit_task, RESULTS, workers, init_worker81, "series81")

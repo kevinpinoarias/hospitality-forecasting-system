@@ -124,7 +124,7 @@ def report() -> None:
     a, dow = days["actual"].to_numpy(), days["date"].dt.dayofweek.to_numpy()
     six = s82.in_window(days["date"], (12, 26), (12, 31))
     assert six.sum() == 6
-    done, done81, done82 = read_done(RESULTS), read_done(s81.RESULTS), read_done(s82.RESULTS)
+    done, done81, _done82 = read_done(RESULTS), read_done(s81.RESULTS), read_done(s82.RESULTS)
     pd.set_option("display.width", 250)
 
     def per_piece(source: dict, variant: str) -> dict:
@@ -152,7 +152,6 @@ def report() -> None:
     print(f"\nthe mask against the unmasked package: {mask_gain:+.2f} ({'HOLDS (at least 4.5 better)' if mask_gain <= -4.5 else 'does not hold'}; with the real number: -9.07)")
     print(f"the companion on 26-31 December against the mask alone: {comp_gain:+.2f} ({'SURVIVES' if comp_gain <= -1.1 else 'WEAKENS' if comp_gain < 0 else 'FAILS'}; with the real number: -2.22)")
     # how far the stand-in was from the real number on the six days
-    full = df.set_index(pd.to_datetime(df[DATE_COL]))
     rows6 = []
     for fold in folds:
         test = df[(df[DATE_COL] >= fold.test_start) & (df[DATE_COL] < fold.test_end)]

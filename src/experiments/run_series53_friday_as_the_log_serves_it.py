@@ -95,7 +95,8 @@ def report() -> None:
     done = read_done(RESULTS)
     table = pd.DataFrame([r for rec in done.values() for r in rec["rows"]]).sort_values("date").reset_index(drop=True)
     table = table.drop_duplicates(subset="date")  # a week cut by two blocks is scored once, by the block holding the Friday
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(OUT_DIR / "replay_days.csv", index=False)
     a, dow, fold = table["actual"].to_numpy(), table["weekday"].to_numpy(), table["fold"].to_numpy()

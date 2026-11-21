@@ -146,13 +146,18 @@ def make_figures(grid: pd.DataFrame, days: pd.DataFrame, base: np.ndarray, corre
     fig, ax = plt.subplots(figsize=(5.6, 3.8))
     pivot = grid.pivot(index="half_life_weeks", columns="strength", values="change")
     im = ax.imshow(pivot.to_numpy(), cmap="RdYlGn_r", aspect="auto")
-    ax.set_xticks(range(3), [f"{s}" for s in pivot.columns]); ax.set_yticks(range(3), [f"{h} wk" for h in pivot.index])
-    ax.set_xlabel("strength"); ax.set_ylabel("memory half-life")
+    ax.set_xticks(range(3), [f"{s}" for s in pivot.columns])
+    ax.set_yticks(range(3), [f"{h} wk" for h in pivot.index])
+    ax.set_xlabel("strength")
+    ax.set_ylabel("memory half-life")
     for i in range(3):
         for j in range(3):
             ax.text(j, i, f"{pivot.to_numpy()[i, j]:+.1f}", ha="center", va="center", fontsize=9)
     ax.set_title("Change in MAE vs the uncorrected hybrid (£, seeds 0-24)", fontsize=9)
-    fig.colorbar(im, ax=ax); fig.tight_layout(); fig.savefig(REPORT_DIR / "grid.png", dpi=130); plt.close(fig)
+    fig.colorbar(im, ax=ax)
+    fig.tight_layout()
+    fig.savefig(REPORT_DIR / "grid.png", dpi=130)
+    plt.close(fig)
 
     fig, axes = plt.subplots(1, 3, figsize=(11, 3.6), sharey=True)
     a, wd, fold = days["actual"].to_numpy(), days["weekday"].to_numpy(), days["fold_id"].to_numpy()
@@ -161,9 +166,14 @@ def make_figures(grid: pd.DataFrame, days: pd.DataFrame, base: np.ndarray, corre
         for pred, name, colour in ((base, "uncorrected hybrid", "#c64600"), (corrected, f"corrected ({label})", "#1a5fb4")):
             ax.plot(sorted(set(fold[m].tolist())), [(pred[m & (fold == k)] - a[m & (fold == k)]).mean() for k in sorted(set(fold[m].tolist()))],
                     marker="o", label=name, color=colour)
-        ax.axhline(0, color="#888", lw=1); ax.set_title(day); ax.set_xlabel("60-day block")
-    axes[0].set_ylabel("average forecast minus actual (£)"); axes[0].legend(fontsize=7)
-    fig.tight_layout(); fig.savefig(REPORT_DIR / "bias_by_block.png", dpi=130); plt.close(fig)
+        ax.axhline(0, color="#888", lw=1)
+        ax.set_title(day)
+        ax.set_xlabel("60-day block")
+    axes[0].set_ylabel("average forecast minus actual (£)")
+    axes[0].legend(fontsize=7)
+    fig.tight_layout()
+    fig.savefig(REPORT_DIR / "bias_by_block.png", dpi=130)
+    plt.close(fig)
 
 
 def main(workers: int) -> None:
@@ -172,7 +182,8 @@ def main(workers: int) -> None:
     days["weekday"] = pd.to_datetime(days["date"]).dt.day_name()
     a, wd, scored = days["actual"].to_numpy(), days["weekday"].to_numpy(), days["fold_id"].to_numpy() >= 1
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
 
     # ---- step 1: choose the winner on the seeds 0-24 predictions
     bags = s23.load_bags()

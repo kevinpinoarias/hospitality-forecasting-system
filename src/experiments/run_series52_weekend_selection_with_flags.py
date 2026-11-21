@@ -120,7 +120,8 @@ def report() -> None:
     a, wd, fold = days["actual"].to_numpy(), days["weekday"].to_numpy(), days["fold_id"].to_numpy()
     sel, ev = fold < s27.SELECTION_BLOCKS, fold >= s27.SELECTION_BLOCKS
     bags = load_bags()
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     chosen, steps = {}, {}
@@ -141,7 +142,8 @@ def report() -> None:
         for base in BASES:
             table = pv.scores(days, steps[(base, set_name)])
             table.insert(0, "base", base)
-            print(f"\n{set_name}"); print(table.round(2).to_string(index=False))
+            print(f"\n{set_name}")
+            print(table.round(2).to_string(index=False))
 
     print("\n\nTHE CHANGE FROM PUTTING THE FLAGS IN THE BASE (flags minus is_weekend; negative = the flags help)")
     rows = []

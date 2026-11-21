@@ -171,7 +171,8 @@ def main(workers: int) -> None:
     days["weekday"] = pd.to_datetime(days["date"]).dt.day_name()
     a, wd = days["actual"].to_numpy(), days["weekday"].to_numpy()
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 260); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 260)
+    pd.set_option("display.max_columns", 30)
 
     def tasks(variant_targets, seeds):
         out = []

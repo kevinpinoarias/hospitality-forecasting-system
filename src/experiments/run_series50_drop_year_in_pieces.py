@@ -124,7 +124,8 @@ def report() -> None:
     a_new, dow_new = new[TARGET_COL].to_numpy(), new[DATE_COL].dt.dayofweek.to_numpy()
     kept, dropped = load_kept("backtest"), load_dropped("backtest")
     kept_new, dropped_new = load_kept("new_days"), load_dropped("new_days")
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     def interval(diff: np.ndarray, mask: np.ndarray) -> tuple[float, float, float]:

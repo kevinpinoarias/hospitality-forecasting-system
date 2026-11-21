@@ -31,7 +31,6 @@ import pandas as pd
 
 from src.config import CONFIG
 from src.experiments import run_series24_weekend_correction as s24
-from src.experiments import run_series47_weekend_flags_in_pieces as s47
 from src.experiments import run_series54_day_of_month as s54
 from src.experiments import run_series70_payday_intensity as s70
 from src.experiments import run_series76_december_early_pay as s76
@@ -40,8 +39,7 @@ from src.experiments import run_series80_january_lags_masked as s80
 from src.experiments import run_series82_mask_windows as s82
 from src.experiments.run_package_validation import CORRECTION
 from src.experiments.run_series46_calendar_confirmation import SEEDS
-from src.experiments.series19_21_common import _STATE, DATE_COL, load_protocol, read_done, run_parallel, test_days
-from src.forecast_log.v1 import add_hydro_thu
+from src.experiments.series19_21_common import load_protocol, read_done, run_parallel, test_days
 
 OUT_DIR = CONFIG.path("experiments_dir") / "series83"
 RESULTS = OUT_DIR / "series83_mask_windows_repeat.jsonl"

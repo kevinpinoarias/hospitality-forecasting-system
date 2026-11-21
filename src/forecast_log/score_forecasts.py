@@ -27,7 +27,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import PROJECT_ROOT
 from src.experiments.run_series23_log_vs_raw_peaks import masked_block_bootstrap
 from src.features.events import concert_calendar
 from src.forecast_log import holiday_rule as hrule

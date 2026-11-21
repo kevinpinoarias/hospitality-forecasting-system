@@ -219,7 +219,9 @@ def make_figures(days: pd.DataFrame, preds: dict[str, np.ndarray], deciles: pd.D
     ax.set_ylabel("average forecast minus actual (£)")
     ax.set_title("Bias by how busy the day turned out to be")
     ax.legend(fontsize=8)
-    fig.tight_layout(); fig.savefig(REPORT_DIR / "bias_by_decile.png", dpi=130); plt.close(fig)
+    fig.tight_layout()
+    fig.savefig(REPORT_DIR / "bias_by_decile.png", dpi=130)
+    plt.close(fig)
     names.append("bias_by_decile.png")
 
     sat = (days["weekday"] == "Saturday").to_numpy()
@@ -234,7 +236,9 @@ def make_figures(days: pd.DataFrame, preds: dict[str, np.ndarray], deciles: pd.D
     axes[0].set_ylabel("actual sales (£)")
     axes[0].legend(fontsize=8)
     fig.suptitle("Saturdays above the diagonal were under-forecast", fontsize=10)
-    fig.tight_layout(); fig.savefig(REPORT_DIR / "saturday_scatter.png", dpi=130); plt.close(fig)
+    fig.tight_layout()
+    fig.savefig(REPORT_DIR / "saturday_scatter.png", dpi=130)
+    plt.close(fig)
     names.append("saturday_scatter.png")
     return names
 
@@ -262,7 +266,8 @@ def analyse() -> None:
     wdt.to_csv(REPORT_DIR / "weekdays.csv", index=False)
     make_figures(days, bags, dec)
     pd.DataFrame({**days, **{v: p for v, p in bags.items()}}).to_csv(REPORT_DIR / "predictions.csv", index=False)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 40)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 40)
     print("\nBy segment (MAE, bias = forecast minus actual):\n", seg[["segment", "days", "mean_actual", "manager_MAE", "log1p_final_MAE", "raw_same_params_MAE",
                                                                       "raw_series8_params_MAE", "log1p_final_bias", "raw_same_params_bias", "raw_series8_params_bias"]].round(1).to_string(index=False))
     print("\nLog minus raw (same params) MAE, 95% block-bootstrap interval:\n",

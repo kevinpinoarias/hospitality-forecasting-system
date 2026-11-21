@@ -29,7 +29,7 @@ from src.experiments import run_series35_holdout as h
 from src.experiments.run_series23_log_vs_raw_peaks import masked_block_bootstrap
 from src.experiments.series19_21_common import load_protocol, read_done, run_parallel, test_days
 from src.features.serving_features import seasonal_medians
-from src.models.final_model import DATE_COL, FINAL_FEATURES, TARGET_COL
+from src.models.final_model import DATE_COL, FINAL_FEATURES
 
 MANAGER_COL = "forecast_sales"
 ARMS = ("N0", "N1", "N2")

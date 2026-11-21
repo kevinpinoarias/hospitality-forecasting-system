@@ -46,7 +46,6 @@ from src.experiments import run_series47_weekend_flags_in_pieces as s47
 from src.experiments import run_series54_day_of_month as s54
 from src.experiments import run_series81_closed_days_in_lags as s81
 from src.experiments import run_series82_mask_windows as s82
-from src.experiments import run_series85_companion_model as s85
 from src.experiments import run_series87_companion_without_manager as s87
 from src.experiments.run_package_validation import CORRECTION
 from src.experiments.series19_21_common import _STATE, DATE_COL, load_protocol, read_done, run_parallel, test_days
@@ -220,7 +219,7 @@ def report() -> None:
         print(f"READING SET BEFOREHAND, specialist windows with {s}: net {net:+.2f}: {'STILL HELPS' if net <= -2.0 else 'NO LONGER HELPS'}")
     # the stand-in values on the key days
     pick = np.where(six | jan8)[0]
-    m = manager_series()
+    _m = manager_series()
     detail = days.loc[pick, ["date", "weekday", "actual"]].copy().reset_index(drop=True)
     for fold in folds:
         pass
@@ -247,7 +246,6 @@ def main(step: str, workers: int) -> None:
         tasks = make_tasks()
         print(f"{len(VARIANTS)} variants x {len(PIECES)} pieces x {len(SEEDS25) // s54.BACKTEST_CHUNK} tasks of {s54.BACKTEST_CHUNK} seeds = {len(tasks)} tasks (backtest only, 25 seeds; each predicts {len(STANDINS)} stand-ins)")
         df, folds = load_protocol()
-        d = df[df[DATE_COL].between("2025-12-24", "2026-01-08")]
         fold = next(f for f in folds if f.test_start <= pd.Timestamp("2025-12-30") < f.test_end)
         train = df[(df[DATE_COL] >= fold.train_start) & (df[DATE_COL] < fold.train_end)]
         test = df[df[DATE_COL].between("2025-12-24", "2026-01-08") & (df[DATE_COL] >= fold.test_start) & (df[DATE_COL] < fold.test_end)]

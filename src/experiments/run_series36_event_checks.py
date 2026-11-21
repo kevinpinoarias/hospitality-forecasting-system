@@ -273,7 +273,8 @@ def run_hydro(workers: int) -> None:
             result[(label, name)] = (mean, lo, hi)
             rows.append({"run": label, "segment": name, "days": int(mask.sum()), "base MAE": np.abs(base - a)[mask].mean(), "new MAE": np.abs(new - a)[mask].mean(),
                          "change": mean, "lo": lo, "hi": hi, "base bias": (base - a)[mask].mean(), "new bias": (new - a)[mask].mean()})
-    pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_rows", 200)
     print(pd.DataFrame(rows).round(1).to_string(index=False))
     log0, log1, plc = result[("log1p seeds 0-24", "all days")], result[("log1p seeds 100-124", "all days")], result[("PLACEBO log1p seeds 0-24", "all days")]
     h, u = result[("log1p seeds 0-24", "Hydro days")], result[("log1p seeds 0-24", "non-Hydro days")]
@@ -356,7 +357,8 @@ def run_hydrocorr() -> None:
             result[(label, seg)] = (mean, lo, hi)
             rows.append({"run": label, "segment": seg, "days": int(mask.sum()), "base MAE": np.abs(base - a)[mask].mean(),
                          "new MAE": np.abs(new - a)[mask].mean(), "change": mean, "lo": lo, "hi": hi})
-    pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_rows", 200)
     print(pd.DataFrame(rows).round(1).to_string(index=False))
     print("\nCorrection added to Hydro days per block (log final model, seeds 0-24), GBP:", {k: round(v) for k, v in amounts_primary.items()})
 
@@ -456,7 +458,8 @@ def run_postflag(workers: int) -> None:
             result[(label, seg)] = (mean, lo, hi)
             rows.append({"run": label, "segment": seg, "days": int(mask.sum()), "base MAE": np.abs(base - a)[mask].mean(), "new MAE": np.abs(new - a)[mask].mean(),
                          "change": mean, "lo": lo, "hi": hi, "base bias": (base - a)[mask].mean(), "new bias": (new - a)[mask].mean()})
-    pd.set_option("display.width", 250); pd.set_option("display.max_rows", 200)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_rows", 200)
     print(f"585 test days; Hydro days {int(hydro.sum())}; stored post model MAE {np.abs(stored['s0_24'] - a).mean():.1f}; manager {np.abs(m - a).mean():.1f}")
     print(pd.DataFrame(rows).round(1).to_string(index=False))
 

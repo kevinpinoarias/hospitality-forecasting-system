@@ -168,7 +168,8 @@ def report(results=RESULTS, out_dir=OUT_DIR, variant_columns=VARIANT_COLUMNS, no
     new = df[df[DATE_COL] >= CUTOFF]
     a_new, dow_new = new[TARGET_COL].to_numpy(), new[DATE_COL].dt.dayofweek.to_numpy()
     bt, nd = load_bags("backtest", results, variant_columns, none_results), load_bags("new_days", results, variant_columns, none_results)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     out_dir.mkdir(parents=True, exist_ok=True)
     variants = [v for v in variant_columns if v != "none"]
 
@@ -189,7 +190,8 @@ def report(results=RESULTS, out_dir=OUT_DIR, variant_columns=VARIANT_COLUMNS, no
     pieces.to_csv(out_dir / "pieces.csv", index=False)
     print("EACH PIECE ON ITS OWN WEEKDAYS (change = with the variant minus as deployed; negative = better; 585 days, 100 seeds)")
     for v in variants:
-        print(f"\n{v}"); print(pieces[pieces["variant"] == v].drop(columns="variant").round(2).to_string(index=False))
+        print(f"\n{v}")
+        print(pieces[pieces["variant"] == v].drop(columns="variant").round(2).to_string(index=False))
 
     def package(variant: str, mon_thu: str, source: dict) -> tuple[np.ndarray, np.ndarray]:
         pred = np.select([dow == 4, dow == 5, dow == 6],
@@ -212,7 +214,8 @@ def report(results=RESULTS, out_dir=OUT_DIR, variant_columns=VARIANT_COLUMNS, no
     packages.to_csv(out_dir / "packages.csv", index=False)
     print("\n\nTHE WHOLE MODELS (all 585 days)")
     for name in ("post model", "hydro model"):
-        print(f"\n{name}"); print(packages[packages["model"] == name].drop(columns="model").round(2).to_string(index=False))
+        print(f"\n{name}")
+        print(packages[packages["model"] == name].drop(columns="model").round(2).to_string(index=False))
 
     print("\n\nNEW DAYS (56 days from 7 September 2026), the models before the correction, change in pounds a day, day-weighted over the pieces")
     for name, mon_thu in (("post model", "Monday-Thursday"), ("hydro model", "Monday-Thursday (hydro)")):

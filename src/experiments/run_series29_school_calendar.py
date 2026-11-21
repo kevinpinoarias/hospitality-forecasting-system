@@ -34,7 +34,6 @@ import pandas as pd
 from src.config import CONFIG
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments import run_series24_weekend_correction as s24
-from src.experiments import run_series25_weekend_training as s25
 from src.experiments.run_error_autopsy import school_phase
 from src.experiments.series19_21_common import _STATE, OUT_DIR, load_protocol, run_parallel, test_days
 from src.features.build_features import (
@@ -116,7 +115,8 @@ def main(workers: int, tag: str) -> None:
     path = results_path(tag)
     out_dir = CONFIG.path("experiments_dir") / f"series29_school_calendar_{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
 
     run_parallel(make_tasks(), s23.fit_task, path, workers, functools.partial(init_worker29, tag), "series29")
     new, old = load_new_bags(path), old_bags()

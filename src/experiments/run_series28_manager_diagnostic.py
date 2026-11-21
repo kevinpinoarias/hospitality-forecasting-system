@@ -128,7 +128,8 @@ def main() -> None:
     bags = s26.load_bags(s26.RESULTS, 25, s26.all_variant_targets())
     package = build_package(days, b0, bags)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
 
     wt, bt = weekday_table(days, package), blend_table(days, package)
     wt.to_csv(REPORT_DIR / "by_weekday.csv", index=False)

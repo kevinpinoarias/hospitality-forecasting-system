@@ -153,9 +153,10 @@ def report() -> None:
     dow = pd.to_datetime(days["date"]).dt.dayofweek.to_numpy()
     new = df[df[DATE_COL] >= CUTOFF]
     a_new = new[TARGET_COL].to_numpy()
-    dow_new = new[DATE_COL].dt.dayofweek.to_numpy()
     backtest, fresh = load_bags("backtest"), load_bags("new_days")
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30); pd.set_option("display.max_colwidth", 70)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
+    pd.set_option("display.max_colwidth", 70)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     rows = []

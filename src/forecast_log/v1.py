@@ -23,7 +23,6 @@ Run on Product-branch (the development folder), then copy models/v1 and data/tra
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import subprocess
 from datetime import datetime

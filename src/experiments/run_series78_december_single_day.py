@@ -149,7 +149,7 @@ def report() -> None:
     assert sat_dec.sum() == 4 and dec25.sum() == 31, (int(sat_dec.sum()), int(dec25.sum()))
     base = s54.load_bags("backtest", s70.RESULTS, {"none": [], "intensity_sym": []}, s54.RESULTS)
     other = {p: base[(p, "none")] for p in s54.PIECES}
-    done, done77, done73 = read_done(RESULTS), read_done(s77.RESULTS), read_done(s73.RESULTS)
+    done, done77, _done73 = read_done(RESULTS), read_done(s77.RESULTS), read_done(s73.RESULTS)
     pd.set_option("display.width", 250)
 
     def package(sat_pred: np.ndarray) -> np.ndarray:
@@ -227,7 +227,6 @@ def main(step: str, workers: int) -> None:
         s77_frame = s77.add_columns(d)
         dt = frame[DATE_COL]
         special = s77.on_day(dt, 12, 25) | s77.on_day(dt, 1, 1) | s77.on_day(dt, 12, 26)
-        in_dec = (dt.dt.month == 12).to_numpy()
         # xmas_box4 = xmas_only except for the penalty value
         assert np.allclose(frame["xmas_box4"][~special], s77_frame["xmas_only"][~special]), "xmas_box4 differs from xmas_only beyond the penalty"
         assert np.allclose(frame.loc[s77.on_day(dt, 12, 26), "xmas_box4"], BOX4) and np.isclose(BOX4, -2.0)

@@ -91,7 +91,8 @@ def main() -> None:
     breaks = s32.breaks_in_data(df[DATE_COL])
     first = first_week_rows(s32.lobo_frame(df, breaks))
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
 
     print("First-week bias of the final model from leave-one-break-out forecasts (forecast minus actual):\n",
           first.groupby("break", sort=False).apply(lambda g: pd.Series({"MAE": (g["pred"] - g["actual"]).abs().mean(), "bias": (g["pred"] - g["actual"]).mean()}),

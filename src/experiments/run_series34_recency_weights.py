@@ -176,7 +176,8 @@ def main(workers: int) -> None:
     a, wd = days["actual"].to_numpy(), days["weekday"].to_numpy()
     masks = masks_for(days)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_columns", 30)
     control = pv.load_set(CONTROL_SUFFIX)
     ctl0, ctlf = control["log_raw_0_24"], control["log_raw_fresh"]
 
