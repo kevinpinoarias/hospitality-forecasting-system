@@ -104,12 +104,29 @@ def test_descriptions_keep_the_assistants_wording_and_add_the_reading_rules():
     offered = listed_tools()
     for name, fn in tools.TOOLS.items():
         first_sentence = " ".join(fn.__doc__.split())[:40]
-        assert offered[name].description.startswith(first_sentence)
+        assert first_sentence in offered[name].description
     for name in FORECAST_TOOLS:
         text = offered[name].description
         assert "is_known_closure_day" in text and "heavy_rain_scenario" in text and "never estimate" in text
     for name in RANKING_TOOLS:
         assert "over_forecast" in offered[name].description
+
+
+def test_the_forecast_tools_say_they_are_about_sales_not_weather():
+    offered = listed_tools()
+    for name in FORECAST_TOOLS:
+        assert offered[name].description.startswith("Sales forecast in pounds for the hospitality venue - not a weather")
+
+
+def test_the_server_tells_the_client_what_its_tools_are_for():
+    text = mcp.instructions
+    assert "SALES forecasts" in text and "not a weather forecast" in text and "never invent a reason" in text
+
+
+def test_the_gemini_assistant_descriptions_are_untouched():
+    """The lead-in is MCP-only: the live agent's docstrings must not change."""
+    assert tools.get_forecast.__doc__.startswith("Get the hospitality sales forecast for one specific date.")
+    assert "not a weather forecast" not in tools.get_forecast.__doc__
 
 
 def test_parameters_are_typed_for_the_client():

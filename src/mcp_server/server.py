@@ -32,7 +32,20 @@ from src.mcp_server.validation import check_date, check_range, check_sales_estim
 
 SERVER_NAME = "hospitality-forecasting"
 
-mcp = FastMCP(SERVER_NAME, log_level="WARNING")
+# Sent once when a client connects. A chat that knows nothing about the project
+# reads "what's the forecast for Christmas Eve?" as a weather question (seen in
+# the first Claude Desktop test, 21 November 2026), so this says what the whole
+# server is for. Not every client passes it on, so the forecast tools'
+# descriptions say it too (VENUE_SALES below).
+SERVER_INSTRUCTIONS = (
+    "These tools give the SALES forecasts, in pounds (GBP), for one hospitality venue (a bar-restaurant), "
+    "and how accurate past forecasts were. When the person asks about a forecast for a date or period, how busy "
+    "a day will be or how the venue will do, they mean sales: use these tools, not a weather forecast. Weather "
+    "only appears as one of the inputs to a sales forecast. Only state figures that came from a tool result, and "
+    "never invent a reason why sales were higher or lower."
+)
+
+mcp = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS, log_level="WARNING")
 
 # Every tool only reads; the forecast tools reach out to the forecasting API.
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
@@ -70,12 +83,17 @@ ranked. Christmas Day and New Year's Day are left out because the venue is close
 it. Never invent a reason a day was missed. Amounts are in pounds (GBP)."""
 
 
-def _describe(fn, rules: str = "") -> str:
-    """The tool's description for MCP clients: the assistant's own, tested
-    wording (the part of the docstring before "Args:" - the parameters are
-    described separately in the schema), plus the reading rules."""
+VENUE_SALES = "Sales forecast in pounds for the hospitality venue - not a weather forecast. "
+
+
+def _describe(fn, rules: str = "", lead: str = "") -> str:
+    """The tool's description for MCP clients: an optional lead-in, the
+    assistant's own, tested wording (the part of the docstring before "Args:" -
+    the parameters are described separately in the schema), and the reading
+    rules. The lead-in exists only here, so the live Gemini assistant's tool
+    descriptions stay exactly as evaluated."""
     summary = " ".join(fn.__doc__.split("Args:")[0].split())
-    return summary + ("\n" + rules if rules else "")
+    return lead + summary + ("\n" + rules if rules else "")
 
 
 def _call_api(fn, *args, **kwargs) -> dict:
@@ -102,7 +120,7 @@ def _call_api(fn, *args, **kwargs) -> dict:
         ) from None
 
 
-@mcp.tool(annotations=READ_ONLY, description=_describe(tools.get_forecast, FORECAST_READING_RULES))
+@mcp.tool(annotations=READ_ONLY, description=_describe(tools.get_forecast, FORECAST_READING_RULES, lead=VENUE_SALES))
 @logged_tool
 def get_forecast(
     date: DateText,
@@ -116,7 +134,7 @@ def get_forecast(
     return _call_api(tools.get_forecast, date, forecast_sales)
 
 
-@mcp.tool(annotations=READ_ONLY, description=_describe(tools.get_forecast_range, FORECAST_READING_RULES))
+@mcp.tool(annotations=READ_ONLY, description=_describe(tools.get_forecast_range, FORECAST_READING_RULES, lead=VENUE_SALES))
 @logged_tool
 def get_forecast_range(
     start_date: Annotated[str, Field(description="The first date, YYYY-MM-DD.")],
