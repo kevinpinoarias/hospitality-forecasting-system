@@ -65,6 +65,7 @@ hospitality-forecasting-system/
 ├── requirements-dev.txt          # notebook, plots, neural models, experiment sweep (LightGBM, Prophet)
 ├── constraints-experiments.txt   # exact library versions the experiment log was produced with
 ├── requirements-assistant.txt    # deps for the chat assistant only
+├── requirements-mcp.txt          # deps for the MCP server only
 ├── requirements-ci.txt           # what the CI tests job installs
 ├── Dockerfile                    # forecast API image
 ├── Dockerfile.assistant          # chat assistant image
@@ -146,7 +147,8 @@ hospitality-forecasting-system/
     │   ├── history.py            # historical-data cache + lookups
     │   ├── weather.py            # live Open-Meteo weather
     │   └── inference.py          # feature construction + model inference
-    └── assistant/                # LangChain + Gemini chat assistant (see "Live chat assistant")
+    ├── assistant/                # LangChain + Gemini chat assistant (see "Live chat assistant"); its tools in tools.py
+    └── mcp_server/               # MCP server offering the same tools to Claude Desktop (see "MCP server")
 ```
 
 ## Data
@@ -562,6 +564,43 @@ You can also run the CLI version yourself instead of using the live chat - it ta
 pip install -r requirements.txt -r requirements-dev.txt
 python -m src.assistant.query_forecast "How is the forecast for next Saturday looking?"
 ```
+
+### MCP server: the same tools for Claude Desktop
+
+The assistant's eight tools are also offered through an [MCP](https://modelcontextprotocol.io/) server (`src/mcp_server/`), so an MCP client such as Claude Desktop can use them directly - for the maintainer and the finance team, with no new app. Every MCP tool calls the same function the Gemini assistant uses (`src/assistant/tools.py`) and returns its result unchanged; the numbers still come only from the forecasting API. Why it exists, the options considered and where it is *not* needed: [docs/MCP_SERVER_2026_11.md](docs/MCP_SERVER_2026_11.md).
+
+**Install and run** (Python 3.11+, from the repository folder):
+
+```bash
+pip install -r requirements-mcp.txt
+python -m src.mcp_server
+```
+
+Run by hand it just waits on stdin - normally the MCP client starts it. By default it uses the live API; set `FORECAST_API_BASE_URL` (e.g. `http://localhost:8000` with a local `uvicorn src.api.main:app`) to use another instance.
+
+**Connect Claude Desktop.** Settings → Developer → Edit Config opens `claude_desktop_config.json`; add the server (Windows paths shown - use the full path to the Python that has the requirements installed, and to this repository):
+
+```json
+{
+  "mcpServers": {
+    "hospitality-forecasting": {
+      "command": "C:\Users\<you>\AppData\Local\Python\bin\python.exe",
+      "args": ["-m", "src.mcp_server"],
+      "env": {
+        "PYTHONPATH": "D:\path\to\hospitality-forecasting-system"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop; the eight tools appear under the tools menu. Try "What's the forecast for Christmas Eve?", "Give me the forecast for every day of the week before Christmas" or "Which ten days did the manager's own forecast miss by the most?". The first answer after a while can take up to a minute: the API on Cloud Run scales to zero when idle.
+
+**Security choices.**
+- **Local only:** the server talks to its client over stdin/stdout (stdio). It opens no network port and is not deployed anywhere; CI never redeploys anything because of it.
+- **Read-only:** all eight tools only read, and are marked so for the client. There is no tool that writes or changes anything. (Manager event flags - a propose-only tool with approval outside any AI's reach - are designed but parked; see the design record.)
+- **Logs:** one line per tool call on stderr (tool name, duration, success or error); no arguments, results or question text. Claude Desktop keeps it in its MCP log.
+- **Data:** answers in Claude Desktop are written by Anthropic's Claude, so forecast figures go to Anthropic rather than Google. The forecasting API itself has no sign-in (see [Limitations](#limitations)); the server reads only what that API already serves.
 
 ---
 
