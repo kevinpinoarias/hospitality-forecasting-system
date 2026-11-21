@@ -23,3 +23,6 @@ google-genai>=1.0
 python-dotenv>=1.0
 langchain>=1.4
 langchain-google-genai>=4.4
+
+# MCP server (tests/test_mcp_server.py); below 2.0 because langchain-mcp-adapters needs it
+mcp>=1.24,<2
