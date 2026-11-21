@@ -167,6 +167,8 @@ jobs:
           fetch-depth: 2 # so the last commit can be compared with the one before it
 
       # Rebuild an image only when something that goes into it changed.
+      # src/mcp_server/ is skipped: it runs only on the user's own computer and
+      # nothing in the API imports it (tests/test_mcp_server.py checks that).
       - name: Work out what needs deploying
         id: changes
         run: |
@@ -174,7 +176,7 @@ jobs:
           echo "$changed"
           api=false
           assistant=false
-          if echo "$changed" | grep -v '^src/assistant/' | grep -qE '^(data/raw/|src/|Dockerfile$|requirements\.txt$|constraints-experiments\.txt$|rebuild_model\.py$|config/config\.yaml$)'; then api=true; fi
+          if echo "$changed" | grep -v '^src/assistant/' | grep -v '^src/mcp_server/' | grep -qE '^(data/raw/|src/|Dockerfile$|requirements\.txt$|constraints-experiments\.txt$|rebuild_model\.py$|config/config\.yaml$)'; then api=true; fi
           if echo "$changed" | grep -qE '^(src/assistant/|Dockerfile\.assistant$|requirements-assistant\.txt$)'; then assistant=true; fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then api=true; assistant=true; fi
           echo "api=$api" >> "$GITHUB_OUTPUT"
