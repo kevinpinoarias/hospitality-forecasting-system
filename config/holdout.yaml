@@ -1,0 +1,72 @@
+# The isolated copy of the pipeline's paths for the holdout test (Series 35): same settings as config.yaml, every
+# generated path under data/holdout/ (gitignored). raw_private_dir is the real landing folder for the new exports.
+project:
+  name: hospitality-forecasting-system
+  timezone: Europe/London
+  council: Glasgow
+  uk_subdivision: SCT
+paths:
+  raw_data_dir: data/holdout/raw
+  raw_private_dir: data/raw_private
+  interim_dir: data/holdout/interim
+  interim_sales_dir: data/holdout/interim/sales
+  interim_labour_dir: data/holdout/interim/labour
+  processed_sales_dir: data/holdout/processed/sales
+  processed_labour_dir: data/holdout/processed/labour
+  daily_sales_master: data/holdout/processed/sales/daily_sales_totals_master.csv
+  daily_labour_master: data/holdout/processed/labour/daily_labour_totals_master.csv
+  features_dir: data/holdout/features
+  engineered_features: data/holdout/features/engineered_features.csv
+  cache_dir: data/holdout/data_cache/open_meteo
+  results_dir: data/holdout/reports/results
+  figures_dir: data/holdout/reports/figures
+  experiments_dir: data/holdout/reports/experiments
+  models_dir: data/holdout/models
+  final_model_dir: data/holdout/models/final_model
+splits:
+  baseline_split_date: '2024-11-01'
+  sarimax_split_date: '2024-11-01'
+  xgboost_split_date: '2024-12-31'
+  neural_split_date: '2024-12-31'
+features:
+  use:
+    xgboost: feature_list_15
+    neural: feature_list_15
+    experiments_baseline: feature_list_15
+    catboost: feature_list_38
+weather:
+  latitude: 55.8612
+  longitude: -4.2502
+  warm_temp_c: 18.0
+  hot_scotland_c: 20.0
+  heavy_rain_mm: 5.0
+  anomaly_window: 14
+sarimax:
+  order:
+  - 1
+  - 1
+  - 1
+  seasonal_order:
+  - 0
+  - 1
+  - 1
+  - 7
+  exog_features:
+  - forecast_sales
+  - lag_7_sales
+xgboost:
+  n_estimators: 300
+  learning_rate: 0.05
+  max_depth: 4
+  subsample: 0.8
+  colsample_bytree: 0.8
+  objective: reg:squarederror
+  random_state: 42
+catboost:
+  iterations: 300
+  learning_rate: 0.05
+  depth: 4
+  n_seeds: 25
+analysis:
+  best_window_days: 56
+  top_n_error_days: 20

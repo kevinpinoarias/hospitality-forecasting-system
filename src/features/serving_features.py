@@ -46,6 +46,7 @@ import pandas as pd
 
 from src.config import CONFIG
 from src.features.build_features import (
+    SCHOOL_BREAK_TYPES,
     SCHOOL_BREAKS,
     add_bank_holiday_features,
     add_payday_features,
@@ -181,7 +182,7 @@ def build_feature_frame(daily: pd.DataFrame) -> pd.DataFrame:
     out = add_payday_features(out)
     out = add_bank_holiday_features(out)
     out = add_school_holiday_features(
-        out, breaks_df=SCHOOL_BREAKS, council="Glasgow", break_types=("christmas", "summer", "easter"),
+        out, breaks_df=SCHOOL_BREAKS, council="Glasgow", break_types=SCHOOL_BREAK_TYPES,
     )
     return add_weather_features(out, weather)
 

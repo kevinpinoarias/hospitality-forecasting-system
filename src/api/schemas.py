@@ -115,9 +115,10 @@ class DayContext(BaseModel):
     part_of_weekend_trading: bool
     payday: PaydayContext
     bank_holidays: BankHolidayContext
-    # "Christmas holidays", "Easter holidays" or "summer holidays" for a
-    # Glasgow school break, else null. Only those three breaks are tracked,
-    # so null does not rule out another school break (e.g. October week).
+    # "Christmas holidays", "Easter holidays", "summer holidays", "October
+    # week" or "February mid-term break" for a Glasgow school break, else
+    # null. Only those breaks are tracked, so null does not rule out a
+    # single-day closure or a long weekend.
     school_holiday: str | None = None
     recent_sales: RecentSalesContext | None = None
     recent_forecast_accuracy: RecentForecastAccuracyContext | None = None

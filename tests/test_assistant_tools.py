@@ -1,6 +1,6 @@
 """
-Tests for the chat assistant's three error-ranking tools in
-src/assistant/query_forecast.py. No LLM and no network: the HTTP call is
+Tests for the chat assistant's four error-ranking tools in
+src/assistant/tools.py (re-exported by query_forecast.py). No LLM and no network: the HTTP call is
 replaced, and one test routes it to the real API in-process.
 """
 
@@ -15,6 +15,7 @@ pytest.importorskip("dotenv")
 
 from src.api.history import ENGINEERED_FEATURES_PATH
 from src.assistant import query_forecast as q
+from src.assistant import tools
 from src.models.final_model import MODEL_DIR
 
 TOOLS_UNDER_TEST = {
@@ -44,7 +45,7 @@ def requests_made(monkeypatch):
         seen.append({"url": url, "params": params})
         return FakeResponse({"days": [], "limit": params["limit"]})
 
-    monkeypatch.setattr(q.requests, "get", fake_get)
+    monkeypatch.setattr(tools.requests, "get", fake_get)
     return seen
 
 
@@ -113,7 +114,7 @@ def test_a_tool_returns_real_ranked_days_from_the_api(monkeypatch):
             response = client.get(url.replace(q.API_BASE_URL, ""), params=params)
             return SimpleNamespace(raise_for_status=lambda: None, json=response.json)
 
-        monkeypatch.setattr(q.requests, "get", route_to_the_app)
+        monkeypatch.setattr(tools.requests, "get", route_to_the_app)
         result = q.get_top_overpredictions(forecast="manager", n=3)
 
     assert result["forecast_judged"] == "manager"

@@ -7,3 +7,4 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 pydantic>=2.0   # also validates config/config.yaml (src/config.py)
 pyyaml>=6.0     # reads config/config.yaml
+openpyxl>=3.1   # pandas needs it to read .xlsx weekly exports (src/preprocessing/common.py, src/ingestion/anonymize_raw.py)

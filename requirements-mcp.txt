@@ -1,0 +1,9 @@
+# Just what the MCP server needs (src/mcp_server/), for someone who only
+# wants to connect Claude Desktop to the forecasting tools:
+#   pip install -r requirements-mcp.txt
+# The forecasts themselves come from the forecasting API, so no model,
+# pandas or CatBoost is needed here.
+
+mcp>=1.24,<2        # below 2.0: 2.x renamed FastMCP, and langchain-mcp-adapters needs <2
+requests>=2.31
+python-dotenv>=1.0

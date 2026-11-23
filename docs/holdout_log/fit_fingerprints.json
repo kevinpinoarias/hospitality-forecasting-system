@@ -1,0 +1,15 @@
+{
+  "cutoff": "2026-09-07",
+  "rows": 950,
+  "last_training_day": "2026-09-06",
+  "features_sha256": "ad16ffd7aad53f09fb66a22ec62fbc0d3562d1127e9ac0ab69476daf4d9c64b0",
+  "fingerprints": {
+    "D": "3f481aa7030c300d2b087904165528eabe96cfe9465e9b7051d1cf87b365e5b3",
+    "raw": "a98d2bc5742061a11b797c1c0672dc8e792a32c855a69b2b11e18d535a4f73b2",
+    "Fri_A_all": "398c6eefbdeecf5060b7f8eb3cad69115ac7d78d30d46bf3ed66f7d4a4aad238",
+    "Sat_A_lags": "ce8ec4e08f58ec59620ad60751e11eb1bc05ec168aefee51f748a64667a39d21",
+    "Sun_B": "54953a3204c3380cdad7fc1f4141143f7638051376ababb9d5a80fe6297c566d",
+    "P_fresh": "9f4aadf50504595f7fccb036038078f7a2fb6104bb081c6f04638cb62921a5ef",
+    "P_frozen (models/final_model)": "b7d347460573956e55fb7f655d5e4d60a17cda5a327ba2c4ec8ec7b4bbbb924c"
+  }
+}

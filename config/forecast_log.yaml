@@ -1,0 +1,3 @@
+# Settings for the forecast log (src/forecast_log). Override per machine in config/forecast_log.local.yaml (not tracked).
+log_repo: ../forecasting-log                     # the private forecasting-log repository (rows are appended, committed and pushed here); a relative path is read from this project's folder, so by default it sits beside it
+model_version: v1                               # the registered model version the runs use (models/<version> and data/training/<version>_correction_history.csv)

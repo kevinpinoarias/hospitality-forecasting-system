@@ -1,6 +1,9 @@
 """
 Series 20 - the neural networks on the 38-feature set (V2) instead of the original 15 (V1).
 
+(Naming: V1 is now `feature_list_15` and V2 is `feature_list_38` in src/features/build_features.py.
+The labels "v1", "v2" and "v2_no_year" below are kept because the stored results are keyed by them.)
+
 The LSTM and Transformer were only ever compared with CatBoost at V1. This series runs
 the repo's own networks (src/models/train_lstm.py, train_transformer.py) under the final
 model's protocol - 10 rolling-origin folds, expanding window, same 950 rows - and compares

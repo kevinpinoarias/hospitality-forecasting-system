@@ -14,6 +14,9 @@ notebooks/
 wandb/
 tests/
 
+# The MCP server runs only on the user's own computer (stdio), never in the API
+src/mcp_server/
+
 # Secrets - the API needs none, and nothing secret belongs in an image
 .env
 

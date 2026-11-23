@@ -206,3 +206,15 @@ data/raw_private/
 # Local W&B run cache - the actual experiment records live on wandb.ai,
 # this is just local metadata/logs from each run.
 wandb/
+
+# The isolated copy of the pipeline used for the holdout test (real, unanonymised-derived data)
+data/holdout/
+
+# Forecast log runner: training copies and correction history (real daily figures) stay local
+data/training/
+
+# Per-machine settings of the forecast log (manager folder path)
+config/forecast_log.local.yaml
+.forecast_log.lock
+
+logs/

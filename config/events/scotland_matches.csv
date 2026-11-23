@@ -1,0 +1,37 @@
+date,opponent,place,competition,side,kind
+2024-03-22,Netherlands,"Amsterdam, Netherlands",Friendly,A,friendly
+2024-03-26,Northern Ireland,"Hampden Park, Glasgow",Friendly,H,friendly
+2024-06-03,Gibraltar,"Faro/Loule, Portugal",Friendly,N,friendly
+2024-06-07,Finland,"Hampden Park, Glasgow",Friendly,H,friendly
+2024-06-14,Germany,"Munich, Germany",UEFA Euro 2024,N,tournament
+2024-06-19,Switzerland,"Cologne, Germany",UEFA Euro 2024,N,tournament
+2024-06-23,Hungary,"Stuttgart, Germany",UEFA Euro 2024,N,tournament
+2024-09-05,Poland,"Hampden Park, Glasgow",UEFA Nations League A,H,competitive
+2024-09-08,Portugal,"Lisbon, Portugal",UEFA Nations League A,A,competitive
+2024-10-12,Croatia,"Zagreb, Croatia",UEFA Nations League A,A,competitive
+2024-10-15,Portugal,"Hampden Park, Glasgow",UEFA Nations League A,H,competitive
+2024-11-15,Croatia,"Hampden Park, Glasgow",UEFA Nations League A,H,competitive
+2024-11-18,Poland,"Warsaw, Poland",UEFA Nations League A,A,competitive
+2025-03-20,Greece,"Piraeus, Greece",UEFA Nations League play-off,A,competitive
+2025-03-23,Greece,"Hampden Park, Glasgow",UEFA Nations League play-off,H,competitive
+2025-06-06,Iceland,"Hampden Park, Glasgow",Friendly,H,friendly
+2025-06-09,Liechtenstein,"Vaduz, Liechtenstein",Friendly,A,friendly
+2025-09-05,Denmark,"Copenhagen, Denmark",World Cup qualifier,A,competitive
+2025-09-08,Belarus,"Zalaegerszeg, Hungary",World Cup qualifier,N,competitive
+2025-10-09,Greece,"Hampden Park, Glasgow",World Cup qualifier,H,competitive
+2025-10-12,Belarus,"Hampden Park, Glasgow",World Cup qualifier,H,competitive
+2025-11-15,Greece,"Piraeus, Greece",World Cup qualifier,A,competitive
+2025-11-18,Denmark,"Hampden Park, Glasgow",World Cup qualifier,H,competitive
+2026-03-28,Japan,"Hampden Park, Glasgow",Friendly,H,friendly
+2026-03-31,Ivory Coast,"Liverpool, England",Friendly,N,friendly
+2026-05-30,Curacao,"Hampden Park, Glasgow",Friendly,H,friendly
+2026-06-06,Bolivia,"New Jersey, USA",Friendly,N,friendly
+2026-06-14,Haiti,"Foxborough, USA",World Cup 2026 Group C,N,tournament
+2026-06-19,Morocco,"Foxborough, USA",World Cup 2026 Group C,N,tournament
+2026-06-24,Brazil,"Miami Gardens, USA",World Cup 2026 Group C,N,tournament
+2026-09-26,Slovenia,"Ljubljana, Slovenia",UEFA Nations League B,A,competitive
+2026-09-29,Switzerland,"Hampden Park, Glasgow",UEFA Nations League B,H,competitive
+2026-10-03,North Macedonia,"Skopje, North Macedonia",UEFA Nations League B,A,competitive
+2026-10-06,Slovenia,"Hampden Park, Glasgow",UEFA Nations League B,H,competitive
+2026-11-13,North Macedonia,"Hampden Park, Glasgow",UEFA Nations League B,H,competitive
+2026-11-16,Switzerland,"St Gallen, Switzerland",UEFA Nations League B,A,competitive

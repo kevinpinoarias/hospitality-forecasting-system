@@ -65,6 +65,7 @@ hospitality-forecasting-system/
 ├── requirements-dev.txt          # notebook, plots, neural models, experiment sweep (LightGBM, Prophet)
 ├── constraints-experiments.txt   # exact library versions the experiment log was produced with
 ├── requirements-assistant.txt    # deps for the chat assistant only
+├── requirements-mcp.txt          # deps for the MCP server only
 ├── requirements-ci.txt           # what the CI tests job installs
 ├── Dockerfile                    # forecast API image
 ├── Dockerfile.assistant          # chat assistant image
@@ -146,7 +147,9 @@ hospitality-forecasting-system/
     │   ├── history.py            # historical-data cache + lookups
     │   ├── weather.py            # live Open-Meteo weather
     │   └── inference.py          # feature construction + model inference
-    └── assistant/                # LangChain + Gemini chat assistant (see "Live chat assistant")
+    ├── assistant/                # LangChain + Gemini chat assistant (see "Live chat assistant"); its tools in tools.py
+    ├── forecast_log/             # the weekly prospective forecast log: versions, the Monday run, scoring (see "The weekly forecast log")
+    └── mcp_server/               # MCP server offering the same tools to Claude Desktop (see "MCP server")
 ```
 
 ## Data
@@ -234,14 +237,16 @@ These were chosen because they produced the best generalisation among the explor
 - payday behaviour
 - limited weather sensitivity
 
-### Feature sets: V1 and V2
+### Feature lists: 15 and 38
 
-The project uses two named feature sets, each defined **once**, in `src/features/build_features.py`:
+The project uses two named feature lists, each defined **once**, in `src/features/build_features.py`:
 
-- **V1** - the original 15 features above. Used by XGBoost, the neural models and the experiment log's baseline.
-- **V2** - all 38: V1 plus the 23 candidates the experimentation programme added, in a fixed order (column order changes CatBoost's seeded fits). Used by the final CatBoost model the API serves.
+- **`feature_list_15`** - the original 15 features above. Used by XGBoost, the neural models and the experiment log's baseline.
+- **`feature_list_38`** - all 38: the 15 plus the 23 candidates the experimentation programme added, in a fixed order (column order changes CatBoost's seeded fits). Used by the final CatBoost model the API serves, and the base of every piece of the weekly forecast log.
 
-`config/config.yaml` says which set each model uses (`features.use`), so switching a model's features is one line there, not an edit in several files. The XGBoost and neural models read V1 straight from `engineered_features.csv` (`load_model_frame`); the old separate `model_features.csv` no longer exists.
+Both are in use; neither replaced the other. Earlier documents (the experiment log up to Series 22) call them V1 and V2.
+
+`config/config.yaml` says which list each model uses (`features.use`), so switching a model's features is one line there, not an edit in several files. The XGBoost and neural models read the 15 straight from `engineered_features.csv` (`load_model_frame`); the old separate `model_features.csv` no longer exists.
 
 ### Broader engineered feature set
 
@@ -340,6 +345,8 @@ On that footing, 18 hypothesis-driven experiment series tested algorithms and hy
 **The resulting model**: CatBoost on 38 features, trained on log-transformed sales, averaged across 25 random seeds.
 
 **Four later series tried to improve on it, and did not** ([Series 19-22](docs/EXPERIMENT_LOG.md#series-19--does-the-order-of-the-38-columns-matter), each scored under the model's own protocol and re-checked on fresh seeds): the order of the 38 columns moves the result no more than seed luck does (100 random orders, spread £1.95 against £1.78); shallower trees with more iterations, 60 configurations, never beat the current setting (£909.57); and the LSTM and Transformer - given the 38 features, a hyperparameter grid, and finally the predicted day's own features - stay at least £120 behind (best £1,029 against £907 on the same days).
+
+**A review of the calendar columns found nothing to change** ([Series 44-51](docs/EXPERIMENT_LOG.md#series-44--do-the-month-and-day-of-year-columns-all-earn-their-place)): the month and day-of-year columns were tested as whole encodings rather than one at a time, with 100 fresh seeds, on the 56 days since the backtest ended, and inside the real Friday, Saturday and Sunday models. Day of year carries the seasonality (removing it costs £17-31 a day); the three month columns add nothing once it is there; separate Friday, Saturday and Sunday flags in place of `is_weekend` help a plain model by £11 but add nothing inside the real weekend models, which already see recent same-weekday sales; and dropping `year` is a wash for the full forecast (+£1.8) although it would matter if the model were retrained in the first weeks of a year. Redoing the whole weekend-feature selection with the flags in the base (Series 52) did not help either (+£2 to +£3). The 38 columns stay.
 
 **Against the venue's manual forecast** (Series 17), on 569 matched days:
 
@@ -559,7 +566,54 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m src.assistant.query_forecast "How is the forecast for next Saturday looking?"
 ```
 
+### MCP server: the same tools for Claude Desktop
+
+The assistant's eight tools are also offered through an [MCP](https://modelcontextprotocol.io/) server (`src/mcp_server/`), so an MCP client such as Claude Desktop can use them directly - for the maintainer and the finance team, with no new app. Every MCP tool calls the same function the Gemini assistant uses (`src/assistant/tools.py`) and returns its result unchanged; the numbers still come only from the forecasting API. Why it exists, the options considered and where it is *not* needed: [docs/MCP_SERVER_2026_11.md](docs/MCP_SERVER_2026_11.md).
+
+**Install and run** (Python 3.11+, from the repository folder):
+
+```bash
+pip install -r requirements-mcp.txt
+python -m src.mcp_server
+```
+
+Run by hand it just waits on stdin - normally the MCP client starts it. By default it uses the live API; set `FORECAST_API_BASE_URL` (e.g. `http://localhost:8000` with a local `uvicorn src.api.main:app`) to use another instance.
+
+**Connect Claude Desktop.** Settings → Developer → Edit Config opens `claude_desktop_config.json`; add the server (Windows paths shown - use the full path to the Python that has the requirements installed, and to this repository):
+
+```json
+{
+  "mcpServers": {
+    "hospitality-forecasting": {
+      "command": "C:\Users\<you>\AppData\Local\Python\bin\python.exe",
+      "args": ["-m", "src.mcp_server"],
+      "env": {
+        "PYTHONPATH": "D:\path\to\hospitality-forecasting-system"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop; the eight tools appear under the tools menu. Try "What's the forecast for Christmas Eve?", "Give me the forecast for every day of the week before Christmas" or "Which ten days did the manager's own forecast miss by the most?". The first answer after a while can take up to a minute: the API on Cloud Run scales to zero when idle.
+
+**The chat assistant through MCP (optional, local).** The Gemini assistant can load the same eight tools through this server instead of importing them: set `ASSISTANT_TOOLS=mcp` before `python -m src.assistant.app` (needs `pip install langchain-mcp-adapters`). The server starts once and one session is shared; a tool call costs about 3-13 ms more than a direct call. The deployed app does not use it. The evaluation runs either way: `ASSISTANT_TOOLS=mcp python -m src.assistant.evaluate_output`. Results and latency: design record, section 5.
+
+**Security choices.**
+- **Local only:** the server talks to its client over stdin/stdout (stdio). It opens no network port and is not deployed anywhere; CI never redeploys anything because of it.
+- **Read-only:** all eight tools only read, and are marked so for the client. There is no tool that writes or changes anything. (Manager event flags - a propose-only tool with approval outside any AI's reach - are designed but parked; see the design record.)
+- **Logs:** one line per tool call on stderr (tool name, duration, success or error); no arguments, results or question text. Claude Desktop keeps it in its MCP log.
+- **Data:** answers in Claude Desktop are written by Anthropic's Claude, so forecast figures go to Anthropic rather than Google. The forecasting API itself has no sign-in (see [Limitations](#limitations)); the server reads only what that API already serves.
+
 ---
+
+## The weekly forecast log: a prospective test
+
+A backtest can only re-score the past, and every experiment in the log has been judged on the same 585 days. So since 2 November 2026 the system also forecasts the future and writes it down before the days happen. Every Monday a scheduled run (`src/forecast_log/`) issues forecasts for the coming two weeks from several registered model versions side by side: the deployed model, the weekend package, the Hydro-show model, and the later versions built from the experiment log (v1.11 to v1.14, and v1.131 and v1.141, which serve v1.13 and v1.14 with a better stand-in for the manager's number), plus a holiday rule. The forecasts are appended to a separate repository and pushed at once, so the push timestamps them; rows are never edited, and a run made too early is withdrawn and re-issued in the open.
+
+The rules were pre-registered before the first forecast: which comparisons are read, when (formally after 26 or 52 weeks), and what counts as a result. Each version's model files are fingerprinted when they are registered and checked before every run. Forecasting is kept apart from retraining: registered versions are never refitted.
+
+**The log repository (`forecasting-log`) is private for now.** This repository holds the code that makes, scores and registers the forecasts (`src/forecast_log/`, with its tests) and the registration notes (`docs/FORECAST_LOG_*.md`); documents here that refer to the log, its amendments or its commits refer to that private repository.
 
 ## CI/CD: checks and automatic deploys
 
@@ -651,30 +705,72 @@ Several future directions emerged from the project. Items marked **done** or **t
 
 **Feature expansion**
 - ~~test shorter-lag features such as lag_1~~ - **tested** (Series 4): lag_1-3 and 28-day rolling features all made accuracy worse
+- ~~re-examine the calendar and cycle columns (month, day of week, day of year, year, is_weekend)~~ - **tested** (Series 44-51): all 38 columns stay; day of month, week of month, week of year and month start/end flags were tested next (Series 54-56) and add nothing
 - ~~expand the lag family more systematically~~ - **tested** (Series 2, 4)
 - ~~revisit forecast-error lag features~~ - **tested** (Series 2, 4)
-- add richer rolling statistics and trend-sensitive features
+- add richer rolling statistics and trend-sensitive features: rolling median, standard deviation, maximum and minimum, and ratio-to-rolling-mean (untested; Series 4 suggests small or negative returns; the manager's forecast against the mean of the sales 14, 21 and 28 days earlier was tested in Series 66 and 69: about £4.4 a day better and reproducible on fresh seeds, but the gain sits in 2025, the intervals include zero and the 56 new days are worse; Series 74 tested the ratio in the Monday to Thursday and Friday pieces only on a third seed set: about £7 to £8 a day better, replicated, but about zero in 2026 and the post model's 56 new days +£2.87, so not supported by the rule set beforehand; it is on the watch list, low priority, with the reason)
+
+**Target decomposition**
+- forecast Food and Beverage sales separately and add them up (untested). The raw Rotaready files carry hourly sales and the manager's forecast split into Food and Beverage streams, but the model has only ever seen the daily total. A descriptive look (2026-11-07) compared the 26 Saturdays after a Friday payday with the other Saturdays within five weeks: Food +£388 (higher on 22 of 26, 2.2 standard errors), Beverage +£147 (17 of 26, 1.1), total +£534 (18 of 26), and the drink share and time-of-day shares do not move, so payday seems to lift food and a food-only model might see the payday signal more cleanly. The test would also show whether splitting the target helps at all. About two series of fits; the product would have to serve and maintain two models
+
+**To do next (in order)**
+- forecast-log version v1.11 (the hydro model plus the triangle payday intensity in the Saturday pieces only, same training data as v1): fitted and registered on 7 November 2026 (the pre-registration amended first), run beside v1 from the Monday 9 November run as `hydro_v1.11` and scored as Q4 (Saturdays decide; descriptive until 52 Saturdays); first payday Saturday to watch: 28 November 2026
+- the triangle payday intensity: live in forecast-log version v1.11 (see above); the signed distance was tested on top of it (Series 75) and adds nothing, so it is closed
+- the payday-Saturday correction (Series 65, the split and the stacked versions): parked as a forecasting-method question, not a feature; revisit whenever we discuss how Saturdays are forecast or how the model forecasts overall, and record both versions and v1.11 passively on each Saturday after a Friday payday from 28 November 2026 (Friday 27th pays under the 28th rule), deciding after about 8 to 10 of them if one wins about 70% of the time
+- forecast-log versions v1.13 (the year-end specialist models) and v1.14 (the year-ago sales input in Monday to Saturday) were registered on 14 November 2026 (the amendment, the fits and the back-run from 2 November are in the log; details in `docs/FORECAST_LOG_V1_13_V1_14_REGISTRATION.md`); the first live run with them is Monday 16 November, and v1.13's windows (26 December to 8 January) are the first test of the year-end fix
+- forecast-log versions v1.131 and v1.141 (v1.13 and v1.14 served with the hybrid stand-in S6 for the manager's number, no refit) were registered on 14 November 2026 (the amendment, the registrations and the back-run from 2 November are in the log); the hybrid is worth about 54 pounds a day alone in the backtest (946 to 892, one December and one January), and Q9 and Q10 read it from the Christmas week. See `docs/FORECAST_LOG_V1_131_V1_141_REGISTRATION.md`.
+- December: the closed-day fix and the holiday rule are defined as forecast-log version v1.12 (Series 76-78: the fix is the one thing that helped, an early pay date adds nothing); CLOSED by Kevin on 14 November 2026 ("consider payday family closed"): December pay brought forward and a December correction, so the payday family is closed; still open (watch list): the model cannot learn Boxing Day from two examples, and a Saturday Boxing Day (26 December 2026) and Christmas Day (25 December 2027) are untestable
+- IMPORTANT (Series 80, 8 November 2026): holiday-aware recent-sales inputs. Switching off the lag and rolling inputs for 1 to 15 January improved the package by 6.6 pounds a day over the 585 days, beating all ten placebo windows in other months, because the January rows teach the model a wrong lesson that spreads to every month. Series 81 (25 seeds) ruled out the zero-sales closed days as the cause (treating them as missing or filling them makes the package worse; the mask itself keeps its gain), so the lesson is in the post-Christmas transition rows. Series 82 (25 seeds) found where it sits: the first week, the best window is 1 to 8 January (-9.07 a day over the 585 days, the largest step after the weekend pieces), 1 to 15 January gives -6.1, the mask turns into a loss from 22 January, and starting on 26 December adds nothing. Series 83 repeated the two best windows on 175 more seeds and both replicate (1 to 8 January -8.35 on the 100 seeds and -10.09 on fresh seeds; 26 December to 8 January -8.57 and -7.33), 1 to 8 January slightly ahead. Still to do: the remaining ideas on the working list (a repair that keeps the information), leaving the Christmas-break days out of the source series before the averages are taken (a holiday-aware level), then the same for Easter and the summer break; any use needs a refit, a new forecast-log version and Kevin's decision
+- IMPORTANT, a final joint feature check across all the pieces, starting from the original one-model recipe (Kevin, 8 November 2026; 14 November: to be run later, kept on this list; the cheaper anchor test of Series 91 was discarded): the pieces were built one at a time and each new feature was tested in one piece, so nobody has asked which features each piece should have in the final system. The staircase (saved predictions, 585 backtest days) shows the weekend pieces are two thirds of the gain over the original model (average daily miss 912 to 873) and the later steps (weekend correction, hydro flag, payday intensity, closed-day fix) about 19 pounds together. It would entail (a) one model with the original 38 features plus everything found since, against the pieces package (cheap; expected worse on weekdays, as Series 26 found for the same-weekday lags, but untested), (b) a per-piece drop-one audit with placebo columns (about 5 to 6 hours at the full protocol), and (c) the closed-day and January-penalty columns in the weekday pieces (a January penalty in the Saturday pieces was tested in Series 79 and does nothing); judge it on about 120 unseen days (about the end of February 2027) and after the 11th-fold decision, since every choice so far used the same 585 days
+- forecast Food and Beverage separately (see Target decomposition above)
+- decide the 11th-fold question (below, under Post model) before running anything new
+
+**Watch list (waits for a date)**
+- recheck the `year` column before any retrain in January to March 2027 (see Adaptive modelling below)
+- low priority, inconclusive: the 3-week forecast ratio (Series 66, 69 and 74). Why it sits here: the gain is in 2025 and not in 2026 (the Monday-to-Friday-only version is about £7 to £8 a day better over the 585 days and replicated on three seed sets, but about zero in 2026), and on the 56 newest days it turned against it (+£2.9 post, 0.0 hydro, Fridays +£16; intervals wide). The ratio's link to the model's error is +0.12 in 2025 and about 0 in 2026, while the model's own error on those days fell from £836 to £729: the model may simply have learned what the ratio told it, or the 2025 gain was partly chance. Roadmap: (B, optional, any time) a static split, training once on 2024 only and scoring 2025 and 2026 with and without the ratio in the Monday-to-Friday pieces, to see whether the gain exists only while the model is young; (C) once about 120 unseen days exist after 1 November 2026, rerun Series 74's design on those days only with the rule written beforehand, and also check whether the ratio's link to the model's error came back; if C passes it is a candidate for a later forecast-log version beside v1.11, if not the idea is closed
+- low priority: v1.11's gain sits mostly in July and December (61% of it; two Julys and one December in the backtest); read the log's Q4 for July and December Saturdays apart from the other Saturdays once December 2026 and July 2027 have an actual
+- medium priority: the Saturday Boxing Day penalty (v1.12's Saturday pieces) and the holiday rule's fixed output (0 on 25 December and 1 January, 3,620 on Boxing Day); Boxing Day 2026 is a Saturday and no Saturday Boxing Day is in the data (Christmas Day 2027 is a Saturday too); read the log's Q5 and Q6 once the actuals for 25 December 2026 to 1 January 2027 are in, then decide the level and whether the model needs more than a penalty The hybrid stand-in of v1.131 and v1.141 meets the same problem: for Saturday 26 December 2026 and Saturday 2 January 2027 it takes the number of the same DATE a year earlier, which was a Friday (4,700 for Boxing Day 2025), so read Q9 and Q10 on those two days too.
+- low priority (Kevin, 14 November 2026): untested forms of v1.14's year-ago input (the year-ago value scaled by how much the hotel has grown since) and whether the year-end specialist pieces should carry `sales_364` too (a new version); wait to see how v1.141 and v1.14 do in the December and January actuals before testing either
+
+**CatBoost settings not yet tuned**
+- iterations, learning rate and depth have been searched on the final model (Series 1, 8, 14 and 21, 60 combinations in the last: nothing beats 300 / 0.05 / 4, and depths 2-6 are not better), and so have the loss function (Series 13) and the log target (Series 14); these others have never been searched and sit at CatBoost's defaults: `l2_leaf_reg` (regularisation strength, default 3), `rsm` (the share of columns each split may look at, default all), `min_data_in_leaf` (smallest leaf, only with the lossguide and depthwise grow policies), `grow_policy` (symmetric trees by default; depthwise and lossguide are alternatives), `border_count` (how finely a numeric column is cut, default 254), `bagging_temperature` / `subsample` (row sampling), `random_strength` (default 1) and `one_hot_max_size`. The weekly log's Friday, Saturday and Sunday pieces also reuse the final model's settings without a search of their own. Any search needs the 25-seed protocol, a fresh-seed confirmation and the net-effect reading; the Series 21 plateau suggests small gains at best
 
 **Holiday and seasonality redesign**
 - ~~build explicit Christmas-period features~~ - **tested** (Series 5-12): a flag, a graded intensity index, named phases and post-hoc corrections all failed to help
 - build explicit Easter-period, summer-period, and New-Year-period features
+- ~~give the model a smooth seasonal baseline (weekday-specific sine and cosine waves) and let CatBoost learn the leftovers~~ - **tested** (Series 57): £99 to £246 a day worse in every variant, and removing the seasonal columns from CatBoost costs more, so the trees represent the season better than the baseline does; the rescue (a cross-fitted baseline, so the leftovers CatBoost sees are as large as on new days) was tested in Series 58 and changes nothing (−£10 to +£39 against the in-sample version, all intervals include zero), so the idea is closed
 - compare these against school-holiday flags
 - evaluate whether broad seasonal markers are more robust than council-specific school break proxies
-- re-test a December correction once a third December of data exists
-- revisit the payday feature: `days_since_payday` always counts from the previous month's payday, so on the few days between an early payday (a Friday, say) and the end of the month it reads about 30 rather than 1-2, and those days miss the payday window flag (fixing it changes every backtest figure; the API's `day_context` already reports the real day counts)
+- ~~re-test a December correction once a third December of data exists~~ - **closed** by Kevin on 14 November 2026 with the rest of the payday family (the payday-Saturday correction stays parked as a forecasting-method question)
+- ~~revisit the payday feature~~ - **tested** (Series 59-73): the two known flaws (`days_since_payday` counts from the previous month's payday, so it reads 28-33 on payday itself and about 30 rather than 1-2 on the days between an early payday and the month's end; `days_to_payday` is negative on those days) were repaired and the repair is £3 to £5 a day worse than the deployed columns; dropping the four payday columns is £5 to £8 worse; explicit flags for the weekend after an early payday, a mix of the last working day, 25th and 28th, symmetric windows (1, 2 and 5 days), a graded signed distance, the 25th, 28th and 15th as full column sets, and a payday-Saturday correction instead of a feature (split and stacked) all fail to beat the deployed columns. The deployed `days_since_payday` is the day of the month plus 0 to 3 days, but plain day of month is £3 worse (Series 62), so why the deployed columns work is not explained. Also tested without helping: a pay-cycle phase (Series 67), working days to payday (Series 68) and a payday intensity summed over the pay dates (Series 70; the triangle shape is £3.3 to £3.8 better in the backtest with intervals that include zero and better on the new days, so it joins signed distance on the to-do list); payday near a long weekend and December pay were checked without model fits (noise; the two Decembers disagree). What is still to do, and what waits for a date, is under Future Work (To do next, Watch list)
 - extend the school-holiday table back to January 2024: the 2024 Easter and summer breaks are missing, so the model learns those breaks from 2025-26 only (a fix changes every backtest figure, so it means re-running the experiment log)
 
+**Event features (to look at when we reach the event features in the feature recheck; not part of the calendar and cycle review)**
+- pool the event days: the post model's remaining error sits on named events with one or two occurrences each, too few for a tree to learn one by one (found by the calendar error screen, `run_error_calendar_screen.py`: Mother's Day +27% under-forecast in 2025 and +6% in 2026; Valentine's Day +34% on a Friday in 2025 and +3% on a Saturday in 2026; Father's Day +7% and +6%; Halloween −23% and Bonfire Night −13%, one occurrence each; the start of the school summer break on 28 June 2025 and 28 and 30 June 2026; the month-end excess is these events). Try a single "major event day" flag (and a shared "days to the nearest event" column) so all events share the data and one learned size, instead of one flag per event. Structured event data (the Hydro's show calendar was the one clear event signal found) is worth more than another calendar column. Each event repeats once a year, so more years of data help directly
+
+**Post model (the weekend package: Series 23-27 and the Saturday/Sunday correction)**
+- ~~calendar candidates (day of month, week of month, week of year, month start and end flags)~~ - **all tested** (Series 54-56), none helps. ~~week of year and month start/end flags~~ - **tested** (Series 56, same pieces, four encodings): no variant moves either model by more than £2.5, every interval includes zero, and all are worse on the 56 new days. ~~day of month~~ - **tested** (Series 54, in the post and hydro models' pieces, four encodings): no gain, slightly worse the more columns are added. ~~week of month~~ - **tested** (Series 55, same pieces, four encodings): the plain 1-5 version is a hair better (-£0.2 post model, -£1.4 hydro model, 7 of 10 folds) but inside the noise, and the extra columns hurt. A screen of the post model's errors (`run_error_calendar_screen.py`) found no pattern by day of month or week of month, and the month-end excess is mostly event days (the start of the school summer break, Mother's Day). The remaining error sits on event days; that idea has moved out of the calendar review to the Event features group above
+- ~~rerun the weekend-feature selection (Series 26-27) with the three single-day flags in the base instead of `is_weekend`~~ - **tested** (Series 52): the flags change which options win (Friday: none, Sunday: A_lags) but the post model is no better (+£2 to +£3, interval about ±£13); the flags help Monday to Saturday by £1 to £9 each and cost Sunday £36
+- ~~test the single-day flags in the plain log model as the weekly log serves Fridays~~ - **tested** (Series 53): for the next-week Fridays the log issues, the Friday piece cannot run (the sales 7 days earlier are not yet known) and the plain log model forecasts them; in a replay of the weekly log the flags' Friday gain shrinks from £27-36 to £2-11 (intervals about ±£25) and Monday to Friday gains £4-6 a day (intervals touch zero), so not worth a new model version
+- before further backtest series, decide the backtest protocol: once data beyond about 6 November 2026 is ingested there will be 60 days beyond the 10 folds that end on 6 September, so the backtest gains an 11th fold and every 585-day figure changes. Series 44-52 stop with a message when that happens; pin the first 10 folds to compare with earlier results, or move all of them to the new protocol
+
 **Hard-day forecasting**
+- test a two-stage model: first classify whether a day is a normal or spike day, then predict sales separately for each (untested; the large misses so far look event-driven, so it may need event data to work)
 - isolate and investigate spike days
 - classify worst forecast days by type
 - inspect whether the worst errors cluster around identifiable contexts
 - design features specifically for difficult peak periods
+
+**Neural networks**
+- explore the LSTM and Transformer further: they have only been tried on the original 15 features, and on the 38 in Series 20 (worse by about £200-250), so they sit well behind CatBoost (Series 20 and 22: best network about £122 worse on the common days, even when it sees the target day's own features)
+- untested: other architectures, features designed for the networks rather than inherited from the tree models, a network on the weekend-package inputs or the log-pound target, blending a network with CatBoost on more than the one leave-one-fold-out check already done (no gain)
 
 **Adaptive modelling**
 - ~~test shorter rolling training windows~~ - **tested** (Series 1): no universal winner between a sliding one-year window and all history
 - ~~compare models trained on recent-only vs longer historical periods~~ - **tested** (Series 1)
 - monitor degradation over time
 - evaluate retraining frequency
+- **the `year` column at a year rollover:** `year` can only be cut into the years the model has seen, so a model not retrained treats 2027 as 2026 (harmless), but a model retrained in the first weeks of a year learns from a handful of low-season rows of the new year, and `year` can then act as a "quiet day" marker. Series 46 saw this in the backtest fold of January to March 2026 (the plain log model's Saturday error about £1,200 a day larger than without `year`); inside the real pieces it was small (Series 50: the full forecast about £2 a day better without `year` in that fold, about £2 a day worse overall). Before any retrain in January to March 2027, rerun `python -m src.experiments.run_series50_drop_year_in_pieces` on the then-current data (its protocol assertions will need revisiting once the 11th backtest fold exists) and decide whether to drop `year` or replace it with something a tree can extend. Retraining itself stays the owner's decision
 
 **Operational features**
 - engineer labour-intensity or wage-efficiency features (note: a labour forecast does not exist at prediction time, since the rota is planned from the sales forecast, so these cannot be model inputs)

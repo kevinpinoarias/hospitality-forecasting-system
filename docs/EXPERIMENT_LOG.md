@@ -37,7 +37,7 @@ memory or scattered CSVs.
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt -c constraints-experiments.txt
 python main.py                               # builds data/features/engineered_features.csv
-python -m src.experiments.run_all_series     # Series 5-22 and business impact, in dependency order
+python -m src.experiments.run_all_series     # Series 5-34 and business impact, in dependency order
 python -m src.experiments.run_all_series --only 5 6 7   # a subset (Series 19-22 take about 3 hours together)
 python -m src.experiments.run_all_series --include-1-4   # also Series 1-4 (much slower)
 ```
@@ -62,7 +62,13 @@ versions this log was produced with - install with it to reproduce the
 figures exactly. Every fit also uses a fixed seed, but different hardware
 or thread counts can still introduce tiny floating-point differences.
 
-**Series 19-22 write JSONL files, not CSVs.** Each of those series fits hundreds of
+**V1 and V2 in this log.** Series 20 and 22 (and the CHANGELOG up to this point) call the
+original 15 features **V1** and the 38 features **V2**. The code now names them
+`feature_list_15` and `feature_list_38`. They are unrelated to the forecast log's model version
+`v1` or to the school calendars `SCHOOL_BREAKS_V1` / "v1" and "v2" calendar in Series 29-35. The
+Series 20 scripts and stored results keep the old labels.
+
+**Series 19-34 write JSONL files, not CSVs.** Each of those series fits hundreds of
 models, so every finished task is appended to a JSONL file under
 `reports/experiments/series19_21/` and a re-run resumes where it stopped
 (`python -m src.experiments.report_series19_21` turns them into the tables and
@@ -70,6 +76,12 @@ charts of a review report). Their protocol is the final model's own - 950 rows,
 10 rolling-origin folds, 585 test days - and every figure is pooled MAE over
 those days unless stated; the harness reproduces the final model's £909.57
 exactly.
+
+**Series 44-92** use the same protocol and JSONL files (`reports/experiments/series44/` to `series94/` (Series 91 was not run: the idea of repeating the tests on the original model as an anchor was discarded on 14 November 2026; Series 93 fits nothing); Series 65 fits no model and reads the saved predictions; Series 69 refits on seeds 300-399) and
+are run by their own commands (`python -m src.experiments.run_series44_month_doy_encodings run`, and so on,
+each also taking `list` and `report`); like Series 35-43 they are not in `run_all_series`. Their protocol is
+checked before every report (10 folds ending 6 September 2026): once 60 days beyond that date exist the
+backtest gains an 11th fold, the 585-day figures change, and the scripts stop with a message.
 
 ---
 
@@ -2101,6 +2113,2995 @@ redundancy and noise rather than information at about 500 training rows.
 The neural-network conclusion of Series 1 stands, now on firmer ground: the
 networks do not beat CatBoost on this data under any configuration tested.
 
+## Series 23 — Does the Log Transform Hold Back the Busy Days?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series23_log_vs_raw_peaks.py` ·
+**Raw data**: `series19_21/series23_log_vs_raw.jsonl` (per-seed predictions) and
+`series23_log_vs_raw_peaks/` (segment, decile and weekday tables, charts)
+
+### Context
+
+The error autopsy found Saturdays about £720 too low and the biggest misses on the busiest
+days. The final model predicts `log1p(sales)` and converts back with `expm1`, which aims at
+the typical day rather than the average one and can pull very busy days down. Series 14
+chose the log target because it beat the raw target overall, but it never asked whether it
+did so at the expense of the busy days. This series only measures that, as the first step
+of Track A of the improvement roadmap; nothing is changed in the model.
+
+### Hypothesis
+
+**H23**: the log target under-forecasts Saturdays and the busiest days more than a raw-£
+target does.
+
+### Method
+
+The final model's exact protocol (38 features, 10 rolling-origin folds, 585 test days,
+25 seeds 0-24) with only the target changed:
+
+- **log1p_final** - the final model (depth 4, 300 iterations, learning rate 0.05).
+- **raw_same_params** - the same settings on the raw-£ target.
+- **raw_series8_params** - the raw-£ target with the settings that won on the raw scale in
+  Series 1/2/8 (learning rate 0.03), so the raw side is not handicapped by log-tuned settings.
+
+Two segments were fixed in advance (the roadmap's wording: Saturdays, and the top 10% of
+days); the rest are context. Differences are log minus raw MAE, with a 95% moving-block
+bootstrap interval (10-day blocks, whole series resampled). A caution: picking the busiest
+days **by actual sales** makes any noisy model look under-forecast, and favours whichever
+model forecasts higher overall, so the same table is repeated with days picked by the
+**manager's forecast**, which is known in advance.
+
+### Results
+
+Pooled MAE over 585 days: **log £909.57** (reproduces the final model exactly), raw
+£916.75 (same settings) and £913.12 (Series 8 settings). Log minus raw: -£7.2
+[-42.1, +22.1] and -£3.5 [-34.6, +22.6]. Overall, no difference.
+
+| Segment | Days | Log MAE (bias) | Raw MAE (bias) | Log minus raw, 95% interval |
+|---|---|---|---|---|
+| **Saturdays** | 84 | 1,290.0 (-720.5) | 1,177.1 (-404.0) | **+113.0 [+23.8, +209.7]** |
+| Friday to Sunday | 251 | 1,162.0 (-117.4) | 1,146.3 (+33.0) | +15.7 [-28.4, +58.0] |
+| Monday to Thursday | 334 | 719.9 (-25.7) | 744.2 (+104.9) | -24.3 [-66.8, +11.8] |
+| **Top 10% by actual sales** | 59 | 1,354.8 (-1,329.3) | 1,125.8 (-1,061.2) | **+229.0 [+118.9, +336.1]** |
+| Top 20% by actual sales | 117 | 1,277.2 (-880.4) | 1,161.9 (-599.1) | +115.3 [+38.0, +202.1] |
+| Top 20% of Saturdays by actual | 17 | 2,060.1 (-2,060.1) | 1,967.9 (-1,967.9) | +92.2 [-87.4, +281.7] |
+| Top 10% by manager's forecast | 60 | 1,253.9 (-622.3) | 1,215.5 (-328.6) | +38.4 [-69.0, +156.2] |
+| Top 20% by manager's forecast | 117 | 1,266.7 (-465.8) | 1,231.6 (-117.2) | +35.1 [-69.1, +145.5] |
+
+The Series 8-settings raw model tells the same story (Saturdays +107.9 [+24.2, +199.2];
+top 10% by actual +181.7 [+82.3, +283.0]; top 10% by manager's forecast +44.6 [-49.0, +154.3]).
+
+By decile of actual sales, the log model is better at the quiet end and worse at the busy
+end: the quietest decile is over-forecast by £891 (log) against £1,075 (raw); the busiest
+decile is under-forecast by £1,329 against £1,061.
+
+**Slope of actual on forecast** (1.0 means no shrinkage, above 1.0 means forecasts are
+compressed towards the middle; no selection on the outcome): all days 1.048 (log) and 1.030
+(raw); Friday to Sunday 1.093 and 1.064; Monday to Thursday 1.079 and 1.004; **Saturdays 0.469
+and 0.447**.
+
+**One exploratory check, not planned in advance:** averaging the log and raw predictions 50/50
+gives £905.1 (log + raw) and £904.3 (log + raw Series 8), with a bias of about zero
+(+£4.5 and +£0.3), against £909.57; Saturdays £1,225 and £1,229, Monday to Thursday £725 and £723.
+
+### Conclusion
+
+**H23 is partly supported, and smaller than suspected.**
+
+1. **On Saturdays the log target costs about £113 of MAE** (interval excludes zero, same for
+   both raw settings) and about £240 to £316 of the £720 average under-forecast (a third to 44% of it,
+   depending on the raw settings). The rest, £400 to £480, is present with the raw target
+   too, so the transform does not explain it.
+2. **On the busiest days the direction is the same but the evidence is thinner.** Picked by
+   actual sales the gap is £229 [119, 336], but part of that is selection: the raw model
+   forecasts about £139 higher on average, which helps on days chosen for being high. Picked
+   by the manager's forecast the gap is £38 [-69, +156] and not distinguishable from zero.
+3. **The log target trades quiet days for busy days, with no net change.** It is better on
+   Monday to Thursday and at the quiet end, worse on Saturdays and the busy end, and the
+   overall difference is -£3.5 to -£7.2 with intervals that include zero. That is consistent
+   with Series 14 and with keeping the log target.
+4. **The "peak shrinkage" description in the autopsy was too strong.** A shrinking model would
+   have a slope above 1; Saturdays have a slope near 0.5, so Saturday forecasts vary *more*
+   than Saturday sales and still sit too low on average. Saturday is mostly a level offset plus
+   an inability to tell a £13,000 Saturday from a £17,000 one, not a compressed range. The
+   top Saturdays being under-forecast by about £2,000 under either target is largely
+   selection plus that unpredictability.
+5. **What this means for the roadmap.** Switching to a raw target is not worth it. A
+   back-transformation correction could recover at most the £240 to £316 attributable to the log;
+   the adaptive correction (Track A item 1) addresses the whole £720. The 50/50 log + raw
+   blend (-£4 to -£5, about twice the seed noise) is a lead to pre-register and confirm on
+   fresh seeds, not a result: it was looked at once after seeing the numbers.
+
+**Caveats.** 84 Saturdays in 10 blocks, so Saturday intervals are wide; the two segments
+named in advance are Saturdays and the top 10% of days, the others are context; the blend
+check is one extra comparison made after seeing the results.
+
+## Series 24 — An Adaptive Friday-to-Sunday Correction on the Raw-Saturday Hybrid
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series24_weekend_correction.py` ·
+**Raw data**: `series19_21/series24_fresh_seeds.jsonl` (fresh-seed fits) and
+`series24_weekend_correction/` (grid tables, winner tables, charts); the seeds 0-24
+predictions are Series 23's
+
+### Context
+
+Series 23 found the raw-£ target beats the log target on Saturdays only (£1,177 against
+£1,290), while the log target is as good or better on every other weekday. The autopsy had
+also found Saturday's bias changes over time (a full-strength weekday correction does nothing,
+a half-strength one gained about £16). This series combines the two as Track A item 1 of the
+improvement roadmap: start from the **hybrid** (raw model on Saturdays, the final log model on
+every other day) and add a correction learned from past misses.
+
+### Hypothesis
+
+**H24**: shifting each of Friday, Saturday and Sunday's forecasts by a recency-weighted share of
+that weekday's recent bias, learned only from earlier blocks, lowers the hybrid's MAE.
+
+### Method
+
+Before each 60-day test block, for each of Friday, Saturday and Sunday separately: the
+recency-weighted mean of (forecast minus actual) over that weekday's days in **earlier blocks
+only** (weight halves every `half_life` weeks of age, measured from the start of the block),
+and subtract `strength` times it from that weekday's forecasts in the block. Monday to Thursday
+are untouched. Block 0 has no history and is left as it is, so scoring is on blocks 1-9
+(540 days).
+
+**Pre-registered** in the script before any result was seen: a 9-variant grid (half-life 4, 8,
+16 weeks × strength 0.25, 0.5, 0.75; scope Friday to Sunday; the Saturday-only and all-days scopes
+of the roadmap's 27-variant grid were dropped by decision); the lowest pooled MAE on seeds 0-24
+picks the winner; the winner's exact settings are then applied to the hybrid rebuilt from **25
+fresh seeds (100-124)**; the bar is (a) a 95% moving-block bootstrap interval of the MAE change
+entirely below zero and (b) neither Friday nor Sunday significantly worse.
+
+### Results
+
+On the 540 scored days the MAE is £905.56 for the log model everywhere, £913.74 for raw
+everywhere and **£890.06 for the hybrid** before any correction.
+
+**Step 1: the 9 variants on seeds 0-24** (change in pooled MAE against the uncorrected hybrid, £):
+
+| Half-life | Strength 0.25 | Strength 0.5 | Strength 0.75 |
+|---|---|---|---|
+| 4 weeks | -7.76 | -8.60 | -1.85 |
+| 8 weeks | -7.97 | **-11.87** | -8.69 |
+| 16 weeks | -7.42 | -11.72 | -8.55 |
+
+Every variant improves on the uncorrected hybrid. The winner is half-life 8 weeks, strength 0.5
+(MAE £878.19), though 16 weeks at 0.5 is within £0.15.
+
+**Step 2: the winner on fresh seeds 100-124.** Log everywhere £905.63, hybrid £889.85,
+hybrid + winner **£878.14**.
+
+| Segment | Days | Uncorrected MAE | Corrected MAE | Change (95% interval) |
+|---|---|---|---|---|
+| All scored days | 540 | 889.8 | 878.1 | **-11.7 [-24.4, -0.9]** |
+| Friday | 77 | 1,091.9 | 1,101.3 | +9.4 [-27.3, +44.9] |
+| Saturday | 77 | 1,190.3 | 1,110.8 | -79.5 [-157.0, +1.0] |
+| Sunday | 78 | 1,093.9 | 1,082.0 | -11.9 [-65.7, +28.8] |
+| Monday to Thursday | 308 | unchanged | unchanged | 0 |
+
+Across all 9 variants on the fresh seeds (context, not a selection): Saturday improves in all
+9 (-£41 to -£83), Sunday is mixed (-£24 to +£12), and **Friday gets worse in all 9 (+£2 to
++£47)**.
+
+The bar passes: the overall interval is below zero, and neither Friday nor Sunday is
+significantly worse.
+
+### Conclusion
+
+**H24 is supported, narrowly and with caveats.**
+
+1. **The gains add.** The hybrid alone is worth £15.8 on these days (£905.63 to £889.85) and the
+   correction a further £11.7, for **£27.5 (3.0%) against the final model** on the same 540
+   days. The two do not overlap as much as expected.
+2. **The correction is small and its evidence thin.** The overall interval's upper edge is -£0.9,
+   and the Saturday interval just includes zero (+£1.0). All 9 variants gain £1.9 to £11.9 on
+   seeds 0-24, so the result does not depend on a fragile choice of settings, but the realistic
+   gain is about £8 to £12, not the best variant's figure.
+3. **Fresh seeds do not fully protect the choice.** They remove seed luck, but the predictions
+   are almost identical (seed noise is about £2) and are scored on the same 540 days the setting
+   was chosen on. Only days the settings never saw can test that, and none yet exist beyond
+   6 Sep 2026.
+4. **Friday should probably not be corrected.** Friday's change is positive in every variant, so
+   the Friday correction is at best useless and at worst harmful. The Saturday-only scope was
+   dropped by decision; this is a hypothesis for a pre-registered follow-up, not a change made
+   after the fact.
+5. **Not promoted.** It needs: the Saturday-scope follow-up, confirmation on new days from the
+   venue as they arrive, a serving design (two models, a stored bias table, fading the bias
+   for dates far ahead) and the staffing-cost view. The Saturday bias also flips sign in some
+   blocks (blocks 3 and 7), where the correction overshoots; the chart `bias_by_block.png` shows it.
+
+**Follow-up (decided after seeing the results, so a hypothesis, not a pre-registered test).**
+Because Friday's correction hurt in every variant, the correction was re-scored on Saturday and Sunday
+only, with the same settings (8 weeks, 0.5) and no re-choosing. On the fresh seeds: **£876.80**, a change
+of **-£13.1 [-25.4, -2.3]** against the uncorrected hybrid and **-£28.8 (3.2%) against the final model**.
+Saturday -£79.5 [-157, +1], Sunday -£11.9 [-66, +29]. Saturday only gives -£11.3 [-22.6, +0.1], so
+Sunday adds about £2 and its own interval includes zero. All 9 half-life and strength variants of the
+Saturday-plus-Sunday scope improve on the fresh seeds (-£7.2 to -£13.1). The scope was chosen with
+the 540 days in view, so it needs confirming on days the venue adds after 6 Sep 2026.
+
+**How strong a correction?** Scored afterwards as context (not part of the registered grid, which stopped
+at strength 0.75), Saturday plus Sunday, fresh seeds, change in MAE against the uncorrected hybrid:
+
+| Strength | 4 weeks | 8 weeks | 16 weeks |
+|---|---|---|---|
+| 0.25 | -8.8 | -8.0 | -7.2 |
+| **0.5** | -12.4 | **-13.1** | -11.8 |
+| 0.75 | -7.3 | -10.8 | -9.5 |
+| 1.0 | +6.0 | -2.7 | -2.1 |
+| 1.25 | +24.2 | +9.6 | +9.0 |
+| 1.5 | +44.8 | +26.7 | +23.4 |
+
+The gain peaks near half strength, a full correction barely helps (the Saturday bias flips sign between
+blocks, so it chases a bias that has already moved), and above 1.0 the correction overshoots and harms
+(Saturdays +£95 to +£189 at 1.5). Memory length matters little (4 to 16 weeks within £1.3 at 0.5). The
+useful range is roughly 0.4 to 0.6.
+
+**Caveats.** 9 variants were tried on one base. The scored days differ slightly from the
+autopsy's 583-day frame, so compare changes rather than levels with its £892.5 reference. Each
+weekday has about 77 scored days.
+
+## Series 25 — Training the Model With the Weekends in Mind
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series25_weekend_training.py` ·
+**Raw data**: `series19_21/series25_weekend_training.jsonl` (seeds 0-24),
+`series25_fresh_seeds.jsonl` (the winner on seeds 100-124) and
+`series25_weekend_training/` (tables)
+
+### Context
+
+Series 23-24 changed the forecasts after the model made them (a raw-£ Saturday model, then an adaptive
+correction). This series, Track A item 3 of the accuracy roadmap, changes what the model learns from, to see
+whether paying more attention to Friday-to-Sunday during training sharpens the weekend forecasts.
+
+### Hypothesis
+
+**H25**: giving the weekends more weight, or training on them alone, lowers the Friday-to-Sunday MAE below the
+current weekend setup (the Series 23 hybrid: log model on Friday and Sunday, raw model on Saturday).
+
+### Method
+
+The final model's recipe unchanged (38 features, depth 4, 300 iterations, learning rate 0.05, 25 seeds, 10 folds,
+585 test days), on both the log1p and the raw-£ target, with only the training rows or their weights changed:
+
+- **w1.5, w2, w3**: one model on all days, Friday/Saturday/Sunday rows weighted 1.5, 2 or 3 times.
+- **sepFS**: a separate model trained only on Friday-to-Sunday rows (about 156 in the first fold, about 400 in the last).
+- **sepSat**: a separate model trained only on Saturday rows (about 52 to 120).
+
+10 runs. The separate models were not retuned for their smaller training sets. Variants a model does not cover
+are filled from the hybrid so every one is scored on the same 251 Friday-to-Sunday days. **Pre-registered** in the
+script: the winner is the lowest Friday-to-Sunday MAE on seeds 0-24; it is refit on 25 fresh seeds (100-124) and
+kept only if the bootstrap interval of the Friday-to-Sunday change against the hybrid is entirely below zero, no
+weekend day is significantly worse and Monday to Thursday is not significantly worse.
+
+### Results
+
+MAE (£) on seeds 0-24. The hybrid is Friday £1,087.7, Saturday £1,177.1, Sunday £1,107.3, Friday to Sunday £1,124.2.
+For reference, the unweighted log model is £1,162.0 and the raw model £1,146.3 on Friday to Sunday.
+
+| Variant | Target | Friday | Saturday | Sunday | Fri to Sun | Change vs hybrid | Mon to Thu |
+|---|---|---|---|---|---|---|---|
+| Weekends x1.5 | log | 1,086.5 | 1,273.0 | 1,092.9 | 1,151.0 | +26.9 | 720.0 |
+| Weekends x1.5 | raw | 1,123.4 | 1,178.0 | 1,137.8 | 1,146.5 | +22.3 | 748.5 |
+| Weekends x2 | log | 1,101.4 | 1,280.6 | 1,100.8 | 1,161.2 | +37.0 | 719.3 |
+| Weekends x2 | raw | 1,126.4 | 1,180.5 | 1,136.4 | 1,147.8 | +23.7 | 748.8 |
+| Weekends x3 | log | 1,131.5 | 1,291.4 | 1,095.5 | 1,172.9 | +48.8 | 725.2 |
+| Weekends x3 | raw | 1,128.8 | 1,187.7 | 1,136.5 | 1,151.1 | +27.0 | 756.7 |
+| Separate Fri-Sun | log | 1,159.6 | 1,243.4 | 1,159.0 | 1,187.5 | +63.3 | - |
+| Separate Fri-Sun | raw | 1,190.6 | 1,200.8 | 1,187.9 | 1,193.1 | +68.9 | - |
+| Separate Saturday | log | 1,087.7 | 1,237.9 | 1,107.3 | 1,144.5 | +20.4 | - |
+| **Separate Saturday** | **raw** | 1,087.7 | 1,198.3 | 1,107.3 | **1,131.2** | **+7.1** | - |
+
+Every one of the 10 variants is worse than the hybrid on Friday to Sunday. The winner by the rule (the least
+bad) is the separate Saturday model on the raw target. On the **fresh seeds** its Friday-to-Sunday change is
+**+£7.4 [-27.7, +47.5]** (Saturday £1,204.0 against the hybrid's £1,181.9, +£22.1 [-82.6, +142.3]; Friday and Sunday
+are the hybrid's own). With the Series 24 correction on top, the winner scores £891.07 on the scored days against
+£876.80 for the hybrid with the correction.
+
+### Conclusion
+
+**H25 is rejected. The bar fails** (the Friday-to-Sunday interval is not below zero; it is not an improvement).
+
+1. **More weight on the weekends does not help.** For the weighted log models Friday is unchanged or worse
+   (£1,086.5 at x1.5, £1,101.4 at x2, £1,131.5 at x3 against £1,087.7 unweighted), Sunday improves by £7 to £14
+   (within noise), and Saturday stays at £1,273 to £1,291 against the unweighted log model's £1,290, nowhere near the raw
+   model's £1,177. The weighted raw models are equal to or a little worse than the plain raw model on Saturday
+   (£1,178 to £1,188 against £1,177). Heavier weights are no better than lighter ones.
+2. **Separate models are worse, as the roadmap warned.** Training only on Friday to Sunday loses £25 to £47 against
+   the unweighted model on the same target, and a Saturday-only model loses £21 on the raw target
+   (£1,198 against £1,177): the models need the weekday rows to learn the seasonal and weather patterns. The
+   settings were not retuned, so a smaller model is a possible follow-up, but the direction is clear.
+3. **Why weighting is not the lever.** The model already separates weekends through its day-of-week and
+   weekend features, so counting those rows more adds nothing; what limits the weekend forecasts is the
+   information available, not the attention paid to them.
+4. **Nothing is added to the model.** The current weekend setup stays: the log model on Friday and Sunday, the raw model
+   on Saturday, and the Series 24 correction on Saturday and Sunday. Track A items 4 (weekend-specific features) and 5
+   (is the manager's forecast better on weekends?) are the remaining routes.
+
+**Possible follow-up (not run, low priority).** Retune the separate Saturday and Friday-to-Sunday models for their
+smaller training sets, since depth 4 with 300 iterations on 52 to 400 rows is likely to overfit: a small pre-registered
+grid (depth 2 or 3, 50 to 150 iterations, learning rate 0.03 to 0.1) on the raw target, judged by the same bar and
+confirmed on fresh seeds. The expectation is low: even the full-size models lost by £21 to £47, and the weighted models,
+which keep all the rows, gained nothing, so it is only worth running if item 4 (weekend-specific features) or the new venue
+data change the picture.
+
+**Caveats.** The separate models were not retuned (depth 4, 300 iterations on 52 to 400 rows); 10 variants were tried
+on one set of seeds; the Friday-to-Sunday intervals use about 250 days in 10 blocks.
+
+## Series 26 — Features Chosen for the Weekends
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series26_weekend_features.py` ·
+**Raw data**: `series19_21/series26_weekend_features.jsonl` (seeds 0-24),
+`series26_fresh_seeds.jsonl` (the winner on seeds 100-124) and `series26_weekend_features/` (tables)
+
+### Context
+
+Track A item 4 of the accuracy roadmap. The final model sees only three recent-sales inputs (sales 7 days ago and
+the 7- and 14-day averages). Series 25 showed that weighting the weekends or training on them alone does not help,
+so this series gives the model inputs that matter on a Friday to Sunday.
+
+### Hypothesis
+
+**H26**: weekend-specific features lower the Friday-to-Sunday MAE below the current weekend setup (the hybrid: raw
+model on Saturday, log model elsewhere).
+
+### Method
+
+Each variant appends its columns to the final model's 38 (the original order unchanged), is fit on both targets
+(log1p and raw £) with the final recipe (depth 4, 300 iterations, learning rate 0.05, 25 seeds, 10 folds, 585 test days)
+and is assembled into its own hybrid. 10 runs.
+
+- **Family A, same-weekday memory** (matched by calendar date, only earlier days): `lag_14_sales`, `lag_21_sales`,
+  `same_wd_mean4` and `same_wd_max4` (average and highest of the last 4 same weekdays).
+- **Family B, weekend interactions** (Friday to Sunday x condition): `wk_payday`, `wk_dry`, `wk_temp`, `wk_bh_near`
+  (within 3 days of a bank holiday). School-holiday interactions were left out because the school calendar has gaps.
+- Variants: `A_all` (4 features), `A_summary` (mean and max), `A_lags` (14 and 21 days ago), `B` (4), `AB` (8).
+
+**Pre-registered** in the script: the winner is the variant whose hybrid has the lowest Friday-to-Sunday MAE on
+seeds 0-24; it is refit on 25 fresh seeds (100-124); kept only if (a) the 95% bootstrap interval of the
+Friday-to-Sunday change is below zero, (b) none of Friday, Saturday, Sunday is significantly worse and (c) Monday to
+Thursday is not significantly worse. Family A uses recent sales, which the live API does not have for dates weeks ahead
+(Series 18), so a family A gain is a near-term gain.
+
+### Results
+
+MAE (£), seeds 0-24, each variant's hybrid:
+
+| Variant | Friday | Saturday | Sunday | Fri to Sun | Mon to Thu | All days | Fri to Sun change |
+|---|---|---|---|---|---|---|---|
+| Current hybrid | 1,087.7 | 1,177.1 | 1,107.3 | 1,124.2 | 719.9 | 893.4 | - |
+| A: same-weekday memory (4) | 1,075.4 | 1,102.8 | 1,115.4 | 1,098.0 | 732.7 | 889.4 | -26.2 |
+| A: mean and max of last 4 (2) | 1,073.1 | 1,134.5 | 1,121.6 | 1,109.9 | 724.3 | 889.7 | -14.3 |
+| **A: sales 2 and 3 weeks ago (2)** | 1,076.4 | 1,085.4 | 1,117.0 | **1,093.0** | 729.8 | 885.6 | **-31.2** |
+| B: weekend interactions (4) | 1,101.2 | 1,172.8 | 1,084.1 | 1,119.4 | 720.5 | 891.7 | -4.7 |
+| A + B (8) | 1,080.6 | 1,094.1 | 1,120.3 | 1,098.4 | 733.7 | 890.2 | -25.7 |
+
+The winner is `A_lags`. On the **fresh seeds** (hybrid minus winner, 95% interval):
+
+| Segment | Days | Hybrid MAE | Winner MAE | Change |
+|---|---|---|---|---|
+| Friday to Sunday | 251 | 1,129.1 | 1,093.3 | **-35.8 [-63.1, -4.8]** |
+| Friday | 83 | 1,096.7 | 1,082.9 | -13.8 [-55.9, +35.9] |
+| Saturday | 84 | 1,181.9 | 1,084.8 | **-97.1 [-151.3, -35.7]** |
+| Sunday | 84 | 1,108.5 | 1,112.2 | +3.7 [-42.4, +47.1] |
+| Monday to Thursday | 334 | 715.6 | 728.5 | **+12.9 [+2.5, +21.4]** |
+
+### Conclusion
+
+**H26 is supported for the weekends, but the pre-registered bar fails on condition (c): Monday to Thursday gets
+significantly worse (+£12.9).**
+
+1. **Family A helps the weekends, family B does not.** Every family A variant gains £14 to £31 on Friday to Sunday and
+   Saturday gains most (£97 on the fresh seeds); the interactions gain £4.7, which is noise, as expected for a tree that
+   already finds weekend combinations on its own.
+2. **Fewer features win.** Sales 2 and 3 weeks ago (2 features) beats the full set of four (-£31 against -£26), which
+   beats adding the interactions as well. That matches Series 4, where extra lag features hurt at about 950 rows.
+3. **Monday to Thursday pays for it.** All family A variants worsen Monday to Thursday (+£4 to +£14), the usual price
+   of extra lag columns at this sample size.
+4. **Post-hoc follow-up (not pre-registered, so a hypothesis).** Using the `A_lags` models for Friday to Sunday only and
+   the current hybrid on Monday to Thursday leaves the weekend gain as it is and Monday to Thursday unchanged by
+   construction. On the fresh seeds, over all 585 days: log model £909.1, hybrid £893.0, `A_lags` on every day £885.0,
+   **`A_lags` on Friday to Sunday only £877.7** (£15.3 below the hybrid, £31.4 or 3.5% below the final model). On the
+   540 scored days with the Series 24 correction (Saturday and Sunday, 8 weeks, 0.5): hybrid £876.80, `A_lags` on Friday
+   to Sunday only £866.43, against £905.63 for the final model (4.3% below). The gains mostly add (the correction is
+   worth £9.6 on top of the weekend features, £13.1 on top of the plain hybrid).
+5. **Serving caveat.** `A_lags` uses recent sales, which the API does not have for dates weeks ahead; Series 18 shows
+   the seasonal fill costs accuracy there. This gain applies to near-term forecasts (the next week's rota, with data up
+   to yesterday) and needs a routing rule with the far-horizon track of the roadmap before it can reach the live
+   service.
+6. **Not promoted.** It needs a pre-registered weekend-only confirmation, confirmation on new days, and the routing rule.
+
+**Caveats.** 5 variants were tried; the weekend-only assembly is a post-hoc choice; all scoring uses the same 585 days
+that the earlier series used, only fresh seeds separate the winner from its selection; weekday intervals use about 84
+days each.
+
+## Series 27 — Each Weekend Day Gets Its Own Feature Set
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series27_weekend_per_weekday.py` ·
+**Raw data**: the Series 26 predictions (`series26_weekend_features.jsonl`, `series26_fresh_seeds.jsonl`) and
+`series27_weekend_per_weekday/` (tables)
+
+### Context
+
+Series 26 found the same-weekday features help the weekend and hurt Monday to Thursday. This follow-up leaves Monday to
+Thursday as the current hybrid and lets each of Friday, Saturday and Sunday choose the feature option that suits it best.
+With about 84 test days per weekday, choosing among six options is noisy, so the choice is tested on days it never saw.
+
+### Hypothesis
+
+**H27**: choosing the feature option separately for each of Friday, Saturday and Sunday lowers the weekend MAE below the
+current hybrid, on days not used for the choice.
+
+### Method
+
+Options per weekday: none, `A_all`, `A_summary`, `A_lags`, `B`, `AB` (the Series 26 variants), each on the day's own target
+as in the current hybrid (log for Friday and Sunday, raw for Saturday). **Pre-registered** in the script: the 10 test blocks
+are cut into blocks 0-4 (285 days, selection) and blocks 5-9 (300 days, evaluation); each weekday takes the option with the
+lowest MAE on its selection days (ties to "none"); the assembled weekend is scored against the current hybrid on the
+evaluation blocks, on seeds 0-24 and on 25 fresh seeds (100-124, refitting only the options chosen); kept only if the
+Friday-to-Sunday interval is entirely below zero and no weekend day is significantly worse.
+
+### Results
+
+MAE (£) on the selection blocks (seeds 0-24):
+
+| Option | Friday | Saturday | Sunday |
+|---|---|---|---|
+| none (current) | 1,042.9 | 1,085.7 | 1,238.6 |
+| A_all | 1,052.4 | 1,064.7 | 1,244.8 |
+| A_summary | **1,038.6** | 1,087.8 | 1,266.5 |
+| A_lags | 1,052.9 | **997.5** | 1,247.0 |
+| B | 1,073.7 | 1,091.4 | **1,208.0** |
+| AB | 1,072.6 | 1,053.9 | 1,244.7 |
+
+Chosen: **Friday `A_summary`** (mean and max of the last 4 Fridays), **Saturday `A_lags`** (sales 2 and 3 weeks ago),
+**Sunday `B`** (the weekend interactions).
+
+On the evaluation blocks 5-9, fresh seeds (assembled weekend minus the current hybrid, 95% interval):
+
+| Segment | Days | Hybrid MAE | Assembled MAE | Change |
+|---|---|---|---|---|
+| Friday to Sunday | 129 | 1,132.9 | 1,081.8 | **-51.1 [-88.0, -19.7]** |
+| Friday | 43 | 1,139.7 | 1,110.7 | -29.1 [-88.3, +25.5] |
+| Saturday | 43 | 1,274.4 | 1,173.8 | **-100.6 [-187.8, -23.0]** |
+| Sunday | 43 | 984.7 | 960.9 | -23.8 [-53.1, +1.1] |
+
+On the original seeds the same blocks give -£45.1 (Friday -24.1, Saturday -95.0, Sunday -16.3). Choosing on all 585 days
+instead gives the same three options and -£43.3 on Friday to Sunday (Friday -14.6, Saturday -91.7, Sunday -23.2).
+
+With the Series 24 correction (Saturday and Sunday, 8 weeks, 0.5) on top, on blocks 5-9: current hybrid £876.29,
+chosen weekend £857.25 (uncorrected £883.94 and £861.95). On the scored blocks 1-9: £862.45 against £876.80 for the
+hybrid and £905.63 for the final model (4.8% below it).
+
+### Conclusion
+
+**H27 is supported. The pre-registered bar passes** (Friday-to-Sunday interval below zero, no weekend day significantly
+worse).
+
+1. **Saturday carries the result.** Its gain (£101, interval clear of zero) is the same lesson as Series 26: knowing how
+   the last Saturdays went tells the model where this one will land. Friday (-£29) and Sunday (-£24) could each be noise on
+   their own; Sunday's interval just reaches zero.
+2. **Different weekdays want different things.** Friday preferred the summary of recent same days, Saturday the two raw
+   lags, Sunday the calendar-and-weather interactions. Only Sunday's choice (`B`) avoids recent sales.
+3. **The choice was made on days it was not judged on,** so within this experiment the options were not selected on
+   the days they were scored on. It is not a clean test: Series 26 had already shown `A_lags` best on Saturday over all 585 days,
+   so the broad family was chosen with those days in view, and the evaluation blocks lie inside the 585 days every series has used.
+   Choosing on all 585 days gives the same three options, which is reassuring, not independent.
+4. **The correction adds less on top.** It is worth £4.7 on the chosen weekend (£861.95 to £857.25) against £7.7 on the
+   plain hybrid, so the two overlap partly.
+5. **Serving caveat.** Friday's and Saturday's options use recent sales, which the live API does not have for dates weeks
+   ahead (Series 18), so those gains are near-term; Sunday's option uses only calendar and weather. Reaching the live
+   service needs a routing rule with the far-horizon track of the roadmap.
+6. **Not promoted.** It needs confirmation on new venue days, the routing rule and the serving design (four models, a
+   per-weekday lookup, the bias table).
+
+**Caveats.** 6 options were chosen per weekday on about 40 days each; the evaluation has 43 days per weekday, so single-day
+intervals are wide; the evaluation days are not independent of the earlier series.
+
+## Series 28 — Does the Manager's Forecast Know More Than the Weekend Package?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series28_manager_diagnostic.py` ·
+**Raw data**: `series28_manager_diagnostic/` (`by_weekday.csv`, `blend.csv`, `manager_wins_weekend.csv`,
+`manager_wins_all_days.csv`, `manager_diagnostic.html`); the predictions are those of Series 23-27
+
+### Context
+
+Track A item 5 of the accuracy roadmap, run after items 1-4. A diagnostic with no bar: the manager's forecast is already a
+model input (`forecast_sales`), and the roadmap asked whether it carries weekend information the model is missing. The
+"package" is everything Series 23-27 built (log model Monday to Thursday, raw model on Saturday, the per-weekday weekend
+features of Series 27, the Saturday and Sunday correction), seeds 0-24, 585 test days.
+
+### Method
+
+Per weekday: the manager's MAE against the package's, the share of days the package is closer, and the correlation between
+the package's miss (actual minus package) and the manager's disagreement with it (manager minus package), with a 95%
+block-bootstrap interval (blocks of 4 consecutive weeks). Near zero means the manager knows nothing extra. Then the MAE when
+0, 10, 20 and 30% of the manager's forecast is blended in, and the 20 weekend days and 20 days overall on which the manager
+beat the package by the most, with a blank "What happened?" column.
+
+### Results
+
+| Weekday | Manager MAE | Package MAE | Package closer | Correlation (95% interval) |
+|---|---|---|---|---|
+| Monday | 950 | 725 | 67% | +0.25 (-0.05, +0.50) |
+| Tuesday | 890 | 755 | 63% | +0.22 (-0.07, +0.41) |
+| Wednesday | 872 | 704 | 67% | +0.08 (-0.18, +0.29) |
+| Thursday | 858 | 695 | 58% | **+0.24 (+0.07, +0.45)** |
+| Friday | 1,168 | 1,073 | 55% | +0.15 (-0.16, +0.40) |
+| Saturday | 1,304 | 1,030 | 61% | -0.03 (-0.28, +0.23) |
+| Sunday | 1,476 | 1,071 | 73% | -0.08 (-0.20, +0.10) |
+
+Blending in the manager's forecast (all-day / Friday-to-Sunday MAE): 0% £865.0 / £1,058.0; 10% £864.9 / £1,062.6; 20% £871.1 /
+£1,075.3; 30% £882.7 / £1,091.6.
+
+### Conclusion
+
+1. **The package beats the manager on every weekday**, by £95 (Friday) to £405 (Sunday), and is closer on 55% to 73% of days.
+2. **On Saturday and Sunday the manager adds nothing the package lacks** (correlations -0.03 and -0.08, intervals centred
+   on zero), and blending the manager in does not help (10% leaves the overall MAE unchanged and raises Friday to Sunday; 20%
+   or more makes both worse). Whatever limits the weekend forecasts now is not in the manager's forecast either.
+3. **Monday to Thursday and Friday show a weak signal:** the correlations are positive (+0.08 to +0.25) but only Thursday's
+   interval excludes zero. A correction toward the manager's forecast might gain a few pounds on those days; it was not
+   tested, since they were never the problem.
+4. **The manager-wins lists point at special days, not at a feature.** The largest weekend advantage is Boxing Day 2025
+   (actual £2,919; package £7,567; manager £4,700). Mothering Sunday 2025 and Valentine's Day 2025 were large surges the package
+   missed (£3,034 and £3,191 too low), but the same occasions a year later were not (Mothering Sunday 2026 £460, Valentine's 2026
+   £314 too low; Father's Day small in both years), so there are one or two examples of each and no reliable named-day effect to model.
+   They are what the venue's own notes (the "What happened?" column) or an events and bookings log would explain.
+5. **Track A is complete.** The remaining routes to better weekends are new information (events, bookings), the Track B
+   calendar work and, for the live service, the forecasting-at-a-distance track.
+
+**Caveats.** About 84 days per weekday; the correlations use the package's own residuals, so they say nothing about information
+the manager has that the package already uses; the lists are for the venue manager to annotate.
+
+## Series 29 — What Does the Corrected School Calendar Do to the Model?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series29_school_calendar.py` ·
+**Raw data**: `series19_21/series29_school_calendar_stage1.jsonl` and `series29_school_calendar_stage1/` (tables)
+
+### Context
+
+Track B, step one. The school-holiday flags came from a table that started at Christmas 2024 and had several wrong dates
+(`docs/SCHOOL_CALENDAR.md` lists every date, its sources and what the original got wrong): 2024's Easter and summer
+holidays and the Christmas holiday ending 7 January 2024 were term time, the first weekend of every holiday was term time
+(including Saturday 28 June 2025, the busiest day in the data at £20,067), and some starts and ends were days or a week
+off. 108 of the 979 days change their `is_school_holiday` flag; the model's 950 rows go from 145 holiday days to 227.
+Stage 1 covers Christmas, Easter and summer; stage 2 adds the October week and the February mid-term (2023 to 2027), which takes the
+model's holiday days from 145 (original) to 227 (stage 1) and 262 (stage 2).
+
+### Hypothesis
+
+**H29**: the verified calendar lowers the final model's MAE.
+
+### Method
+
+The final model (log1p, 38 features, 25 seeds, 10 folds, 585 test days) and the raw-£ Saturday model refit with only the
+four school columns replaced; compared with the Series 23 fits on the same days (and, as a check, on 25 different seeds,
+100-124), with a 95% moving-block bootstrap interval. The corrected calendar is kept whatever the result, because it is
+the correct input; the question is how much accuracy was riding on the wrong one.
+
+### Results
+
+| Seeds | Model | Original calendar | Verified calendar | Change (95% interval) |
+|---|---|---|---|---|
+| 0-24 | Final model | 909.57 | 908.98 | -0.59 [-4.22, +2.84] |
+| 0-24 | Raw-£ model | 916.75 | 916.34 | -0.41 [-3.28, +2.63] |
+| 0-24 | Hybrid | 893.35 | 891.25 | -2.10 [-5.48, +0.95] |
+| 100-124 | Final model | 909.06 | 910.13 | +1.07 [-3.00, +5.23] |
+| 100-124 | Raw-£ model | 917.27 | 917.95 | +0.68 [-2.87, +4.30] |
+| 100-124 | Hybrid | 893.03 | 893.15 | +0.12 [-3.57, +3.85] |
+
+Final model by place in a school break (verified calendar's phases; seeds 0-24, MAE original to verified): last week of term
+1,157 to 1,150; **first week of a break 1,433 to 1,433**; middle of a break 866 to 850; last week of a break 1,040 to 1,056;
+other term time 840 to 841. By weekday the changes are within about £13 (Tuesday +£12.8 [+4.7, +22.1] on seeds 0-24 and
++£12.2 on seeds 100-124, a consistent small worsening; Sunday -£10.6 on seeds 0-24 only).
+
+### Conclusion
+
+**H29 is not supported: the correction changes the MAE by about nothing** (within seed noise, in opposite directions on the two
+seed sets). The baseline is restated as £909.57 on the original seeds and £908.98 with the verified calendar.
+
+1. **The model was not leaning on the school flags.** Probably because the month, day-of-year, payday and bank-holiday columns already
+   carry most of the seasonal information (not tested), a flag that was wrong for a third of the data cost it nothing measurable.
+2. **The transition weeks are still the hard days.** The first week of a break is £1,433, 57% above the model's overall £910, and the
+   verified calendar does not move it. The autopsy's "39% more error" was measured with the original phase labels; with the correct
+   ones the first week is, if anything, harder. The gap is not a labelling problem, so it needs features that describe the
+   transition itself (days since the break started, days until it ends), which is the next step of Track B.
+3. **The corrected calendar is kept** (it is the correct input, and the live API flags 2026 and 2027 dates from it). The quality gate
+   (£909.57, plus or minus 1%) is unaffected. Series 1-28 used the original table (`SCHOOL_BREAKS_V1`); the Track A package of Series 23-28
+   has not been re-run on the verified calendar.
+
+**Stage 2 (October week and February mid-term added).** Same test, all five break types. Final model £909.57 to £908.21
+(-1.36 [-5.70, +2.34]) on seeds 0-24 and £909.06 to £908.92 (-0.14 [-4.19, +4.04]) on seeds 100-124; the raw-£ model -£0.75 and
+-£0.48; the hybrid -£1.73 and -£1.13, all with intervals including zero. The same pattern by place in a break: the first week of a
+break £1,433 to £1,434 (seeds 0-24) and £1,426 to £1,436 (seeds 100-124). Tuesday is again slightly worse (+£14.9 [+5.1, +24.7] and
++£13.6), a consistent small effect that is not explained and not large. **The conclusion is unchanged: the complete, verified calendar
+does not move the model's MAE**; the baseline restated with it is £908.21 (seeds 0-24) and £908.92 (seeds 100-124).
+
+**Caveats.** The council's own term-dates page sits behind a bot-check and could not be read automatically; the project owner supplied
+screenshots of its 2026-27 session, and every date shown matched (see `docs/SCHOOL_CALENDAR.md`). The earlier sessions are no longer on the
+page, so 2023-24, 2024-25 and 2025-26 rest on at least two independent sources each, and the summer closing days carry a one-day
+uncertainty. Stage 2's rows use the same sources.
+
+## Series 30 — Do Features That Describe Where a Day Sits in a School Break Help?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series30_transition_features.py` ·
+**Raw data**: `series19_21/series30_transition_features.jsonl` (seeds 0-24), `series30_fresh_seeds.jsonl` (the winner on seeds
+100-124) and `series30_transition_features/` (tables)
+
+### Context
+
+Track B, step two. With the school calendar verified (Series 29) the first week of a break is still the hardest stretch of
+the year: £1,434 on the 35 first-week days against £908 overall. The model only knows "is it a school holiday". These
+features tell it where in the break the day falls. All come from the calendar, so they are known months ahead.
+
+### Hypothesis
+
+**H30**: telling the model where a day sits in a school break lowers the error on the transition weeks (the last week of term,
+the first week of a break and the last week of a break, 105 days).
+
+### Method
+
+Counters (all five break types; blank when not applicable): `tf_days_since_start`, `tf_days_to_end`, `tf_days_to_start`.
+Flags (the three long holidays only): `tf_first_week`, `tf_last_week_term`, `tf_last_week_break`. Four variants, each appended
+to the final model's 38 features: `TF_all` (six), `TF_flags` (three flags), `TF_counters` (three), `TF_capped` (counters capped
+at 14). Both targets (log1p and raw £), 25 seeds, 10 folds, 585 test days, on the verified calendar (Series 29 stage 2 as the
+baseline). **Pre-registered** in the script: the winner is the variant with the lowest MAE on the 105 transition days (seeds 0-24);
+refit on 25 fresh seeds (100-124); kept only if the transition-days interval is entirely below zero, the overall MAE is not
+significantly worse and no phase (transition, middle of a break, ordinary term time) is significantly worse.
+
+### Results
+
+The final (log) model, seeds 0-24, MAE (£):
+
+| Variant | All 585 days | Transition weeks | Last week of term | First week of a break | Last week of a break |
+|---|---|---|---|---|---|
+| Baseline | 908.2 | 1,211.1 | 1,146.2 | 1,434.4 | 1,052.5 |
+| All six | 914.6 | 1,235.1 | 1,151.8 | 1,425.3 | 1,128.3 |
+| **Three flags** | 907.2 | 1,220.6 | 1,125.5 | 1,476.8 | 1,059.3 |
+| Three counters | 912.8 | 1,226.4 | 1,131.2 | 1,423.1 | 1,124.7 |
+| Counters capped at 14 | 912.0 | 1,222.7 | 1,131.8 | 1,465.3 | 1,071.0 |
+
+Every variant is worse than the baseline on the transition days (+£9.5 to +£24.1). The winner by the rule (the least bad) is the
+three flags. On the **fresh seeds**: overall +£2.8 [-2.3, +7.8]; transition weeks **+£11.7 [-8.9, +30.7]**; first week of a break
++£32.0 [-9.3, +71.4]; last week of term -£1.5; last week of a break +£4.7; middle of a break -£12.7 [-29.2, +2.0]; ordinary term
+time +£3.4. The raw-£ model (+£2.7 on the transition days) and the hybrid (+£5.3) show the same.
+
+### Conclusion
+
+**H30 is rejected. The bar fails** (the transition-days interval is not below zero; it is above it).
+
+1. **The model does not lack the information.** Telling it where in a break a day sits makes the transition weeks no better and
+   the first week slightly worse. With about 17 breaks in the data (five of them in the test period, 35 days per phase) there
+   are too few examples to learn a pattern from, and more columns mostly add noise, as in Series 4 and 26.
+2. **The excess error is concentrated in a few days, not spread across the week.** The eight worst first-week days include
+   Saturday 28 June 2025 (£20,067 against a forecast of £13,890), Boxing Day 2025 (£2,919 against £7,411), Tuesday 1 July 2025,
+   Tuesday 30 June 2026 and Sunday 28 June 2026. Without those eight days the first-week MAE is £886, close to ordinary term time (£839).
+   They are the start of the summer holidays and Boxing Day: event-like days, not a smooth function of the day count.
+3. **The direction is consistent where it matters.** In four of the five first weeks the model is under-forecasting
+   (Easter 2025 -£1,055, Easter 2026 -£600, summer 2025 -£1,558, summer 2026 -£558; Christmas 2025 is the exception at +£997,
+   driven by Boxing Day). A systematic level shift is something a feature with so few examples cannot find but a correction
+   learned from earlier breaks might; with five breaks the power is low.
+4. **Nothing is added to the model.** The transition features are not adopted. The three-flags variant is the only one that does
+   not raise the overall MAE (-£1.1 on seeds 0-24, +£2.8 on the fresh seeds), which is noise.
+
+**Caveats.** Five test-period breaks; the phase groups have 35 days each, so intervals are wide; four variants were tried on
+one set of seeds.
+
+## Series 31 — Re-Validating the Track A Package on the Verified Calendar
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_package_validation.py` (the re-run itself:
+`SERIES_RESULTS_SUFFIX=_cal2 python -m src.experiments.run_series23_log_vs_raw_peaks` and the same for Series 24, 26 and 27) ·
+**Raw data**: `series19_21_cal2/` (the re-run's fits), `series23_log_vs_raw_peaks_cal2/` and the other `_cal2` report folders,
+and `package_validation/package_validation.csv`
+
+### Context
+
+Series 23-28 (the Track A package) were run on the original school calendar. The calendar was then verified and completed
+(`docs/SCHOOL_CALENDAR.md`; Series 29 shows it changes the final model's MAE by about nothing). Re-running every series after
+every change is expensive, so each change is tested on its own against the baseline and the package is re-validated at
+milestones; this is that milestone check, run before any of the package is promoted.
+
+### Method
+
+Series 23, 24, 26 and 27 re-run end to end on the verified calendar (all five break types), **including every selection step**:
+the correction grid of Series 24, the feature variants of Series 26 and the per-weekday options of Series 27 are chosen again from
+scratch, on seeds 0-24 and then the winners on fresh seeds. The earlier results are untouched (a `SERIES_RESULTS_SUFFIX` sends a
+re-run to its own folders). Series 25 (rejected) and Series 28 (a diagnostic) are not part of the package and were not re-run.
+`run_package_validation.py` then rebuilds the package from both result sets and prints one table.
+
+### Results
+
+| Series | Original calendar | Verified calendar |
+|---|---|---|
+| 23: log minus raw MAE on Saturdays (95% interval) | +£113.0 (+23.8, +209.7) | +£115.5 (+22.0, +217.0) |
+| 24: grid winner | 8 weeks, strength 0.5 | 8 weeks, strength 0.5 |
+| 24: correction on fresh seeds, all scored days | -£11.7 (-24.4, -0.9) | -£11.0 (-23.2, -0.4) |
+| 24: Friday / Saturday / Sunday on fresh seeds | +9.4 / -79.5 / -11.9 | +13.8 / -80.7 / -10.3 |
+| 26: winner | sales 2 and 3 weeks ago | sales 2 and 3 weeks ago |
+| 26: Friday to Sunday on fresh seeds | -£35.8 (-63.1, -4.8) | -£29.9 (-56.7, +0.6) |
+| 26: Saturday / Monday to Thursday on fresh seeds | -97.1 / +12.9 | -93.5 / +12.2 (+1.5, +21.3) |
+| 27: options chosen on blocks 0-4 | Friday `A_summary`, Saturday `A_lags`, Sunday `B` | Friday `A_all`, Saturday `A_lags`, Sunday `B` |
+| 27: Friday to Sunday, blocks 5-9, fresh seeds | -£51.1 (-88.0, -19.7) | -£54.8 (-94.5, -21.0) |
+
+The package (log model Monday to Thursday, raw model on Saturday, each weekend day's chosen option, the Saturday and Sunday
+correction at 8 weeks and 0.5), MAE in £ and against the final model on the same days:
+
+| Window | Calendar | Seeds 0-24 | Fresh seeds 100-124 |
+|---|---|---|---|
+| All 585 days | original | 909.57 to 864.98 (-4.9%) | 909.06 to 864.67 (-4.9%) |
+| All 585 days | verified | 908.21 to 864.63 (-4.8%) | 908.92 to 865.23 (-4.8%) |
+| Blocks 5-9 (judging) | original | 889.22 to 858.86 (-3.4%) | 891.58 to 857.25 (-3.9%) |
+| Blocks 5-9 (judging) | verified | 889.49 to 860.05 (-3.3%) | 890.95 to 856.18 (-3.9%) |
+
+### Conclusion
+
+**The package holds on the verified calendar.** Every headline finding replicates: the log target costs about £115 on Saturdays;
+the same correction settings win; the same feature option wins in Series 26 and fails its bar for the same reason (Monday to
+Thursday +£12); the per-weekday choice passes its bar on days it never saw; and the package improves on the final model by 4.8% over
+all days (3.3% to 3.9% on the judging blocks), the same as before to within £1.
+
+1. **One thing moved: Friday's option.** Friday chose `A_summary` on the original calendar and `A_all` on the verified one, and both
+   gains are within noise (-£44.8 with an interval from -£127.1 to +£37.4). Friday's choice is unstable, which fits every earlier
+   look at Friday (its correction hurt in all 9 variants); the Saturday and Sunday choices did not move.
+2. **Series 26's weekend result is a little weaker:** the Friday-to-Sunday interval of the winner now just reaches zero (+£0.6)
+   where it was -£4.8 before. It failed its bar before and fails it again.
+3. **The restated numbers** for the package (verified calendar): £864.63 on seeds 0-24 and £865.23 on fresh seeds against the final
+   model's £908.21 and £908.92. Series 23-28 in this log keep their original-calendar figures; this entry is the check that they
+   carry over.
+4. **Still not promoted.** The package still needs confirmation on new venue days, the routing rule between near-term and
+   far-horizon forecasts, and the serving design.
+
+**Caveats.** The re-run reuses the same 585 test days, so it checks the calendar, not the days; the Friday choice rests on
+about 40 selection days.
+
+## Series 32 — A Correction for the First Week of the Easter and Summer Breaks
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series32_first_week_correction.py` ·
+**Raw data**: `series19_21/series32_leave_one_break_out.jsonl` (the leave-one-break-out fits) and
+`series32_first_week_correction/` (tables); it reads the Track A package re-run on the verified calendar (`series19_21_cal2/`, Series 31)
+
+### Context
+
+Series 30 found no feature that helps the transition weeks, and the first week of a break is still the hardest stretch of the
+year. Across all six Easter and summer breaks in the data (2024 to 2026) the first week sells above its usual level
+(+10% to +30% over the previous four same weekdays); the model under-forecasts it in all four breaks where it has an out-of-sample
+forecast. Christmas is left out: its first week is flat (+3% and -1%). A correction learned from earlier breaks, like the Saturday
+and Sunday one of Series 24, is the natural next step.
+
+### Hypothesis
+
+**H32**: shifting the forecasts for the first week of an Easter or summer break by a share of the gap learned from other breaks
+lowers the error on those days.
+
+### Method
+
+For the days in scope, learn the gap (forecast minus actual) from the days in scope of other breaks and move the forecasts by
+`strength` times it, in pounds (**additive**) or as a percentage of the forecast (**ratio**). 8 variants: form x strength
+{0.5, 1.0} x scope {the first week, the first week plus the last week of term}. **Pre-registered** in the script:
+
+- **Forward-chained (primary):** only earlier breaks, on the Track A package (verified calendar): summer 2025, Easter 2026 and
+  summer 2026 are scored (3 breaks, 21 days; 42 with the extra scope). Easter 2025 has no earlier break.
+- **Leave one break out (stability):** each of the six breaks, **including 2024, for which the backtest has no forecasts**,
+  forecast by the final model trained without a 42-day window around it (nothing from the break is in the training rows) and
+  corrected from the other five. Optimistic (it learns from later breaks) but it covers all six.
+- Bar: forward-chained, on 25 fresh seeds, the pooled MAE on the scored days falls with a 95% interval (7-day blocks) entirely
+  below zero and at least two of the three breaks improve; and on leave-one-break-out the same settings improve at least four of the
+  six breaks. Otherwise the result is parked for the 2027 breaks.
+
+### Results
+
+**The model never sees the first week coming** (the final model, leave one break out; forecast minus actual):
+
+| Break | MAE | Bias | Sales above forecast by |
+|---|---|---|---|
+| Easter 2024 | 1,003 | -38 | +2.2% |
+| Summer 2024 | 1,119 | -730 | +9.5% |
+| Easter 2025 | 872 | -748 | +8.6% |
+| Summer 2025 | 2,213 | -1,230 | +12.3% |
+| Easter 2026 | 1,139 | -782 | +12.1% |
+| Summer 2026 | 1,359 | -486 | +7.5% |
+
+The model under-forecasts the first week in all six breaks, 2024 included.
+
+**Forward-chained, the package, seeds 0-24** (change in MAE on the scored days, £; negative is better):
+
+| Form | Strength | Scope | Days | Change | Breaks improved |
+|---|---|---|---|---|---|
+| additive | 0.5 | first week | 21 | -132.0 | 2 of 3 |
+| additive | 1.0 | first week | 21 | -185.4 | 2 of 3 |
+| ratio | 0.5 | first week | 21 | -76.8 | 2 of 3 |
+| ratio | 1.0 | first week | 21 | -121.0 | 2 of 3 |
+| additive | 0.5 | first week + last week of term | 42 | -9.4 | 1 of 3 |
+| additive | 1.0 | first week + last week of term | 42 | +23.5 | 1 of 3 |
+| ratio | 0.5 | first week + last week of term | 42 | -2.3 | 1 of 3 |
+| ratio | 1.0 | first week + last week of term | 42 | +42.4 | 1 of 3 |
+
+**The rule as written picked a weak variant.** "Lowest MAE on the scored days" compares MAE across scopes that score different days
+(21 against 42), which favours the 42-day scope because its days are easier. The winner was additive, 0.5, first week plus last week
+of term. On the fresh seeds it changes the MAE by -£10.4 [-150.6, +145.6]: Summer 2025 -144.5, Easter 2026 +76.1, Summer 2026 +37.1.
+**The bar fails** (the interval is not below zero; one of three breaks improves).
+
+**Leave one break out, the final model, six breaks** (change in MAE on the scope days; interval from resampling whole breaks):
+
+| Form | Strength | Scope | Days | Change (95% interval) | Breaks improved |
+|---|---|---|---|---|---|
+| additive | 0.5 | first week | 42 | -105.0 (-165.9, -33.0) | 5 of 6 |
+| additive | 1.0 | first week | 42 | -178.2 (-285.5, -46.6) | 5 of 6 |
+| ratio | 0.5 | first week | 42 | -79.7 (-165.8, +5.9) | 4 of 6 |
+| ratio | 1.0 | first week | 42 | -111.5 (-231.4, +31.2) | 4 of 6 |
+| additive | 0.5 | first week + last week of term | 84 | -34.4 (-79.3, +10.4) | 4 of 6 |
+| additive | 1.0 | first week + last week of term | 84 | -45.9 (-136.6, +45.5) | 4 of 6 |
+| ratio | 0.5 | first week + last week of term | 84 | -20.3 (-77.3, +36.6) | 3 of 6 |
+| ratio | 1.0 | first week + last week of term | 84 | -17.6 (-131.7, +93.6) | 3 of 6 |
+
+**Post-hoc follow-up (not pre-registered): the first-week-only additive corrections, forward-chained, break by break.** Change in
+MAE, £, seeds 0-24 and (fresh seeds):
+
+| Strength | Summer 2025 | Easter 2026 | Summer 2026 | Pooled 21 days (95% interval) |
+|---|---|---|---|---|
+| 0.5 | -193 (-186) | -264 (-262) | +61 (+69) | -132 (-126) [-369, +72] |
+| 1.0 | -375 (-368) | -313 (-302) | +132 (+140) | -185 (-177) [-538, +162] |
+
+Two of three breaks improve under every first-week-only variant and the average MAE over all 585 days falls by £4.5 to £6.7. Summer 2026
+gets worse because the gap learned from three earlier breaks is dominated by summer 2025's -£1,560 (28 June 2025, the busiest day in the data,
+alone was £5,300 under-forecast) and overshoots 2026's -£635.
+
+### Conclusion
+
+**The pre-registered bar fails, so the correction is parked; but the first-week-only version is a real lead.**
+
+1. **The direction is consistent in all the data.** All six breaks are under-forecast by a model that never saw them, by 2% to 12% of
+   the forecast, and sales were above the model in all six.
+2. **First week only.** Adding the last week of term dilutes the effect in every form (its bias is mixed), so the useful scope is the
+   first week of Easter and summer.
+3. **Additive beats ratio** in both builds (leave one break out: -£105 to -£178 against -£80 to -£112), with five of six breaks improving.
+   The gap is closer to a fixed number of pounds than to a fixed share of the day's forecast.
+4. **The forward-chained test cannot settle it.** Three breaks give a 21-day sample with an interval from about -£370 to +£70 at best,
+   and the one break it makes worse (summer 2026) is the one learned from the record summer. An honest expectation for a conservative
+   correction (additive, 0.5, first week) is a gain of roughly £100 on each first-week day, about £700 a break, with a real chance of
+   overshooting.
+5. **Selection-rule flaw, recorded.** The step 1 rule compared MAE across scopes with different days. It was run as written; the follow-up
+   above is labelled post-hoc. Future rules in this log compare the change in MAE, not the level.
+6. **Pre-registered for the 2027 breaks.** When Easter 2027 (closing 2 April; the first week is 3 to 9 April) and summer 2027 (from 26 June)
+   arrive, apply, before looking at them: additive, strength 0.5, first week of Easter and summer only, learned from every earlier
+   break's first week on the package's out-of-sample forecasts. It is kept if it lowers the first-week MAE of both breaks together and
+   does not worsen either break by more than £100 a day (about the size of the expected gain). Until then nothing is added to the model.
+   (Series 33 replaced the mean in this rule with the median.)
+
+**Caveats.** Three scored breaks for the forward-chained test; the leave-one-break-out version uses later breaks to correct earlier ones
+and a model trained on mostly later data; 8 variants tried on one set of seeds.
+
+## Series 33 — The First-Week Correction on All Six Breaks: Pooled, Per Type or Median
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series33_first_week_by_type.py` ·
+**Raw data**: Series 32's leave-one-break-out forecasts (`series19_21/series32_leave_one_break_out.jsonl`) and
+`series33_first_week_by_type/` (tables)
+
+### Context
+
+Series 32 found the first week of the Easter and summer breaks under-forecast in all six breaks (2024 included) and a correction
+learned from other breaks helped, but its realistic test had only three scorable breaks and the summer-2026 correction overshot,
+because the shift learned from earlier breaks was dominated by the record summer of 2025. Two ideas to fix that: learn the correction
+separately for each kind of break, or learn it with a median so one record day cannot dominate. This series tests them together, with
+the correction **forward-chained on the leave-one-break-out forecasts**, which cover all six breaks including 2024, so the correction only
+ever learns from earlier breaks (the forecasts it corrects come from a model that saw later data, the optimism to remember).
+
+### Hypothesis
+
+**H33**: a per-type or median-based correction avoids the summer-2026 overshoot and beats the pooled mean correction.
+
+### Method
+
+Additive, strength 0.5, first week only (7 days). Three variants: **pooled mean** (the shift is the mean of forecast minus actual over the first
+weeks of all earlier Easter and summer breaks), **per type mean** (only earlier breaks of the same kind) and **pooled median** (the median over
+those days). **Pre-registered** in the script: scored on the four breaks every variant can correct (Easter 2025, summer 2025, Easter 2026,
+summer 2026; 28 days); the measure is the change in MAE (after minus before) and the number of breaks that improve, not the level of MAE; the
+variant with the largest improvement, provided it improves at least three of the four breaks, is the one pre-registered for the 2027 breaks.
+
+### Results
+
+The first week by break (forecast minus actual, from the leave-one-break-out forecasts): Easter 2024 -£38, summer 2024 -£730, Easter 2025 -£748,
+summer 2025 -£1,230, Easter 2026 -£782, summer 2026 -£486.
+
+Change in MAE after the correction, £ (negative is better), break by break and over the four common breaks (28 days; interval from resampling
+whole breaks):
+
+| Variant | Easter 2025 | Summer 2025 | Easter 2026 | Summer 2026 | Four breaks (95% interval) | Improved |
+|---|---|---|---|---|---|---|
+| Pooled mean | -137 | -108 | -147 | +46 | **-86.6** (-142.1, +0.2) | 3 of 4 |
+| Per type mean | -13 | -156 | -84 | +66 | -47.1 (-120.7, +28.2) | 3 of 4 |
+| **Pooled median** | -246 | -147 | -165 | +56 | **-125.5** (-221.3, +0.9) | 3 of 4 |
+
+Context: the pooled variants can also correct summer 2024 from Easter 2024 alone (mean -£8, median -£129).
+
+### Conclusion
+
+**H33 is partly supported: the median is best, per type is worst, and none removes the summer-2026 overshoot.**
+
+1. **The median helps.** It improves the four breaks by £125.5 a day, against £86.6 for the pooled mean, and every earlier break improves by more
+   (Easter 2025 -£246). A record day no longer dominates the learned shift.
+2. **Splitting by kind hurts.** Per type learns from half the breaks, improves the least (-£47.1) and still overshoots summer 2026. Easter and
+   summer behave alike (an uplift that grew from 10% to 30% over the three years), so the split costs data for no gain.
+3. **Summer 2026 is worse under every variant (+£46 to +£66)**, so the cause looks like more than one outlier: the model's own bias on the first
+   week appears to be shrinking as more first weeks enter its training (summer -£1,230 in 2025, -£486 in 2026; a likely explanation, not tested), so a
+   correction learned from the earlier, larger biases overshoots. It may matter less each year, and the 2027 test is where that will show.
+4. **A realistic size.** Pooled median improves the first-week MAE by about £125 a day (about £875 a break) on the four breaks, with intervals
+   whose upper edges just reach zero (+£0.9). That is the best estimate before 2027, not proof.
+5. **Pre-registered for the Easter and summer 2027 breaks** (this replaces the pooled-mean rule of Series 32): additive, strength 0.5, first week
+   of Easter and summer only, the shift being the **median** over the first-week days of every earlier break on the package's out-of-sample
+   forecasts. Kept if it lowers the first-week MAE of both breaks together and does not worsen either by more than £100 a day. Until then nothing
+   is added to the model.
+
+**Caveats.** Four scored breaks (28 days); the forecasts come from a model trained with later breaks in the data; three variants tried.
+
+## Series 34 — Recency Weighting: Should Recent Days Have More Say?
+
+**Run**: 2026-10-12 · **Script**: `src/experiments/run_series34_recency_weights.py` ·
+**Raw data**: `series19_21/series34_recency_weights.jsonl` (seeds 0-24 and the floor variant), `series34_fresh_seeds.jsonl` (the winner on
+seeds 100-124) and `series34_recency_weights/` (tables)
+
+### Context
+
+Track C, step one. A boosted-tree model counts a day from 18 months ago exactly like yesterday and adapts to change only through its
+features. The Saturday and first-week biases both drift, so a model that listens more to recent days might follow them. A hard cut-off
+was tested in Series 7 (a sliding 365-day window: £924 against £908) and was worse, because dropping old days loses information. Here old
+days fade instead of disappearing.
+
+### Hypothesis
+
+**H34**: weighting recent training days more lowers the final model's MAE.
+
+### Method
+
+Inside each rolling-origin fold, a training day `age` days older than the last training day gets the weight `0.5 ** (age / half_life)`,
+passed to CatBoost as `sample_weight`. Half-lives of 45 (added at the project owner's request), 90, 180, 365 and 730 days, then the winner
+with a floor of 0.2, both targets (log1p and raw £), the final recipe (25 seeds, 10 folds, 585 test days), verified calendar. The control is
+the unweighted fits of Series 31. **Pre-registered** in the script: the winner is the largest improvement of the final (log) model's MAE;
+re-run on 25 fresh seeds (100-124); kept only if the overall interval is entirely below zero and no weekday, weekday group or school phase
+is significantly worse. The effective sample size, (sum of weights) squared over the sum of squared weights, is reported (the unweighted
+training sets average about 635 rows).
+
+### Results
+
+Change in MAE against the unweighted control on the same 585 days, seeds 0-24 (£; negative is better):
+
+| Half-life | Effective sample size | Final (log) model (95% interval) | Raw-£ model | Hybrid (95% interval) |
+|---|---|---|---|---|
+| 45 days | 126 | **+158.0 (+95.2, +231.7)** | +35.0 | +88.9 (+35.3, +151.9) |
+| 90 days | 245 | **+30.6 (+1.6, +62.3)** | +4.4 | +18.3 (-11.1, +50.2) |
+| 180 days | 412 | +11.6 (-4.6, +27.9) | -4.1 | +3.8 (-12.1, +20.1) |
+| 365 days | 544 | +7.4 (-2.2, +16.9) | -7.0 | +1.6 (-7.8, +10.6) |
+| 730 days | 599 | +1.5 (-5.0, +8.1) | -5.9 | -3.2 (-9.3, +2.5) |
+
+The final model gets worse in a straight line as the weighting sharpens. The least bad is the 730-day half-life, which is barely a
+weighting at all. Its floor variant is identical (+1.47): no weight falls below 0.2 within the data's span at that half-life.
+
+On the **fresh seeds**, 730-day half-life, final model: overall **+3.4 (-2.7, +9.7)**; Friday **+20.0 (+1.8, +40.7)**; last week of term +17.3
+(-0.4, +34.0); last week of a break +17.3 (-1.1, +41.3); middle of a break -13.2 (-28.5, +3.0); Saturday +0.2; Sunday -4.6. **The bar fails** (the
+overall interval is not below zero, and Friday is significantly worse).
+
+Context, the raw-£ model on the fresh seeds: overall -3.7 (-10.5, +2.6); **Saturday -18.0 (-33.7, -1.9)**; Thursday -12.7 (-23.1, -1.4);
+first week of a break -40.7 (-99.4, +10.5). The hybrid overall: +0.8 (-4.7, +6.3).
+
+### Conclusion
+
+**H34 is rejected for the final model: the more it listens to recent days, the worse it does.**
+
+1. **The cost is the lost rows, not the age.** The half-life that keeps most of the data (730 days, 599 effective rows) does nothing, and the one that
+   keeps the fewest (45 days, 126 effective rows) adds £158 to the MAE. With about 635 training rows on average, the seasonal repeats and
+   the weekday patterns need every row; a model that can only see the last six weeks cannot find them. This agrees with Series 7.
+2. **Friday is the day it hurts most** (+£20 on the fresh seeds), so the weekend features and corrections already built are not helped by it.
+3. **A faint lead, not a result:** the raw-£ model improves slightly under mild weighting (£4 to £7 on seeds 0-24; on Saturdays -£18 on the fresh
+   seeds, interval below zero). It is one of 14 segments on one weighting, was not the pre-registered measure, and the Saturday correction of
+   Series 24 already chases the same drift, so it is recorded and not pursued.
+4. **Track C step two (weights together with the Saturday and Sunday correction) is not run.** It was conditional on this passing or coming
+   close, and the final model is worse with every weighting that changes anything.
+
+**Caveats.** Five half-lives tried on one set of seeds, then one winner on fresh seeds; the winner is the least bad, not a good one.
+
+> **Naming from 18 October 2026 (Series 35 onward).** *Log model* = the final model on the log-sales target; *post model* = the Track A package. Entries
+> up to Series 38 keep the names they were written with.
+
+## Series 35 — Holdout Test on the New Venue Days (7 September to 15 October 2026)
+
+**Run**: 2026-10-16 · **Script**: `src/experiments/run_series35_holdout.py` · **Pre-registration**: `docs/HOLDOUT_2026_10_PREREGISTRATION.md`
+(committed before any new sales figure was read) · **Fingerprints**: `docs/holdout_log/fit_fingerprints.json` · **Results** (local, gitignored):
+`data/holdout/reports/results/` (`results_simple.md`, `results_full.md`, `holdout_predictions.csv`, `weekly_miss.png`)
+
+### Context
+
+Six new weekly exports covered 39 days the models had never seen. Every model was fitted on rows up to 6 September and fingerprinted before the
+new days were processed, in an isolated copy of the pipeline. Question 1, the only decision: is the deployed model still better than the manager's
+forecast in daily (operational) use?
+
+### Method
+
+Arms: M (manager), S (seasonal baseline), P (deployed model, original school calendar), D (final model on the verified calendar), K (the Track A
+package). Modes: A daily, B blind from 6 September, C a Monday run forecasting the following week (issues 7, 14, 21, 28 September and 5 October;
+32 scored target days); each with and without the manager's forecast as an input. 7-day moving-block bootstrap. **Addendum written before
+scoring**: the weather service had revised old days since the models were frozen, so days up to 6 September keep their frozen weather and only the
+new days take new weather (the code checks the rebuilt features reproduce the frozen file on the old days to 1e-6).
+
+### Results
+
+Mode A, with the manager's forecast, 39 days (£ average miss per day):
+
+| | Average miss | Bias |
+|---|---|---|
+| Manager | 958 | −296 |
+| Deployed model (P) | 915 | −437 |
+| Final model, verified calendar (D) | 905 | −439 |
+| Track A package (K) | 880 | −413 |
+
+**Q1: the deployed model beats the manager by +£43 a day (95% interval −155 to +247). Verdict by the pre-registered rule: Consistent** (better on
+average, interval includes zero; not a drift alarm, the model's MAE of 915 is far below 1,333). On the Monday run, with the manager's forecast, the deployed
+model scored 990 against the manager's 954 and the package 945. Without the manager's forecast the models lose almost nothing (929 daily). The
+package against D: −£24 on all days, −£64 on Friday to Sunday, "directionally consistent", **not promoted** (rule: 26 weeks and an interval
+excluding zero). D against P: £10, the calendar fix makes no visible difference in this window.
+
+Week by week (daily, with manager): the models won four of six weeks; the manager was far better in the week of 21 September (532 against ~900) and
+the four days of 12 October; the week of 28 September was the manager's worst (1,666) and the models lost less (1,271).
+
+### Conclusion
+
+1. The result is what 39 days can show: consistent with the earlier gain, not a confirmation (the interval is about ±£200 against an expected gain of £166).
+   The manager's window was ordinary, slightly better than its history (958 against 1,070 overall).
+2. **The large misses were one day at a time** and shared with the manager: Sunday 27 September (model £8,097, manager £10,300, actual £10,511), Wednesday 30 September
+   and Thursday 1 October (about £2,000 low for both), Sunday 4 October, Wednesday 14 October. A look-up afterwards found a concert or race nearby on four of the five
+   (Series 36). Everyone's forecasts also ran low on average (the models more than the manager), and the models' Sunday bias (−£730 against the manager's −£31) is a lead.
+3. **Over-forecast days** (7-9 October, 7-8 September) were mostly rainy and shared with the manager; no event explains them.
+4. **The 39 days are now training data.** They are a valid holdout for the frozen models, not clean evidence for anything designed after looking at them. The
+   weekly forecast log from Monday 19 October is the next honest test; it is not set up yet.
+
+## Series 36 — Do Football and Concerts Explain What the Forecasts Miss?
+
+**Run**: 2026-10-16 to 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py` · **Lists**: `config/events/` ·
+**Full write-up and pre-registered Saturday rules**: `docs/EVENTS_EXPLORATION_2026_10.md`
+
+### Context
+
+The Series 35 holdout test (39 new venue days) left a few large misses that neither the deployed model nor the manager saw coming. A look-up
+afterwards found a concert or race nearby on four of five. This series checks whether events explain the misses across the 585 old backtest days
+and whether adding them as inputs helps. Hypotheses were not written before the first check; the Saturday test was pre-registered before its run.
+
+### Method
+
+(1) Weekday-adjusted least squares of (actual − forecast) on event flags, 7-day block bootstrap. (2) The 585-day backtest with Celtic / Rangers
+features added (three- and five-feature variants, seeds 0-24). (3) A pre-registered single flag, `sat_big_home`, on the raw-£ and log1p models,
+seeds 0-24 and 100-124. Event lists were built from public pages (Wikipedia season pages; Songkick venue histories) and are incomplete: see the
+write-up for the gaps.
+
+### Results
+
+- **Football home matches:** no extra trade (−£135 against the manager, −£184 against the model, intervals include zero). Old Firm, 8 days,
+  too few to read. Away matches, nothing.
+- **Football features in the model:** all days, MAE 908.2 → 899.3 (3 features) and 899.5 (5 features), changes −8.9 and −8.7 with intervals
+  spanning zero; on the 39 new days both were worse (916 and 914 against 905).
+- **Saturday flag (pre-registered):** primary change −2 (−13, +10), replicate +4 (−10, +18). The rules fail. The earlier Saturday gain was chance.
+- **Scotland national team** (36 matches, 2024-2026; flags home, away, tournament; rules written before the run): nothing clear in the residual check
+  (7 home, 7 away, 3 World Cup days; the World Cup days ran £550 to £890 below the forecasts, interval spanning zero); the model with the three flags was
+  slightly worse, +3.8 (−2.0, +9.8) on MAE 908.2.
+- **Concerts:** a show at the **OVO Hydro** lifts sales by **+£324 (+63, +602)** a day over the manager's forecast and **+£366 (+167, +587)** over
+  the model's, on 153 days; the O2 Academy and the Armadillo show nothing. The 39 new days agree (13 Hydro days, +£1,095 over the model against +£107).
+
+### Conclusion
+
+1. **Football, club and national team, is not pursued as a model input** on this evidence. It is recorded in the weekly log for a later check with complete fixtures and kick-off times.
+2. **The Hydro is the one clear event signal.** A Hydro flag is the next test and needs its rules written down first; nothing event-related is
+   in the model.
+3. **Caveats:** the idea came from five days chosen after their errors; the football list is incomplete (Rangers' European legs, kick-off times);
+   the concert list is about 6-12% short for the Hydro and has no non-music events.
+
+## Series 37 — A Hydro-Show Flag as a Model Input
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py hydro` · **Rules** (committed before the run, `96e3ed2`) and full results:
+`docs/EVENTS_EXPLORATION_2026_10.md`, sections 9.1-9.4 · **Raw data**: `series19_21/series36_hydro.jsonl`
+
+### Context
+
+Series 36's residual check found that a show at the OVO Hydro lifts sales by about £324 against the manager's forecast and £366 against the model's (153 flagged days of 585). This tests whether the
+final model does better when it is told about the show.
+
+### Hypothesis
+
+**H37**: adding `hydro_show` (a music or comedy show listed at the Hydro that day) lowers the final model's MAE.
+
+### Method
+
+Pre-registered: log1p final recipe with and without the flag, 585-day rolling-origin backtest (expanding training window, ten 60-day blocks), seeds 0-24 and a replicate on 100-124, the raw-£ model as a
+secondary result, a placebo with the flags shuffled among days of the same weekday, and four pass conditions (pooled interval entirely below zero on both seed sets; gain from Hydro days without clearly
+hurting the others; placebo shows no clear gain). Disclosed in advance: the Hydro was chosen from a residual check on these same days.
+
+### Results
+
+Pooled change **−3.3 (−17.9, +10.0)** on seeds 0-24 and **−1.9 (−15.5, +10.9)** on seeds 100-124. On Hydro days **−45.0 (−89.5, −5.5)** and −34.4 (−75.4, +2.3); on the other days +11.4 (−1.0, +23.7) and
++9.7 (−3.8, +22.7). Placebo +0.4 (−4.1, +4.4). Raw-£ pooled −7.8 (−23.6, +5.1) and −9.5 (−24.6, +4.3). Rules 1 and 2 fail, 3 and 4 pass. On the 39 new days (context): 905 → 872.
+
+### Conclusion
+
+1. **H37 is rejected under the pre-registered rule.** The flag helps on the Hydro days (bias there −£352 → −£109) and the placebo shows the test is sound, but the model gives the gain back on the other
+   432 days, so the overall change is inside the noise.
+2. **The Hydro effect itself stands** as a fact about the venue (residual check, model fits, replicate, new days). It is not a model input on this evidence.
+3. **An untested idea:** a Hydro-days-only additive correction in the style of Series 24, instead of a model feature. It is a new hypothesis chosen after this result and needs its own rules.
+4. **Caveats:** the idea came from five days chosen after their errors and the flag from a residual check on the same backtest days; the list is Songkick's (music and comedy only, one sampled month checked
+   for completeness).
+
+## Series 38 — A Hydro-Day Correction Instead of a Hydro Feature
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py hydrocorr` · **Rules** (committed before any code, `2b84830`) and results:
+`docs/EVENTS_EXPLORATION_2026_10.md`, sections 10 and 10.1 · no new model fits (bases from the Series 37 bags and the verified-calendar package results)
+
+### Context
+
+Series 37's `hydro_show` flag helped on Hydro days (−£34 to −£45) but cost about £10 a day on the other 432 days. A correction applied after the forecast, to Hydro days only, cannot touch the other days.
+
+### Hypothesis
+
+**H38**: moving Hydro-day forecasts by −0.5 × the recency-weighted mean forecast error on earlier Hydro days (half-life 8 weeks, the Series 24 package settings, untuned) lowers the error on Hydro days.
+
+### Method
+
+Walk-forward over the ten 60-day blocks (block 0 unchanged), on the log final model (primary) and the Track A package (secondary); seeds 0-24 and the replicate 100-124; a shuffled-flag placebo; four pass rules
+(Hydro-day interval below zero on both seed sets, pooled point estimate at or below zero, placebo not clearly helped, correction positive in 8 of 9 blocks). Chosen after seeing Series 37, on the same 585 days.
+
+### Results
+
+Hydro days: **−18.4 (−59.1, +16.4)** and **−16.4 (−57.4, +19.2)**; pooled −4.8 (−15.1, +4.5) and −4.3 (−14.7, +5.4). Package: −11.7 and −13.3 on Hydro days. Placebo −4.1 on its own flagged days. Correction positive in 9 of 9
+blocks but falling from about £330 to about £100. On the 39 new days (context): 905 → 888. Rule 1 fails; 2, 3 and 4 pass.
+
+### Conclusion
+
+1. **H38 is rejected under the pre-registered rule:** the direction is right every block, but the Hydro-day gain (about £17) is a third of the flag's and cannot be told from zero.
+2. **The shrinking correction** (£349 in block 1, £75 and £125 in blocks 8 and 9) says the Hydro effect has weakened in 2026 or is now partly in the manager's forecast; it argues against building anything automatic on the early average.
+3. **A hand rule, not a model input:** a Hydro night has averaged about £350 above the forecasts, less recently. The weekly log records Hydro nights so it can be re-estimated on clean days.
+4. **Caveats:** both ideas came from the same 585 days and the same residual check; the shuffled flags also helped on Friday to Sunday, so part of any weekend gain is the base model's general weekend under-forecast.
+
+## Series 39 — The Hydro Flag Inside the Post Model
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py postflag` · **Rules** (committed before any code, `29e23eb`) and results: `docs/EVENTS_EXPLORATION_2026_10.md`, sections 11 and 11.1
+
+### Context
+
+Series 37 tested the Hydro flag in a plain log model and a plain raw-£ model; Series 38 tested a Hydro-day correction on the log model and the post model. The one combination not run was the flag as an input to the post model's own
+models (Friday log + `A_all`, Saturday raw + `A_lags`, Sunday log + `B`, Monday-Thursday the log model), with its Saturday and Sunday correction recomputed.
+
+### Hypothesis
+
+**H39**: adding `hydro_show` to every model in the post model lowers the post model's error on Hydro days.
+
+### Method
+
+Pre-registered: the weekday options of Series 27 / 31 fixed, not re-chosen; 585-day rolling-origin backtest; seeds 0-24 and the replicate 100-124; a sanity refit without the flag (must reproduce the stored post model to £0.05); a
+shuffled-flag placebo; four rules (Hydro-day interval below zero on both seed sets; pooled point estimate at or below zero; other days not clearly hurt; placebo not clearly helped). Third look at the same days.
+
+### Results
+
+Hydro days **−26.1 (−67.8, +10.0)** and **−33.6 (−71.6, +0.1)**; pooled −0.5 (−13.6, +10.5) and −7.6 (−19.9, +2.7); other days +8.6 and +1.6. Placebo +4.0 on its flagged days. By Hydro day-type: Monday-Thursday −33, Friday −33 to −52,
+Saturday −63 to −78, **Sunday +62 and +39**. Sanity refit identical (difference 0.000). Rule 1 fails; 2, 3 and 4 pass.
+
+### Conclusion
+
+1. **H39 is rejected under the pre-registered rule, narrowly:** the replicate's Hydro-day interval ends at +£0.1, the first set's at +£10.
+2. **The same picture in every test:** a small, consistent gain on Hydro days (about £12 to £45 depending on method), a small loss elsewhere or on Sundays, nothing that separates from zero. Hydro Sundays are over-forecast by the models and
+   the manager, and every Hydro input makes that worse.
+3. **For the weekly log:** record Hydro nights and re-estimate on clean days; consider a Saturday-only version only after the log has a season of Hydro Saturdays.
+4. **Caveats:** third look at the same 585 days for one idea; the post-model version was proposed after a weekday slice showed Saturday; the 39 new days were not run for this test.
+
+## Series 40 — A Thursday-Only Hydro Flag
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py hydrothu` · **Rules** (committed before any code, `7d827e0`) and results: `docs/EVENTS_EXPLORATION_2026_10.md`, sections 12 and 12.1
+
+### Context
+
+Series 37 to 39: every Hydro input gained a little on Hydro days, never clearly, and lost on Sundays and Mondays. The weekday tables put the gain on Thursday (17 Hydro Thursdays, plain log model bias −£824). Thursday was the best of seven weekdays in results already seen, so this is a post-hoc slice.
+
+### Hypothesis
+
+**H40**: a flag for a Hydro show on a Thursday lowers the log model's error on those Thursdays without hurting the other days.
+
+### Method
+
+Pre-registered: `hydro_thu` (17 of 585 days) added to the log model; 585-day rolling-origin backtest; seeds 0-24 and the replicate 100-124; a placebo with the flags reassigned among Thursdays (seed 20261018); four rules (Hydro-Thursday interval below zero on both seed sets;
+everything else not clearly hurt; at least 13 of 17 Hydro Thursdays better; placebo not clearly helped).
+
+### Results
+
+Hydro Thursdays **−274.8 (−436.4, −92.3)** and **−280.5 (−431.3, −113.0)**; the other 568 days +1.0 (−6.5, +8.3) and +4.2 (−2.5, +10.6); pooled −7.1 and −4.1. 14 of 17 better (p = 0.006). Bias on those days −£824 → −£357. **Placebo −29.0 (−57.8, −4.8) on its 20 flagged days.**
+Rules 1, 2 and 3 pass; rule 4 fails. On the 39 new days (three Hydro Thursdays, context): their miss 1,780 → 1,232, the others 832 → 829.
+
+### Conclusion
+
+1. **Formally rejected: the placebo rule fails.** One random draw of 20 Thursdays also gained £29 with an interval below zero, so the test cannot be called clean by its own rule.
+2. **Substantively the strongest lead of the Hydro series:** about £275 on Hydro Thursdays (more than six times the all-days flag), in both seed sets, with nothing lost elsewhere and 14 of 17 days better. The placebo's gain is a tenth of that.
+3. **Not known:** whether the placebo draw was a fluke. A permutation check (many random sets of 17 Thursdays) would say how often chance gives £275; it needs its own rules.
+4. **Caveats:** a fourth look at the same 585 days, the weekday chosen after seeing the results, only 17 flagged days; the weekly log is the clean test and will record Hydro Thursdays.
+
+## Series 41 — The Thursday Flag Against 200 Random Placebos
+
+**Run**: 2026-10-18 · **Script**: `src/experiments/run_series36_event_checks.py thuperm` · **Rules** (committed before any code, `6408b40`) and results: `docs/EVENTS_EXPLORATION_2026_10.md`, sections 13 and 13.1
+
+### Context
+
+Series 40's Thursday-only Hydro flag gained about £275 on its 17 days but failed its placebo rule: one random draw of Thursdays also gained £29 with an interval below zero. One draw cannot say how often chance does that.
+
+### Hypothesis
+
+**H41**: the real Thursday flag's gain is larger than random sets of Thursdays give.
+
+### Method
+
+Pre-registered: 200 random reassignments of the Thursday flags among all Thursdays (seeds 20261019 to 20261218), the log model refitted for each on 5 seeds with the usual rolling-origin protocol, each scored on its own flagged days; the real flag and the unflagged baseline from the same 5 seeds. Rule 1: the real
+change beats at least 95% of the draws; rule 2: it is beyond all but two draws, or at least twice the best placebo.
+
+### Results
+
+Real change −245.3 (5 seeds). Placebo draws: mean +4.4, median +3.7, 5th/95th percentile −28.5/+34.6, best −56.3, worst +66.0. **0 of 200 draws were at least as good as the real flag (p = 0.005).** Series 40's placebo (−29) is at about the 4.5th percentile. Both rules pass.
+
+### Conclusion
+
+1. **The Hydro-Thursday effect is not chance on the backtest:** no random set of Thursdays came near it, and the placebo draws centre on zero.
+2. **Leading candidate for the weekly log**, not promoted. Series 40 remains a formal fail on its own placebo rule; this is its follow-up.
+3. **What it does not settle:** the weekday was chosen as the best of seven after seeing the results (a rough ×7 allowance gives p of about 0.035); it is a fourth look at the same 585 days; only 17 flagged days. The clean test is the weekly log.
+
+## Series 42 — Training the Log Model for the Day the Manager's Number Is Missing
+
+**Run**: 2026-11-01 · **Script**: `src/experiments/run_series42_no_manager.py` · **Rules** (committed before any code, `b9c71cd`), the sanity-check correction and results: `docs/NO_MANAGER_TRAINING_2026_11.md`, sections 9 to 11
+
+### Context
+
+The weekly export reaches us after the day and Rotaready cannot export a forecast for future dates, so every forecast of the weekly log is made without the manager's number, by a model trained with it. Series 18 put the cost of serving without it at about £100 a day.
+
+### Hypothesis
+
+**H42**: a log model trained for the no-manager situation (stand-in in training, or no manager input at all) has lower error, served without the number, than the log model as deployed.
+
+### Method
+
+Pre-registered: three arms (N0 as deployed, N1 stand-in in training computed from the other training rows, N2 `forecast_sales` dropped), 10-fold rolling-origin protocol, seeds 0-24 and 100-124, scored as the log serves a week (next-week days 8 to 14 days after the last known Sunday, this-week days 1 to 7), a sanity check against the stored log-model backtest, four rules (gain with the interval below zero on both seed sets; pooled gain of at least £15; better in at least 7 of 10 folds; no harm on this-week days or the busiest quarter).
+
+### Results
+
+Next-week MAE: N0 1,042 / 1,037, N1 1,042 / 1,035, N2 1,077 / 1,073 (524 days). Change against N0: **N1 −1.3 (−79.5, +50.3)**, **N2 +35.5 (−32.6, +85.7)**; this-week days N1 +19, N2 +55 (both intervals above zero). Better in 3 and 4 of 10 folds; busiest quarter +73 and +183. All four rules fail for both arms. The sanity check first failed because it named the deployed model's backtest (original school calendar) instead of the verified-calendar log-model backtest; against the right one N0 differs by at most £0.0022 (section 10 records the error and that the table was read before the cause was found).
+
+### Conclusion
+
+1. **H42 is rejected:** training for the missing number gives no detectable gain (N1) or a loss (N2).
+2. **The weekly log keeps `v1`;** no `v2` arm on this evidence. The missing manager number is a data limit, not something training removes.
+3. **Not settled:** gains under about £50 a day (the intervals are about ±65); why N2 loses; the 39-day context check.
+4. **Caveats:** a 42nd look at the same days; 524 of the 585 days scored (weeks cut by block edges).
+
+## Series 43 — What the Missing Manager Number Costs the Post Model, by Distance
+
+**Run**: 2026-11-01 · **Script**: `src/experiments/run_series43_post_model_horizon.py` · **Rules** (committed before any code, `bcd6ac4`), the sanity-check fix and results: `docs/SERVING_HORIZON_POST_MODEL_2026_11.md`, sections 7 and 8
+
+### Context
+
+The weekly log always forecasts without the manager's number. Series 18 measured that cost by distance for the final model on the original calendar, before the post model existed; the log issues the post model.
+
+### Method
+
+Series 18's protocol unchanged: 8 origins, 180 days, 1,425 day-scores, seasonal history fill, real weather for 16 days then medians, the real number or the stand-in. The post model (without the Hydro flag) assembled from its five refitted pieces with the log's weekday routing at any distance and the Saturday and Sunday correction learnt before each origin; the verified-calendar log model beside it. Two sanity checks gate the table.
+
+### Results
+
+Post model, with / without the number (£ a day): days 1-7 821 / 834 (+12), **8-16 879 / 928 (+48)**, 17-30 986 / 1,037 (+51), 31-60 974 / 1,155 (+181), 61-90 892 / 920 (+28), 91-180 963 / 1,077 (+114), **all 945 / 1,045 (+99)**. Manager alone 1,104 / 949 / 1,038 / 1,118 / 1,022 / 1,108 / 1,082. Log model without the number: 888 / 1,036 / 1,077 / 1,199 / 953 / 1,096 / 1,077. Post cost minus log cost over 180 days −1.6 (−7.9, +4.5): the same cost. The post-model sanity check first failed on four Fridays (a missing sales day, 24 January 2025, switched them to the plain model); the ceiling now routes by weekday as the validated backtest does, and both checks pass to £0.0022 before any table was produced.
+
+### Conclusion
+
+1. **Losing the number costs the post model about what it costs the log model:** about £99 a day over 180 days, about £48 at 8 to 16 days ahead (wide interval), little at 1 to 7 days.
+2. **The post model is better than the log model at every distance, with or without the number.** Without it, the post model is level with the manager at the log's next-week distance (928 against 949) and far better within a week (834 against 1,104).
+3. **Caveats:** overlapping windows narrow the intervals; real weather for 16 days flatters the short buckets; small short buckets; no hydro arm.
+
+## Series 44 — Do the Month and Day-of-Year Columns All Earn Their Place?
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series44_month_doy_encodings.py` · Results (local, gitignored): `reports/experiments/series44/`
+
+### Context
+
+The final model reads `month`, `month_sin`, `month_cos`, `day_of_year`, `day_of_year_sin` and `day_of_year_cos`: two calendar facts, each written three ways. Series 1's leave-one-out removed one column at a time and found that removing most of them helped, but every column kept two siblings carrying its signal, so that test could not say whether the columns are useless or merely redundant.
+
+### Hypothesis
+
+**H44**: some variant with fewer of the six columns scores a lower MAE than all six.
+
+### Method
+
+Whole encodings removed instead of single columns. Each fact gets one of four options (none, the plain number, the sine/cosine pair, both), 4 × 4 = 16 variants, `both`/`both` being the final model; every other column keeps its place in the order. The final model's protocol (log1p target, depth 4, 300 iterations, 10 folds, 585 days), 25 seeds (0-24) repeated on 25 more (100-124). Pre-registered rule: a smaller set replaces the six only if its change is below zero with a 95% moving-block bootstrap interval excluding zero on both seed sets; a tie is a tie.
+
+### Results
+
+Baseline (all six) £909.96 on seeds 0-24 and £912.74 on seeds 100-124 (the final model's logged £909.57 differs by £0.39, possibly the corrected school calendar of Series 29; not investigated, and it does not affect the comparison, as every variant shares it). Change against the baseline, both seed sets (£, negative is better):
+
+| Month columns | Day-of-year columns | Features | Change |
+|---|---|---|---|
+| Pair only | All three | 37 | −1.75 / −2.17 (tie) |
+| None | All three | 35 | +2.84 / −1.99 (tie) |
+| All three | Pair only | 37 | +1.70 / +0.83 (tie) |
+| All three | Plain number only | 36 | +9.73 / +9.66 (worse on both) |
+| All three | None | 35 | +17.67 / +17.16 (worse on both) |
+| None | None | 32 | +30.54 / +25.74 (worse on both) |
+
+Every variant without any day-of-year column is £17 to £31 worse with an interval above zero on both seed sets. Mean MAE by day-of-year option (seeds 0-24): both 911.4, pair 915.6, plain number 923.1, none 934.7. **No variant met the rule; the six columns stay.**
+
+### Conclusion
+
+1. **Day of year carries the seasonality;** the sine/cosine pair is the part that matters (pair alone ties the full set; the plain number alone is about £10 worse, since a tree cannot wrap December back to January on a 1-366 scale).
+2. **The month columns add nothing once day of year is there,** the redundancy Series 1 suspected but could not show. The small gain of the best variant (no plain `month`) was tested again with 100 fresh seeds in Series 46 and is zero.
+3. **Caveats:** the same 585 days as every series since Series 1; the two seed sets differ by £2.8 for the identical model, so gains of £1 to £3 cannot be told from seed noise.
+
+## Series 45 — Is `year` Needed, and Is `is_weekend` the Right Weekend Flag?
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series45_year_and_weekend_flag.py` · Results: `reports/experiments/series45/`
+
+### Context
+
+`year` can only be cut into the years the model has seen (2024, 2025, 2026), so in 2027 it behaves as 2026; the partial year 2026 also looks quiet because the data stops before the busy November and December. `is_weekend` is `day_of_week >= 4`, which is Friday, Saturday **and** Sunday (a good choice for a venue, a misleading name): Sunday (£8.3k a day) sits far below Friday (£10.5k) and Saturday (£14.8k).
+
+### Hypothesis
+
+**H45**: dropping `year`, or changing the weekend flag, lowers the final model's MAE.
+
+### Method
+
+2 × 4 = 8 variants: `year` kept or dropped, and `is_weekend` as today, removed, replaced by three single-day flags (`is_friday`, `is_saturday`, `is_sunday`), or replaced by a Friday+Saturday flag plus a Sunday flag. `day_of_week` and its sine/cosine stay. The new flags sit where `is_weekend` sits in the column order. Same protocol, seeds and rule as Series 44.
+
+### Results
+
+Change against the final model (£; seeds 0-24 / 100-124):
+
+| Year | Weekend flag | Change |
+|---|---|---|
+| Kept | Three single-day flags | −7.63 (−16.3 to +0.9) / −12.20 (−22.5 to −2.6) |
+| Dropped | Three single-day flags | −11.74 (−30.5 to +4.5) / −14.55 (−34.7 to +2.6) |
+| Dropped | As today | −4.89 / −3.03 |
+| Kept | No flag | −1.47 / −1.60 |
+| Kept | Friday+Saturday flag and Sunday flag | +0.47 / −4.32 |
+
+The single-day flags gain on Friday (−£27 and −£36) and Saturday (−£30 and −£36); dropping `year` improves Saturday by £84 to £120 but makes Monday to Thursday £8 to £14 worse and Friday worse. **No variant met the rule** (the single-day flags missed it on seeds 0-24 by under £1).
+
+### Conclusion
+
+1. **The single-day flags were the one promising result,** against the expectation written down beforehand (all four weekend options within noise). A possible reason is that the trees are four splits deep: isolating Saturday from `day_of_week` takes two splits, `is_saturday` one. Series 48 tests that.
+2. **Dropping `year` shifts error between weekdays** rather than lowering it.
+3. **Caveat:** the same 585 days; the model here is the plain log model, which the post model uses only on Monday to Thursday (Series 47).
+
+## Series 46 — Confirming the Calendar Candidates on Fresh Seeds and on the New Days
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series46_calendar_confirmation.py` · Results: `reports/experiments/series46/`
+
+### Context
+
+Two kinds of noise stand between Series 44-45 and a decision: the model's own randomness (two 25-seed bags of the identical model differ by £2.8) and which days were scored. More seeds shrink the first and not the second.
+
+### Method
+
+Six variants on the final model's 38 columns (no plain `month`; the single-day flags; both; and each of the last three without `year`). **Part A**: the same 585 days with 100 new seeds (200-299). **Part B**: every model fitted on rows before 7 September 2026 and scored on the 56 days from then to 1 November (no earlier series chose a calendar column using them; Series 35 and 36 used them for other questions). Pre-registered: supported only if part A is below zero with an interval excluding zero and part B is below zero (part B is a veto, 56 days cannot confirm).
+
+### Results
+
+Change against the final model (£; part A with 95% interval; part B on 56 days):
+
+| Variant | Features | Part A | Part B |
+|---|---|---|---|
+| Without the plain month number | 37 | −0.00 (−2.7 to +2.5) | +2.14 |
+| Single-day flags | 40 | **−10.82 (−19.7 to −3.1)** | +3.14 |
+| Both of the above | 39 | **−9.61 (−18.5 to −1.6)** | +0.87 |
+| Single-day flags, without `year` | 39 | −14.03 (−33.9 to +1.8) | −2.93 |
+| Single-day flags, without month number and `year` | 38 | −15.30 (−36.6 to +1.2) | −4.58 |
+
+The single-day flags' part A gain is Friday (−£29) and Saturday (−£37); the variant with the flags and no month number is better in 9 of 10 folds, while the one that also drops `year` is better in only 5. **No candidate was supported** (part B failed the veto for the flags).
+
+### Conclusion
+
+1. **The plain `month` number does nothing:** the −£2 of Series 44 was seed noise.
+2. **The single-day flags are a real effect on the plain log model on these 585 days,** not seed luck; part B (56 days, 8 Saturdays) could not confirm or deny it.
+3. **The gain of the variants without `year` is one fold.** The fold of 10 January to 10 March 2026 averages −£154 a day, which alone accounts for more than the whole −£15.30: that fold trains on only nine 2026 rows (all 1-9 January, mean sales £4,860 against £8,589 overall), so `year = 2026` acts as a "quiet day" marker and the plain log model's error on the Saturdays of that fold is about £1,200 a day larger than without `year`. This is a rollover hazard for any model retrained in the first weeks of a year, not an accuracy gain.
+4. **Caveat:** the candidates were chosen after seeing Series 44-45 on the same 585 days, and the post model does not use this plain log model on Friday to Sunday (Series 47).
+
+## Series 47 — Single-Day Flags Inside the Real Friday, Saturday and Sunday Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series47_weekend_flags_in_pieces.py` · Results: `reports/experiments/series47/`
+
+### Context
+
+The post model uses the plain log model only on Monday to Thursday. Friday is log1p with the same-weekday inputs, Saturday raw pounds with the sales of 2 and 3 weeks ago, Sunday log1p with the weekend interactions, then the Series 24 correction (`src/forecast_log/v1.py`).
+
+### Method
+
+Each piece refitted twice, as deployed and with `is_weekend` replaced by the three flags in the same place (`year` kept), scored on its own weekday over the 585 days with 100 seeds and on the new days; the package (Monday-Thursday from the log model) assembled both ways and corrected. Pre-registered rule as Series 46.
+
+### Results
+
+| Piece | Days | As deployed | With flags | Change | Folds better | New days (8) |
+|---|---|---|---|---|---|---|
+| Friday | 83 | 1,088.3 | 1,083.0 | −5.36 (−35.3 to +22.5) | 7 | +18.27 |
+| Saturday | 84 | 1,078.8 | 1,076.6 | −2.24 (−13.6 to +12.1) | 6 | −9.88 |
+| Sunday | 84 | 1,075.0 | 1,086.8 | +11.78 (−7.0 to +29.5) | 3 | −27.39 |
+
+The package: £873.02 → £871.85 before the correction (−1.17, −7.7 to +5.4) and **£865.36 → £864.34 after it (−1.02, −7.8 to +5.6)**. No piece and not the package met the rule.
+
+### Conclusion
+
+1. **The flags' gain on the plain log model disappears inside the real pieces** (Friday −£29 → −£5, Saturday −£37 → −£2); the post model's pieces stay as they are.
+2. **Nothing changes in the deployed models:** the forecast log's `v1` pieces are fitted once and never refitted, so adopting the flags would be a new version.
+
+## Series 48 — Why the Single-Day Flags Faded Inside the Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series48_why_flags_faded.py` · Results: `reports/experiments/series48/`
+
+### Hypotheses
+
+**E1**: the pieces' extra inputs already tell the model what the flags tell it. **E2**: with four-split trees `is_saturday` saves a split that `day_of_week` needs two for, and deeper trees would make the flags unnecessary.
+
+### Method
+
+The plain log model, `is_weekend` or the flags, under five settings: as the final model, plus the Friday piece's inputs, plus the Saturday piece's, plus the Sunday piece's, and trees six splits deep; 100 seeds (200-299). The control reproduced Series 46's fits exactly (checked by the script). Pre-registered: E1 holds for a piece if the flags help in the control (interval below zero) and help less than half as much with that piece's inputs.
+
+### Results
+
+The flags' effect (£, negative = the flags help):
+
+| Setting | Friday | Saturday |
+|---|---|---|
+| Final model | −28.8 | −36.8 |
+| + Friday inputs | −5.4 | −22.3 |
+| + Saturday inputs | −12.3 | −26.8 |
+| + Sunday inputs | −30.6 | −31.4 |
+| Trees 6 deep | −13.2 | −26.3 |
+
+Neither E1 nor E2 held by the pre-registered rule (the control's Friday interval, −73.9 to +10.1, includes zero). MAE by weekday, the question of whether the pieces do the flags' job better: Friday plain model + flags 1,089.5 against the real Friday piece 1,088.3 (level); Saturday 1,112.9 (best log setting) against 1,078.8; Sunday 1,095.8 against 1,075.0. Deeper trees are worse overall (£922.6 against £911.6).
+
+### Conclusion
+
+1. **Friday: the inputs do the flags' job** (about 80% of the gain gone with Friday's own inputs; the control's interval is wide).
+2. **Saturday: the inputs only remove about a quarter of it,** yet the real Saturday piece gains nothing. The same inputs on the log target give −£27, on the raw-pound target −£2: the raw-pound target looks like the reason (not tested directly).
+3. **The real pieces beat anything built from the flags** on Saturday (about £34) and Sunday (about £21) and match it on Friday; E2 is not the explanation.
+
+## Series 49 — A Leap-Year-Safe Day of Year
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series49_leap_safe_day_of_year.py` · Results: `reports/experiments/series49/`
+
+### Context
+
+`day_of_year` is one higher after 29 February in a leap year (1 March is day 61 in 2024, 60 in 2025), and day 366 (31 December 2024) falls on the same sine/cosine point as day 1 because the circle's period is 365. The data holds one leap year. 1 January is a closed day (£0 in the model rows) and the raw `day_of_year`, `month` and `is_bank_holiday` separate the two, so no conflicting signal reaches the model.
+
+### Method
+
+The three day-of-year columns recomputed as if every year had 365 days (29 February takes 28 February's number; 1 March is always 60, 25 December always 359, 31 December 2024 is 365). 307 rows (29 February to 31 December 2024) change. Final-model protocol, 100 seeds (200-299), written expectation: a tie.
+
+### Results
+
+£911.62 with the final model's numbering, £911.66 leap-safe: **+0.04 (−4.88 to +4.80)**; 2025 test days +1.66, 2026 −2.15; better in 4 of 10 folds. **A tie.**
+
+### Conclusion
+
+1. **Nothing is measurable on the 585 days,** as the test days are all in 2025 and 2026.
+2. **A correctness fix for 2028, not a gain.** Not applied: the deployed `v1` models are never refitted; it can go into a later model version.
+
+## Series 50 — Dropping `year` Inside the Real Post-Model Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series50_drop_year_in_pieces.py` · Results: `reports/experiments/series50/`
+
+### Context
+
+Series 45-46 dropped `year` from the plain log model; Series 47 showed the post model uses separate pieces on Friday, Saturday and Sunday.
+
+### Method
+
+`year` removed from each of the four pieces (Monday-Thursday log model, Friday, Saturday, Sunday), everything else as deployed; the year-kept side reused Series 46-47's 100-seed fits. The rule was **amended before any result was read**, at the owner's request: the first version made three pass/fail gates; the reading is now by judgment on the package's net change in pounds, whether it is spread over folds or sits in one, where it comes from by weekday, and the cost in complexity or risk.
+
+### Results
+
+| Piece | Change from dropping `year` | Folds better | Without the Jan-Mar 2026 fold | New days |
+|---|---|---|---|---|
+| Monday-Thursday | +11.34 | 5 | +2.75 | −19.38 (32 days) |
+| Friday | +20.09 | 2 | +10.10 | +19.35 |
+| Saturday | −30.35 | 4 | +9.61 | +1.76 |
+| Sunday | −7.19 | 5 | +5.47 | −1.47 |
+
+The package: £873.02 → £876.95 before the correction (+3.94, −7.0 to +14.8), **£865.36 → £867.13 after it (+1.76, −9.3 to +12.0)**; five folds better and five worse after the correction, the most recent fold (July-September 2026) worst at +£18.4; adding the four pieces' new-days changes by hand gives about −£8 on the 56 days.
+
+### Conclusion
+
+1. **No accuracy case for dropping `year`:** about +£2 on the package, within noise. The Saturday gain comes from the January-March 2026 fold; without it, Saturday is £9.6 worse.
+2. **The rollover hazard of Series 46 is small in the real pieces:** the package changes by only −£2.3 a day in that fold, because the pieces' recent-sales inputs carry the level.
+3. **`year` stays.** Before any retraining in January to March 2027 (when a handful of low-season 2027 rows would first appear), repeat this check on the then-current data. Whether and when to retrain is the owner's decision.
+
+## Series 51 — The Combined Calendar Candidate Inside the Real Pieces
+
+**Run**: 2026-11-03 · **Script**: `src/experiments/run_series51_combined_candidate_in_pieces.py` · Results: `reports/experiments/series51/`
+
+### Context
+
+Series 46's most promising row (single-day flags, no plain `month`, no `year`; −£15.30 on the plain log model) had been tested in parts inside the real pieces (Series 47: the flags, package −£1.0; Series 50: no `year`, package +£1.8) but never together.
+
+### Method
+
+All three changes applied to each of the four pieces (38, 42, 40 and 42 columns), the as-deployed side reused from Series 46-47, 100 seeds (200-299), the new days, the package corrected as in Series 47. Read by judgment on the net effect, as agreed after Series 49 (no pass/fail gate; stated in the script before it ran).
+
+### Results
+
+The package: £873.02 → £874.03 before the correction (+1.02, −13.0 to +14.4) and **£865.36 → £864.56 after it (−0.81, −14.6 to +11.8)**. By fold after the correction the change swings from −£34.6 to +£23.9 and is better in 5 of 10. By piece: Saturday −39.62 (−89.0 to +5.0), Monday to Thursday +8.07, Friday +13.33 (better in 3 folds), Sunday +1.44; over the 56 new days the four pieces net to −£0.10 a day.
+
+### Conclusion
+
+1. **A wash:** the three changes together move the package by under a pound, as the parts did separately; the Saturday gain is offset by Monday to Friday.
+2. **The 38 columns stay.** The calendar and cycle columns have now been tested as columns (Series 44), as encodings (Series 44-46), on the plain log model (Series 45-46) and inside the real pieces (Series 47-51): nothing improves the post model in a way that can be told from noise.
+3. **Caveat:** the intervals are about ±£13, so a real gain of a few pounds would not show; all of Series 44-51 reuse the same 585 days.
+4. **Open, recorded in the README's Future Work:** the untested calendar candidates (day of month, week of month, week of year, month start and end). The rerun of the weekend-feature selection with the flags in the base that was also open here was done in Series 52 (no better). The backtest gains an 11th fold once data beyond about 6 November 2026 is ingested, so the protocol has to be decided before further backtest series.
+
+## Series 52 — The Weekend-Feature Selection Redone With the Single-Day Flags in the Base
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series52_weekend_selection_with_flags.py` · Results: `reports/experiments/series52/`
+
+### Context
+
+The post model's Friday, Saturday and Sunday pieces were chosen in Series 26-27 with `is_weekend` in the base. Series 47 put the single-day flags into the pieces as chosen and found nothing, but another option or target could win once the flags are in the base. This is the last test of the flags in the backtest-validated post model.
+
+### Method
+
+Both bases (`is_weekend`, and `is_friday` / `is_saturday` / `is_sunday` in its place and order) refitted on today's data with the same seeds, so the comparison is paired and not confounded by data revisions since the stored Series 23-27 results. Six options (none, A_all, A_summary, A_lags, B, AB) on both targets, seeds 0-24 and 100-124, 240 tasks. Series 27's procedure unchanged: each weekday chooses on blocks 0-4 (seeds 0-24) on its fixed target (log1p for Friday and Sunday, raw pounds for Saturday), the weekend is assembled on the Series 23 hybrid and put through the Series 24 correction. Written before the results: the same options expected to win, the package expected to move by a few pounds at most; read by judgment on the net effect.
+
+### Results
+
+The `is_weekend` base reproduces the old selection (Friday A_all, Saturday A_lags, Sunday B) and the old package: £864.05 (seeds 0-24) and £866.64 (fresh) after the correction, against the stored £864.63 and £865.23. The flags base chooses **Friday: none, Saturday: A_lags, Sunday: A_lags**. On the selection blocks Friday with the flags and no extra inputs scores £1,037.3 against £1,073.0 for `is_weekend` alone; Sunday's A_lags beats B by £5 (1,217.1 against 1,222.1) over about 42 days.
+
+The post model after the correction, flags base against `is_weekend` base (£; seeds 0-24 / fresh):
+
+| | `is_weekend` | Flags | Change (95% interval) |
+|---|---|---|---|
+| Package after the correction | 864.05 / 866.64 | 866.67 / 868.82 | +2.62 (−10.2 to +14.4) / +2.18 (−12.0 to +14.3) |
+| Monday–Thursday | | | −2.1 / −1.4 |
+| Friday | | | −1.2 / −9.3 |
+| Saturday | | | −9.3 / −6.3 |
+| Sunday | | | **+37.0 / +36.3** |
+
+Post-hoc diagnostics, not selections: keeping Sunday on B gives +1.17 / −1.56; the old choices (A_all, A_lags, B) on the flags base give +1.48 / −0.84; Sunday is worse by £10 to £27 in every combination. Exploratory: letting each weekday pick either target gives the same Friday and Saturday picks and Sunday on the raw target with B under both bases, which loses on the judging blocks (flags base £1,035.5 against £1,003.1 for the fixed target; `is_weekend` base £1,045.5 against £956.8).
+
+### Conclusion
+
+1. **No better:** +£2 to +£3 on the post model, inside intervals of about ±£13. The flags help Monday to Thursday, Friday and Saturday by £1 to £9 each and cost Sunday £36.
+2. **The change in the choices is selection noise:** Sunday's A_lags beat B by £5 on five blocks and then cost £36 on the Sundays, the problem Series 27 named (about 84 days per weekend day).
+3. **The flags do not belong in the backtest-validated post model.** Friday with the flags and no extra inputs does as well as the A_all piece (£1 to £9 better a Friday, within noise), which is the Series 48 reading from the other side.
+4. **Open, a serving question and not a backtest one:** the weekly log's Friday uses the A_all piece only when the sales 7, 14, 21 and 28 days earlier are known (`route` in `run_series43_post_model_horizon.py`), which they are not for the next-week Fridays it issues; those use the plain log model. On that model the flags lowered the Friday error by £26.7 and £36.1 on the two seed sets (the first row of the change table in the Series 52 report; wide intervals, −74 to +10 in Series 48). Tested in the served routing in Series 53: the gain shrinks to £2 to £11 with intervals of about ±£25, so it does not warrant a new model version.
+
+## Series 53 — The Friday Question as the Weekly Log Really Asks It
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series53_friday_as_the_log_serves_it.py` · Results: `reports/experiments/series53/`
+
+### Context
+
+For the next-week Fridays the weekly log issues, the Friday piece (A_all) cannot run, because it needs the sales 7, 14, 21 and 28 days earlier and the 7-day one is not yet known (`route` in `run_series43_post_model_horizon.py`); the plain log model forecasts them. On that model, with every input available, the single-day flags lowered the Friday error by £27 and £36 on two seed sets (Series 46, 48, 52).
+
+### Method
+
+A replay of the weekly log over the backtest: for each of the 83 Fridays in the 585 days, the Monday 11 days before is the issue day and the Sunday before it the last known day; the week's rows are built as the live API builds a date beyond its data (`served_rows`: weekday-and-season medians for the sales after the last known day, the manager's forecast and the weather). Two plain log models, fitted on the history before each backtest block, forecast the week: today's (`is_weekend`) and the flags version, 25 seeds and a second 25 (100-124). Monday to Friday of each week are scored (400 days). Read by judgment on the net effect.
+
+### Results
+
+The replay is harder than the backtest, as it should be: the plain model's Friday MAE is £1,216 (about £1,118 with every input available). Flags minus today (£; seeds 0-24 / fresh):
+
+| Days | n | Change (95% interval) |
+|---|---|---|
+| Friday | 83 | −1.55 (−27.7 to +23.4) / −10.74 (−43.8 to +16.6) |
+| Monday–Thursday | 317 | −4.74 (−12.5 to +2.6) / −4.74 (−12.9 to +2.3) |
+| Monday–Friday | 400 | −4.08 (−12.2 to +3.3) / −5.99 (−15.4 to +2.0) |
+
+By weekday, Tuesday to Thursday −£4.5 to −£9.8 on both seed sets; Monday +0.5 / +5.1; Friday improves in 6 and 5 of 10 folds.
+
+### Conclusion
+
+1. **The Friday gain does not hold under serving conditions:** £27 to £36 with every input becomes £2 to £11 in the replay, with intervals of about ±£25.
+2. **A small, broad gain of £4 to £6 a day on Monday to Friday** is the most the flags offer the plain log model as served; its intervals touch zero. Not worth a new model version on its own.
+3. **The serving question of Series 52 is closed:** no new version is warranted. The README item is marked tested.
+4. **Caveats:** 83 Fridays; the median weather fallback for every day is harsher than the log's real forecast for the first 16 days; the model is refitted per fold, where the deployed log is fitted once.
+
+## Screen — Do the Post Model's Errors Follow the Calendar Candidates Not Yet Built?
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_error_calendar_screen.py` (not a series: no model is fitted, it reads the Series 47-50 backtest predictions)
+
+The post model's backtest errors (as a percentage of the forecast, + = under-forecast, 583 open days; median miss 8.7%) grouped by the candidate features. Day of month (1-5, 6-10, ..., 26-31): means −1.1% to +1.6%, every |t| below 1.0. Week of the month: −0.8% to +0.4% for weeks 1 to 4 and +3.0% for the 45 days of week 5 (t 1.4). Month start (first 3 days) +1.9% (t 0.9); month end (last 3 days) **+4.5% (t 2.25, 57 days)**, which is +3.5% (t 1.7) outside December. Its largest misses outside December are events, not month ends: 28 June 2025 and 28 and 30 June 2026 (the start of the school summer break) and 30 March 2025 (Mother's Day, +27%; +6% in 2026). Event days with two occurrences disagree with themselves (Valentine's Day +34% on a Friday in 2025, +3% on a Saturday in 2026); Father's Day is +7% and +6%; Halloween −23% and Bonfire Night −13% have one occurrence each. Week of year is not screened: it is day of year in other words.
+
+1. **There is little for day-of-month, week-of-month or month-start/end features to catch;** the one edge, month end, is mostly events and the payday columns already sit there.
+2. **The remaining error is event days with one or two occurrences each,** the same data limit as December (two Decembers); a feature built on two examples cannot be learnt or tested.
+3. **A screen, not a proof:** an interaction with the weekday would not show in a one-way table, and one |t| near 2 among about a dozen comparisons is expected by chance.
+
+## Series 54 — Day of the Month in the Weekly Log's Models
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series54_day_of_month.py` · Results: `reports/experiments/series54/`
+
+### Context
+
+Day of month had not been tried. Months have 28 to 31 days, so "day 31" is the last day in some months and does not exist in others. The error screen above found no pattern in the post model's errors by day of month; this is the test of the features themselves.
+
+### Method
+
+Four ways of writing where a day sits in the month, appended after each piece's own inputs (so the baseline is a prefix of every variant), against today's pieces: the plain `day_of_month`; `day_of_month` and `days_to_month_end` (the distance from both edges); a sine/cosine pair of `(day − 1) / days in the month` (the last day of one month next to the first of the next); and all four together. Added to every piece of the weekly log: the post model's Monday-to-Thursday log model and its Friday, Saturday and Sunday pieces; the hydro model's Monday-to-Thursday piece (the log model with the Thursday-Hydro flag, 37 Hydro Thursdays in the rows); and the plain raw-pound Saturday fallback. 100 seeds (200-299), 585 days and the 56 new days; the post and hydro models assembled and put through the Series 24 correction; read by judgment on the net effect. The four post-model baselines were reused from Series 46-47; the hydro and fallback baselines were fitted here.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post model £865.36, hydro model £858.78; better in 2 to 4 folds of 10 in every row):
+
+| Variant | Post model | Hydro model |
+|---|---|---|
+| Day of month | +1.49 (−0.9 to +4.1) | +0.34 (−1.9 to +2.8) |
+| Day of month and days to month end | +2.47 (−0.3 to +5.4) | +0.45 (−2.1 to +3.1) |
+| Circle | +4.55 (−2.0 to +11.6) | +2.99 (−3.5 to +10.3) |
+| All four | +5.62 (−1.1 to +13.4) | +4.85 (−1.6 to +12.2) |
+
+By piece, the Friday piece is worse with every variant (+£5.5 to +£17.1); the Saturday piece improves slightly with `days_to_month_end` (−£4.9 in 8 of 10 folds, interval −12.9 to +5.6) but is £28.7 worse on its 8 new Saturdays; the hydro Monday-to-Thursday piece gains £1.5 with the plain day of month (7 of 10 folds, interval −3.9 to +0.6); the raw Saturday fallback moves −£3.3 to +£5.3. Over the 56 new days the whole models change by −£6.5 to +£8.0 a day with no consistent sign.
+
+### Conclusion
+
+1. **No variant helps either model:** every one is level or worse, with intervals that include zero, and the more columns added the worse it gets (all four: about +£5 on both models).
+2. **The post and hydro models behave alike,** as the hydro flag only changes the Monday-to-Thursday piece.
+3. **The two slightly positive spots** (Saturday with `days_to_month_end`, the hydro Monday-to-Thursday piece with the plain day of month) are inside their intervals and offset by the new days or by Friday.
+4. **Day of month stays out of the model.** Week of month, week of year and the month start and end flags are not yet tested.
+5. **Caveats:** the intervals are about ±£2 to ±£13; the same 585 days as every series since Series 1.
+
+## Series 55 — Week of the Month in the Weekly Log's Models
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series55_week_of_month.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series55/`
+
+### Context
+
+Series 54 found nothing in day of month. Week of month is day of month with the detail removed (the trees can already cut it at 7, 14 and 21), so the reason to try it is the one the weekday flags showed: the trees are four splits deep and a ready-made "first week" column saves splits. Written down beforehand: little or nothing expected.
+
+### Method
+
+Series 54's design: every variant added to every piece of the weekly log (post model's four pieces, the hydro Monday-to-Thursday piece, the raw Saturday fallback), 100 seeds (200-299), 585 days and the 56 new days, the two models assembled and corrected, read by judgment on the net effect. Variants: `week_of_month` (1 to 5 from the 1st, which is also the nth occurrence of the weekday); `week_and_weeks_to_end` (that plus `weeks_to_month_end`, 0 being the last seven days); `calendar_week` (Monday-to-Sunday weeks, week 1 holding the 1st, 1 to 6); all three together. No circle (a week of the month does not wrap). The hydro and fallback baselines are Series 54's `none` fits.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) |
+|---|---|---|---|
+| `week_of_month` | −0.22 (−2.1 to +2.0) | −1.39 (−3.5 to +0.9) | 7 / 7 |
+| `week_and_weeks_to_end` | +2.52 (+0.1 to +5.0) | +0.90 (−1.3 to +3.2) | 3 / 5 |
+| `calendar_week` | +1.53 (−0.5 to +3.8) | +0.09 (−2.2 to +2.4) | 2 / 7 |
+| All three | +3.02 (+0.2 to +6.1) | +1.83 (−0.8 to +4.6) | 3 / 4 |
+
+For `week_of_month`, Monday to Thursday improves in 8 (post) and 9 (hydro) folds of 10 (−£1.1 and −£3.2; the hydro piece's interval, −5.9 to −0.6, excludes zero) while Friday is £3.3 worse; over the 56 new days the whole models change by −£1.4 (post) and +£1.1 (hydro). The raw Saturday fallback improves with `calendar_week` (−£8.1, interval −15.9 to −0.7, 7 of 10 folds) but is £9.4 worse on the new Saturdays, and it is not part of either package.
+
+### Conclusion
+
+1. **Nothing usable:** the plain `week_of_month` is the best of the day-of-month and week-of-month family, a hair better on both models (−£0.2 and −£1.4, better in 7 of 10 folds), but inside its interval, with the new days not agreeing.
+2. **Adding `weeks_to_month_end` hurts** (+£2.5 on the post model, interval above zero), and the three columns together hurt more, as in Series 54: more columns, more noise.
+3. **The two intervals that exclude zero** (the hydro Monday-to-Thursday piece, the raw Saturday fallback) are two of 24 piece-and-variant intervals, about what chance gives, and the fallback's is contradicted by its new days.
+4. **Week of month stays out of the model.** Week of year and the month start and end flags were tested next, in Series 56.
+5. **Caveats:** the intervals are about ±£2 to ±£6; the same 585 days as every series since Series 1.
+
+## Series 56 — Week of the Year and the Month Start and End Flags in the Weekly Log's Models
+
+**Run**: 2026-11-04 · **Script**: `src/experiments/run_series56_week_of_year_and_month_edges.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series56/`
+
+### Context
+
+The last two calendar candidates. Day of year is already in the model, so week of year is the same fact in coarser steps; the month start and end flags are the payday idea (the error screen had seen a month-end excess that turned out to be event days). Written down beforehand: little or nothing expected.
+
+### Method
+
+Series 54's design: every variant added to every piece of the weekly log (the post model's four pieces, the hydro Monday-to-Thursday piece, the raw Saturday fallback), 100 seeds (200-299), 585 days and the 56 new days, the two models assembled and corrected, read by judgment on the net effect. Variants: `week_of_year` (ISO week, 1 to 53); `week_of_year_circle` (its sine and cosine, period 52.18 weeks); `edges_three_days` (first three days and last three days of the month); `edges_one_day` (the 1st and the last day). 720 fits, about 52 minutes on 10 workers. The hydro and fallback baselines are Series 54's `none` fits.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `week_of_year` | +2.12 (−0.2 to +4.6) | +0.55 (−1.7 to +2.9) | 2 / 5 | +0.1 / +1.7 |
+| `week_of_year_circle` | −0.43 (−4.0 to +2.3) | −2.33 (−5.8 to +0.4) | 5 / 6 | +5.6 / +6.0 |
+| `edges_three_days` | +1.26 (−1.0 to +3.7) | −0.14 (−2.4 to +2.0) | 3 / 4 | +6.3 / +4.7 |
+| `edges_one_day` | +1.88 (−0.7 to +4.9) | +0.60 (−2.0 to +3.5) | 3 / 4 | +5.3 / +2.9 |
+
+The best looking result is the circle on the hydro model (−£2.3, 6 of 10 folds), which comes from the hydro Monday-to-Thursday piece (−£3.1, interval −7.1 to +0.4); its interval touches zero and the new days are £6 worse. On the post model it is a wash (−£0.4) because the Sunday gain (−£5.4 before the correction) is cancelled by Friday (+£5.9). Plain `week_of_year` is worse on Sunday (+£6.7, interval +0.4 to +13.4, better in 2 folds of 10). The two flag versions are £1 to £2 worse on the post model, with Saturday and Sunday the weakest pieces. Every variant is worse on the 56 new days (+£0.1 to +£6.3 on the post model).
+
+### Conclusion
+
+1. **Nothing usable.** No variant moves either model by more than £2.5 in either direction, every interval includes zero, and none improves in a clear majority of folds on both models.
+2. **The new days disagree with the best-looking result.** The hydro circle's −£2.3 becomes +£6.0 on the 56 new days.
+3. **The two piece-level intervals that exclude zero are chance-sized:** `week_of_year` on Sunday (worse) and the raw Saturday fallback with `edges_three_days` (−£7.2, interval −14.4 to −0.1, but £24 worse on the new Saturdays and not in either package). That is two of 24 intervals, about what chance gives.
+4. **Week of year and the month edges stay out.** Together with Series 54 and 55 this closes the calendar candidates: day of month, week of month, week of year and month start and end, in every encoding tried, add nothing to a model whose day of year already carries the season.
+5. **Caveats:** the intervals are about ±£2 to ±£6; the same 585 days as every series since Series 1; the ISO week puts 29-31 December in week 1 and the first days of January in week 52 or 53 in some years, which a coarser seasonal column could not tell apart from the next year.
+
+## Series 57 — A Smooth Seasonal Baseline, with CatBoost Learning the Leftovers
+
+**Run**: 2026-11-05 · **Script**: `src/experiments/run_series57_seasonal_baseline.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series57/`
+
+### Context
+
+Series 44-56 found nothing to add to the calendar columns, so this tests how the season is represented instead. CatBoost draws the yearly curve from `day_of_year` with decision trees (yes/no cuts, four deep, 300 added together), which builds a smooth curve as a staircase. The idea: fit the season by ordinary arithmetic first and let CatBoost learn only what is left. Written down beforehand: little or nothing expected, because 300 trees together probably approximate a smooth curve already.
+
+### Method
+
+Per fold, on that fold's training days only, a ridge regression (strength 1.0) of the piece's target (log1p of sales for the log pieces, pounds for the raw Saturday pieces) on a level for each weekday plus, for each weekday separately, K pairs of sine and cosine waves of the day of the year (periods 365.25 / k days); the four zero-sales closure days are left out of its fit. CatBoost is trained on the target minus the baseline, with the piece's own columns, and the forecast is baseline plus CatBoost (expm1 for the log pieces). Four variants: K = 2 or 4 wave pairs, each with every column kept or with `day_of_year`, its sine and cosine, `month` and its sine and cosine removed from CatBoost (the pure form of the idea). Everything else as Series 54: every variant in every piece of the weekly log, post and hydro models, 100 seeds (200-299), 585 days and the 56 new days, the correction, read by judgment on the net effect. 720 fits, about 50 minutes. The hydro and fallback baselines are Series 54's `none` fits.
+
+Checks: with a zero baseline the residual code reproduces the deployed fit exactly (seed 200, three folds, identical predictions). The baseline on its own has a mean absolute error of £1,217 (K = 2) and £1,208 (K = 4) a day over the 585 days, against £873 for the post model.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `residual_k2` | +98.80 (+60.2 to +144.7) | +100.32 (+61.7 to +145.7) | 0 / 0 | +34.1 / +42.9 |
+| `residual_k4` | +185.95 (+140.1 to +237.3) | +186.53 (+140.6 to +237.4) | 0 / 0 | +106.6 / +112.1 |
+| `residual_k2_no_season` | +172.98 (+122.0 to +236.4) | +177.04 (+126.3 to +242.1) | 1 / 1 | +36.3 / +44.5 |
+| `residual_k4_no_season` | +245.96 (+184.4 to +321.6) | +247.06 (+184.8 to +323.0) | 0 / 0 | +104.5 / +106.4 |
+
+Every piece is worse in every variant: Monday to Thursday by £78 to £205, Friday £102 to £185, Saturday £200 to £411 (the worst), Sunday £65 to £240; the only places the new days are better are the Monday-to-Thursday pieces with the K = 2 baseline (−£27 and −£43), where the backtest says +£78 and +£130.
+
+### Conclusion
+
+1. **The idea does not work in this form, clearly.** Every variant is worse than the deployed model in nearly every fold, with every interval above zero and by far more than any earlier calendar test (+£99 to +£246 a day).
+2. **More flexibility is worse:** the 4-wave baseline loses about £87 more than the 2-wave one, which fits the first fold (one year of training days) loosely.
+3. **The trees do need the seasonal columns:** removing them costs a further £74 (K = 2) or £60 (K = 4) on the post model, so the staircase worry was unfounded; the trees represent the season better than a weekday-specific wave regression does.
+4. **A plausible cause, not tested:** the baseline is fitted in-sample, so on the training days its leftovers are smaller than its errors on new days, and CatBoost learns to correct leftovers that are too small, while the baseline's own out-of-sample error (about £1,200 a day) goes straight into the forecast. A cross-fitted baseline (each training day's baseline fitted without it) would test this; it is not run.
+5. **Nothing in production changes, and seasonality stays with the trees and the 38 columns.**
+6. **Caveats:** one baseline design (weekday-specific waves, ridge 1.0, two sizes), not the whole family of seasonal baselines; the intervals are about ±£40 to ±£70 here, far narrower than the gaps.
+
+## Series 58 — The Seasonal Baseline Again, Cross-Fitted
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series58_cross_fitted_baseline.py` (reuses Series 57's baseline code and `run_series54_day_of_month.report`) · Results: `reports/experiments/series58/`
+
+### Context
+
+Series 57's seasonal baseline lost £99 to £246 a day. A plausible cause, named there but not tested, was that the baseline was fitted on the same days CatBoost trains on, so the leftovers CatBoost learned were smaller than the errors the baseline makes on new days. Cross-fitting is the standard repair. Written down beforehand: it recovers some of the loss but stays worse than the deployed model.
+
+### Method
+
+Series 57's design in full (the four variants, every piece of the weekly log, 100 seeds, 585 days and the 56 new days), with one change: each fold's training days are cut into blocks of 56 days (eight whole weeks), and each block's baseline comes from a fit that never saw that block; the test days' baseline is fitted on all training days as before. Checked before the run: the baseline's error on the training days rises from £970-1,150 (in-sample) to £1,235-1,730 (cross-fitted), against £830-1,220 on the test days, so the leftovers CatBoost sees are now as large as on new days or larger. 720 fits (the run was interrupted twice by session restarts and resumed from its results file each time).
+
+### Results
+
+The post model after the correction, change against as deployed (£, 95% interval; baseline £865.36) and against Series 57's in-sample version:
+
+| Variant | Against deployed | Folds better | Against Series 57 (after / before the correction) |
+|---|---|---|---|
+| `residual_k2` | +117.55 (+70.9 to +164.6) | 0 | +18.8 (−12.8 to +46.0) / +2.9 (−31.5 to +30.7) |
+| `residual_k4` | +208.28 (+147.3 to +279.4) | 0 | +22.3 (−25.0 to +74.1) / +6.9 (−41.0 to +58.6) |
+| `residual_k2_no_season` | +174.01 (+122.8 to +233.3) | 0 | +1.0 (−25.4 to +24.4) / −10.0 (−39.6 to +14.5) |
+| `residual_k4_no_season` | +284.90 (+207.9 to +387.0) | 0 | +38.9 (−4.1 to +93.3) / +27.0 (−16.0 to +80.1) |
+
+The hydro model is the same within £3 (+£120.10 to +£283.39). Every piece is worse than deployed in every variant (Monday to Thursday +£88 to +£282, Saturday +£115 to +£253, Sunday +£111 to +£238, Friday +£120 to +£215); the only piece-level intervals that include zero are Saturday, Sunday and the raw Saturday fallback with the K = 2 baseline, which are still above zero as point estimates. On the 56 new days the post model is +£37 to +£91 worse.
+
+### Conclusion
+
+1. **Cross-fitting does not help.** Against Series 57 every difference is between −£10 and +£39 a day and every interval includes zero: the in-sample mismatch was not the cause of the loss, or not the only one.
+2. **The seasonal baseline is closed.** Two designs, in-sample and cross-fitted, four variants each, are all worse than the deployed model by £99 to £285 a day, every interval above zero, in every fold. The trees do the season better than a weekday-specific wave baseline with CatBoost on the leftovers.
+3. **What is not established:** why. The baseline's own error (about £1,200 a day) goes straight into the forecast and CatBoost may not correct a baseline that is wrong in a weekday-and-season-specific way; this was not tested further and is not planned.
+4. **Nothing in production changes.**
+5. **Caveats:** one baseline family (weekday-specific waves, ridge 1.0, blocks of 56 days); the intervals are about ±£40 to ±£80.
+
+## Series 59 — Repairing the Payday Columns, and What the Family Is Worth
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series59_payday_repair.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series59/`
+
+### Context
+
+The model carries four payday columns (`days_since_payday`, `is_payday_window_pm3`, `is_payday`, `days_to_payday`), all built on one rule: payday is the last working day of the month, on the Scottish bank-holiday calendar. Two of them misbehave. `days_since_payday` counts from the previous month's payday, so it reads 28-33 on payday itself and about 29-31 on the weekend or bank-holiday days after an early payday, where it should read 0, 1 or 2. `days_to_payday` is negative (-1, -2) on those days, because the date arithmetic rolls forward to the end of the same month and finds the payday that has already gone; the window flag is built from the two. Earlier evidence for the family was weak (Series 2: removing `days_since_payday` helped; Series 26: a weekend × payday interaction gave nothing; Series 54 and 56: day of month and month-edge flags, which would pick up a fixed-date payday, gave nothing). Written down beforehand: little expected, because the repair changes the columns on only about 50 of 1,006 days.
+
+### Method
+
+Series 54's design: every variant in every piece of the weekly log (the post model's four pieces, the hydro Monday-to-Thursday piece, the raw Saturday fallback), 100 seeds (200-299), 585 days and the 56 new days, the two models assembled and corrected, read by judgment on the net effect. Variants, with the repaired columns replacing the old ones in the same positions: `fix_since_only` (`days_since_payday` counted from the most recent payday, 0 on payday); `repair_all` (also `days_to_payday` to the next payday on or after the day, never negative, and the window flag recomputed from the two); `drop_all_payday` (the four columns removed: what the family is worth). 540 fits.
+
+### Results
+
+The whole models after the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `fix_since_only` | +5.43 (+1.6 to +9.7) | +3.17 (−0.3 to +6.9) | 2 / 5 | −3.0 / −0.7 |
+| `repair_all` | +4.87 (+0.7 to +9.6) | +3.30 (−0.6 to +7.4) | 3 / 3 | −0.6 / +1.8 |
+| `drop_all_payday` | +7.81 (−1.6 to +16.7) | +5.17 (−4.6 to +14.0) | 4 / 4 | +9.7 / +4.8 |
+
+### Conclusion
+
+1. **The repair is not better; it is probably slightly worse.** Both repairs cost £3 to £5 a day in the backtest (the post-model intervals exclude zero, the hydro ones do not), and the deployed columns, flaw included, beat the correct ones.
+2. **The family is worth about £8 a day.** Dropping all four costs +£7.8 (post) and +£5.2 (hydro), mostly on Friday (+£29), with intervals that include zero.
+3. **The 56 new days do not agree with the backtest:** the repairs are slightly better there for the post model (−£3.0 and −£0.6), so "the repair is worse" is not firm; dropping the columns is worse on both.
+4. **Nothing in production changes.** The deployed columns stay as they are.
+5. **Not established:** why the flawed columns do better. An untested guess is that `days_since_payday` is a smooth ramp close to a day-of-month signal, which the repair breaks by resetting it on payday (see Series 62).
+
+## Series 60 — Making the "Weekend After an Early Payday" Signal Explicit
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series60_payday_weekend.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series60/`
+
+### Context
+
+Series 59's repair changes the columns on about 50 days, 17 of them the days after an early payday inside the same month. On those days the deployed columns read values no ordinary day produces (the stopwatch at 29-31, the countdown negative), so they may work as an accidental flag for "the weekend after an early payday". On the deployed model's backtest errors these are the hardest days: 9 of the 585, mean absolute error £1,546 against £845 for the rest. Written down beforehand: little expected, since the backtest holds only 9 such days.
+
+### Method
+
+Series 54's design (every variant in every piece, 100 seeds, 585 days and the 56 new days; 720 fits). Three variants add one column to the deployed columns, flaw included: `after_payday_flag` (1 on a day after this month's payday, inside the same month), `after_payday_count` (the same days counted 1, 2, 3), `payday_weekend_wide` (1 on a Friday to Sunday whose Monday-to-Sunday week holds the latest payday, which also catches a Friday payday whose weekend falls in the next month). A fourth, `repair_plus_flag`, applies Series 59's `repair_all` and adds `after_payday_flag`, to put back the signal the repair removed. Each is run on its own, never in combination.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `after_payday_flag` | +2.66 (+0.3 to +5.2) | +0.87 (−1.4 to +3.2) | 1 | +1.8 / +2.7 |
+| `after_payday_count` | +2.32 (−0.4 to +5.4) | +1.30 (−1.5 to +4.3) | 4 | −0.2 / −1.2 |
+| `payday_weekend_wide` | +3.72 (+1.3 to +6.1) | +1.58 (−0.9 to +4.0) | 1 | +2.1 / +2.0 |
+| `repair_plus_flag` | +4.84 (+0.5 to +9.4) | +4.26 (+0.2 to +8.7) | 1 | +2.4 / +4.1 |
+
+`repair_plus_flag` against Series 59's `repair_all`: −0.03 (−2.4 to +2.3) for the post model and +0.95 (−1.2 to +3.2) for the hydro model.
+
+### Conclusion
+
+1. **No explicit flag helps.** Every variant is level or worse than the deployed columns (+£0.9 to +£3.7 for the first three), better in at most 4 of 10 folds.
+2. **The flag does not recover what the repair lost.** `repair_plus_flag` is the same as `repair_all` (−£0.03), so the accidental-flag reading explains nothing.
+3. **Nothing in production changes.**
+
+## Series 61 — Payday Dates and Windows Taken From the Model's Own Errors
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series61_payday_rules.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series61/`
+
+### Context
+
+A look at where the deployed post model's errors sit (written into the script before it was built): errors by day of month are flat on days 1-24 and high for Friday to Sunday on the 25th (+£837) and the 28th (+£1,035); the strongest pattern is the day after a payday under any of the last working day, the 25th or the 28th (Friday to Sunday, +£810, 25 days, 2.9 standard errors), and the 15th is flat. The Friday to Sunday days at 0 to 1 days after a payday are 23 paydays that fall on a Friday (+£377) and the 23 Saturdays right after them (+£912). Payday dates from the CIPP Payslip Statistics Survey 2023 (payroll teams, UK, multi-select, no stated sample size): last working day 34%, 25th 30%, 28th 30%, 15th 18%; ONS ASHE puts 75-78% of jobs on monthly pay. No Scottish or hospitality split was found. **Caution written down beforehand:** the patterns were found on the same 585 days they are scored on, so the backtest is optimistic by construction; only the 56 new days (three Friday paydays and their Saturdays) were not seen.
+
+### Method
+
+Series 54's design (1,260 fits, about 85 minutes). Seven variants, each ONE column added on top of the deployed 38 and run on its own: `mix_since_capped` (days since the latest payday of the three month-end rules, capped at 2), `mix_window01` (the payday and the day after, any of the three), `friday_payday_weekend` (a Friday payday under any rule and the Saturday after it), `mix_signed_distance` (signed days to the nearest of the three, -7 to +7), and `rule_25_window01`, `rule_28_window01`, `rule_15_window01` (the payday and the day after, one rule each; the 15th is the control).
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `mix_since_capped` | −0.17 (−4.5 to +3.8) | −1.08 (−5.2 to +2.5) | 5 | +0.5 / +2.6 |
+| `mix_window01` | −0.28 (−4.6 to +3.5) | −1.01 (−4.7 to +2.4) | 3 | +2.3 / +4.1 |
+| `friday_payday_weekend` | −2.44 (−6.2 to +1.2) | −3.33 (−7.0 to +0.2) | 6 | **+11.8 / +12.4** |
+| `mix_signed_distance` | −0.10 (−3.2 to +3.0) | −1.65 (−5.2 to +1.8) | 5 | −2.6 / −0.6 |
+| `rule_25_window01` | +3.18 (+0.6 to +5.8) | +1.49 (−1.0 to +3.9) | 1 | +1.6 / +1.9 |
+| `rule_28_window01` | +2.04 (−0.8 to +4.7) | +0.53 (−1.8 to +2.7) | 3 | +1.0 / +2.2 |
+| `rule_15_window01` | +1.49 (−0.9 to +4.0) | +0.39 (−2.2 to +2.8) | 2 | +2.1 / +2.7 |
+
+### Conclusion
+
+1. **Nothing helps.** The three mix variants move the post model by less than £0.3 with intervals about ±£4; the single-rule windows are worse (the 25th by +£3.2, interval above zero).
+2. **The best backtest result, `friday_payday_weekend`, fails on the new days.** It is −£2.4 (post) in the backtest, with intervals that include zero, and +£11.8 on the 56 new days, where its Saturday piece goes from −£10.8 in the backtest to +£45.7: the signature of a pattern found on the same data.
+3. **The 15th control is flat (+£1.5)**, so nothing here shows a general benefit from adding a window column.
+4. **Caveats:** exploratory, selection bias as stated; the new days hold three Friday paydays, two of which were exceptional (see Series 65).
+
+## Series 62 — Is the Deployed `days_since_payday` Just a Day-of-Month Ramp?
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series62_payday_ramp.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series62/`
+
+### Context
+
+Series 59 to 61 left the deployed columns unbeaten. The untested explanation was that the deployed `days_since_payday`, which never resets inside the month and climbs from about 1 to about 30, works as a day-of-month ramp, and that the repair breaks it by resetting to 0 on payday. A check made while writing the script: the deployed column equals `day_of_month` plus an offset of 0 to 3 on all 1,006 days (0 on 687, 1 on 151, 2 on 138, 3 on 30; correlation 0.995). The offset is the number of days between the previous month's payday and that month's end.
+
+### Method
+
+Series 54's design (540 fits). Three variants swap columns in the same positions: `since_as_dom` (`days_since_payday` replaced by `day_of_month`), `repair_keep_ramp` (`days_to_payday` and the window flag repaired as in Series 59, `days_since_payday` as deployed), `repair_dom_ramp` (the two repaired and the ramp replaced by `day_of_month`). Series 54 had added `day_of_month` on top of the deployed columns and found nothing; this replaces the column. Reading set beforehand: the ramp holds if `since_as_dom` is within about £1 of the deployed model.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `since_as_dom` | +2.98 (+0.7 to +5.2) | +1.89 (−0.3 to +4.1) | 1 | +2.6 / +1.1 |
+| `repair_keep_ramp` | +2.64 (−0.0 to +5.2) | +1.35 (−1.0 to +3.5) | 2 | +2.4 / +2.4 |
+| `repair_dom_ramp` | +6.23 (+2.5 to +9.5) | +4.41 (+1.2 to +7.3) | 2 | +2.5 / +0.7 |
+
+### Conclusion
+
+1. **The ramp reading is rejected.** Plain day of month is £3 worse (interval above zero, better in 1 of 10 folds), so the column carries something day of month does not.
+2. **The reset in `days_since_payday` explains about half of Series 59's loss:** `repair_keep_ramp` is +£2.6 against +£4.9 for `repair_all`.
+3. **The "cleanest" design is the worst:** a true ramp with true payday distances (`repair_dom_ramp`) is +£6.2.
+4. **Nothing in production changes.**
+
+## Series 63 — Is the 0-to-3-Day Offset What Makes `days_since_payday` Work?
+
+**Run**: 2026-11-06 · **Script**: `src/experiments/run_series63_payday_gap.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series63/`
+
+### Context
+
+Series 62 showed the deployed column is day of month plus an offset of 0 to 3 days, and that plain day of month is worse. The offset (`prev_payday_gap` = deployed `days_since_payday` minus `day_of_month`, constant within a calendar month, 35 months) is the obvious carrier of what is left.
+
+### Method
+
+Series 54's design (360 fits). `dom_plus_gap`: `days_since_payday` replaced by two columns, `day_of_month` and `prev_payday_gap`; `deployed_plus_gap`: the deployed columns with `prev_payday_gap` added. Reading set beforehand: the offset is the signal if `dom_plus_gap` lands within about £1 of the deployed model.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval): `dom_plus_gap` +6.84 (−0.4 to +14.8) post and +4.00 (−3.1 to +11.7) hydro, better in 3 and 3 of 10 folds, new days +3.2 / +1.9; `deployed_plus_gap` +2.90 (−3.5 to +10.2) post and +1.45 (−5.1 to +8.7) hydro, 5 and 5 of 10 folds, new days −1.2 / +1.2. These intervals are about twice as wide as in Series 62.
+
+### Conclusion
+
+1. **The offset on its own is not the signal.** Splitting the deployed column's information into two columns is worse than plain day of month (+£6.8 against +£3.0), not equal to the deployed model.
+2. **A redundant column moves the score by about £3 the wrong way** (`deployed_plus_gap`, interval −3.5 to +10.2). Together with Series 19 (column order alone moves the 25-seed model by about £2) this points to fit-to-fit variation and the incumbent's advantage, not to the offset.
+3. **Why the deployed columns work is not explained.** Four attempts (the repair, the flags, the ramp, the offset) have not explained it; the payday columns are best treated as a fitted object to leave alone.
+
+## Series 64 — The Rest of the Payday Plan: Symmetric Windows, a Graded Distance and Other Payday Dates
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series64_payday_plan_rest.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series64/`
+
+### Context
+
+The payday plan written before Series 59 had four items: fix the flaw (Series 59), other payday definitions, window shapes, and the payday weekend (Series 60-61). Series 61 had run only a narrow slice of the second and third (a "payday and the day after" flag, and a mix of three rules). This runs what was left, as written, with no pattern taken from the errors. Written down beforehand: little expected; replacing the deployed columns costs £3 to £6 (Series 59 and 62), so the other dates are read against Series 59's `repair_all`, not against the deployed model.
+
+### Method
+
+Series 54's design (1,260 fits; the run was killed once by a session restart and rerun from the start). **A**, each added as one column next to the deployed 38, flaw included: `lwd_window_pm1`, `lwd_window_pm2`, `lwd_window_pm5` (within 1, 2 or 5 days of the last-working-day payday, either side), `lwd_signed_distance` (signed days to the nearest payday, -7 to +7). **B**, replacing the four deployed payday columns in their positions with correct versions under another rule: `def_25`, `def_28`, `def_15` (that day of the month, or the working day before it on a weekend or bank holiday). The last-working-day distances built here equal Series 59's repair on every day.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post) | New days (post / hydro) |
+|---|---|---|---|---|
+| `lwd_window_pm1` | +2.47 (−0.1 to +5.2) | +0.79 (−1.8 to +3.4) | 3 | +3.5 / +6.0 |
+| `lwd_window_pm2` | +1.23 (−1.3 to +3.8) | −0.31 (−2.9 to +2.1) | 3 | +4.7 / +4.7 |
+| `lwd_window_pm5` | +1.79 (−0.7 to +4.3) | +0.54 (−1.8 to +2.7) | 2 | +0.7 / +2.0 |
+| `lwd_signed_distance` | +0.69 (−1.9 to +3.4) | −0.98 (−3.6 to +1.8) | 5 | −3.6 / −2.9 |
+| `def_25` | +4.49 (−4.8 to +13.1) | +4.01 (−5.2 to +12.5) | 3 | +10.9 / +11.3 |
+| `def_28` | +6.81 (−2.3 to +15.5) | +6.65 (−1.8 to +14.7) | 4 | +4.1 / +6.8 |
+| `def_15` | +5.03 (−4.2 to +14.6) | +2.57 (−6.9 to +12.3) | 4 | +9.4 / +8.6 |
+
+The three other dates against `repair_all` (post / hydro): `def_25` −0.38 (−10.1 to +7.9) / +0.70, `def_28` +1.95 (−7.6 to +10.3) / +3.34, `def_15` +0.16 (−9.1 to +9.5) / −0.74.
+
+### Conclusion
+
+1. **No window or distance helps.** Every interval includes zero and none meets the bar set beforehand. `lwd_signed_distance` is the only one better on the new days for both models (−£3.6 and −£2.9), but it is +£0.7 (post) in the backtest; kept on the ideas list.
+2. **No payday date is distinguishable from the last working day.** Against `repair_all` all three are within £2 to £3 with intervals about ±£8 to ±£10; against the deployed model all three are £4.5 to £6.8 worse, which is the usual cost of replacing the columns; all are worse on the new days.
+3. **The payday-feature line is closed:** the repair, flags, windows, graded distances and other dates (Series 59-64) all fail to beat the deployed columns.
+4. **Caveat:** the Series 64 intervals for the date rules are wide (about ±£10), so a small difference would not show.
+
+## Series 65 — A Payday-Saturday Correction Instead of a Payday Feature
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series65_payday_saturday_correction.py` · Results: printed by `report` (the saved predictions of the deployed pieces are reused; no model is fitted)
+
+### Context
+
+Of the 26 Saturdays that follow a Friday payday (last working day, 25th or 28th), the deployed model under-predicted 20 (77%, against 59% of other Saturdays), by a mean of £653 and a median of £597 (£148 and £304 on other Saturdays). A tree cannot learn from about 20 rows, which may be why the features failed. The weekend correction already in the package (half-life 8 weeks, strength 0.5, Saturday and Sunday) learns ONE bias for all Saturdays and lifts payday and other Saturdays by about the same (+£221 and +£256 on folds 1-9), while the payday Saturdays still miss by +£701 and the others by −£93 after it. Written down beforehand: a gain of a few pounds at most; it would matter only with an interval below zero, a placebo rank under 5% and no worse on the new days.
+
+### Method
+
+Two rules, both from earlier folds only. **Split (primary):** Saturdays corrected as two groups, each from its own history with the deployed formula; the payday group falls back to the all-Saturday bias until it has 4 earlier events (fold 3); Sunday and other days as deployed. **Stacked (secondary):** the deployed correction plus an extra offset n / (n + 10) × the mean residual of the payday Saturdays in earlier folds. The new days are scored as an 11th block by the same rule. Placebo: the payday label shuffled over 1,000 random sets of backtest Saturdays of the same size. With an empty label the split reproduces the deployed correction exactly.
+
+### Results
+
+Change in MAE against the deployed package, all 585 days (£ a day, 95% interval; the hydro model is identical because only Saturdays change):
+
+| Rule | All 585 days | Payday Saturdays | Placebo rank | New days (all 56) |
+|---|---|---|---|---|
+| Split | −2.14 (−7.5 to +3.7) | 17 days changed; helped on 10 (£3,255 saved, £2,327 lost on the other 7) | 5th percentile | +7.76 |
+| Stacked, K = 10 | −2.47 (−9.1 to +4.2) | 17 days changed; helped on 11 | 1st percentile | +8.73 |
+
+In about 75% of bootstrap resamples either rule gains. Of the 17 changed backtest days, 11 were still under-predicted after the deployed correction (the bump helped on 10) and 6 were over-predicted (any bump hurts). Of the three new payday Saturdays, 26 September improved (error £614 to £318) while 24 and 31 October got worse (−£2,046 to −£2,342 and −£2,261 to −£2,557). Both were unusual: 24 October had 24.0 mm of rain in the weather data and named storms (Austen and Boelo) hit Scotland that weekend, with an amber wind warning; 31 October was dry and was Halloween (not verifiable from the data). The manager's forecast was too high on both days too (by £4,183 and £2,863).
+
+### Conclusion
+
+1. **Not adopted.** The backtest gain (£2.1 to £2.5 on £865, 0.3%) has an interval that includes zero, the split's placebo rank is about 5%, not under it, and the unseen days, after setting aside the two exceptional Saturdays, are one day.
+2. **The new days are inconclusive, not damning:** two of the three had reasons to be unusual, though a flat bump cannot know about a storm, so that cost is real.
+3. **A 75% chance of a small gain is overstated:** the payday label was found on the same days, so the true odds are lower.
+4. **Next evidence:** Friday 27 November 2026 is a payday under the 28th rule (the 28th is a Saturday), so Saturday 28 November is the next payday Saturday; revisit after about 8 to 10 more.
+5. **Caveat:** 22 backtest events; the intervals come from a moving-block bootstrap of the 585 days.
+
+## Series 66 — The Manager's Forecast Against the Recent Level of Sales, as a Ready-Made Ratio
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series66_forecast_ratio.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series66/`
+
+### Context
+
+The model has the manager's forecast and the recent level of sales (the rolling means and, in the weekend pieces, sales 2 and 3 weeks ago and the mean of the last four same weekdays) as separate columns. A tree splits on one column at a time, so it can only build "the forecast is well above what this weekday has been selling" by stacking cuts. Series 26 tested the recent level of the same weekday, not its ratio to the forecast, and Series 28 found the manager's forecast adds little for Saturday and Sunday. This is not a payday idea: it came from the README's untested "ratio to rolling mean" item. Written down beforehand: little or nothing expected.
+
+### Method
+
+Series 54's design (540 fits). Three variants, each ONE column added on top of the piece's inputs and run on its own, all built only from sales at least 14 days earlier (sales 7 days back are not known for a next-week forecast, as Series 53 found for Fridays; closure days with zero sales are left out): `fc_ratio_3wk` (the forecast divided by the mean of the sales 14, 21 and 28 days earlier), `fc_gap_3wk` (the forecast minus that mean, in pounds) and `fc_ratio_lag14` (the forecast divided by the sales 14 days earlier alone). A logarithm of the ratio is not tried: a tree only asks "above or below a cut".
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `fc_ratio_3wk` | −4.49 (−11.9 to +3.1) | −4.96 (−12.5 to +2.5) | 7 / 6 | +4.6 / +3.7 |
+| `fc_gap_3wk` | +0.56 (−12.8 to +17.4) | −0.30 (−13.7 to +16.4) | 6 / 5 | +0.3 / +1.1 |
+| `fc_ratio_lag14` | +0.12 (−8.0 to +7.5) | −0.45 (−8.2 to +6.7) | 6 / 6 | +2.7 / +3.1 |
+
+By weekday, `fc_ratio_3wk` is Monday to Thursday −£6.2, Friday −£25.3 (interval −65.8 to +8.1, 7 folds better), Saturday +£0.4 and Sunday +£19.9 (interval −0.6 to +40.2, 3 folds better).
+
+### Conclusion
+
+1. **Only the 3-week ratio helps, by about £4.5 to £5 a day (0.5%)**, better in 6 to 7 of 10 folds; the gap in pounds and the single-lag ratio do nothing, so the smoother baseline is what matters.
+2. **It does not meet the bar set beforehand** (an interval below zero in both models and the new days not worse): both intervals include zero and the 56 new days are worse.
+3. **It helps Monday to Friday and hurts Sunday.** It was the best of three variants and the intervals are about ±£7, so Series 69 reruns it on fresh seeds.
+
+## Series 67 — A Pay-Cycle Phase
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series67_pay_cycle_phase.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series67/`
+
+### Context
+
+Some people are paid every two or four weeks; if a venue's guests are, sales would rise on alternate (or every fourth) weekends, which no monthly column can see. The anchor week is unknown, so the model gets the week number counted from Monday 1 January 2024, folded into 2 or 4 phases. A free look at the deployed post model's errors came first (585 backtest days, after the correction, permutation test on the spread between phases): the only result below 0.05 was Friday by week parity (+£288 on even weeks, −£434 on odd weeks, p = 0.017); Saturday (p = 0.95), Sunday (p = 0.91) and Monday to Thursday (p = 0.22) showed nothing, and mod 4 gave Friday p = 0.081 and Friday to Sunday p = 0.060. One test in ten, with no weekend signal, which a pay cycle would show more than a Friday: weak, and the model test was run anyway as one cheap series.
+
+### Method
+
+Series 54's design (360 fits). `week_parity` (whole weeks since 1 January 2024, modulo 2) and `week_mod4` (modulo 4), each one column added on top and run on its own.
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro) |
+|---|---|---|---|---|
+| `week_parity` | +1.99 (−0.5 to +4.5) | +0.41 (−2.1 to +2.8) | 2 / 5 | +1.8 / +3.9 |
+| `week_mod4` | +0.45 (−1.7 to +2.8) | −1.20 (−3.7 to +1.4) | 5 / 7 | +1.0 / +1.5 |
+
+### Conclusion
+
+1. **No pay-cycle phase helps.** Every interval includes zero and both are worse on the new days.
+2. **The Friday result of the free check did not carry over:** with the column in, the Friday piece is £5.1 worse (1 fold of 10 better). One result in ten tests, as suspected.
+3. **Benefit and pension payments should not show a phase either:** State Pension, Child Benefit and the Scottish Child Payment are paid every four weeks on a weekday set by each person's own start, and Universal Credit monthly on each claimant's own date, so across a city they average out (GOV.UK and Social Security Scotland pages; no national distribution by day of month was found).
+
+## Series 68 — Working Days to and From Payday
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series68_working_days_to_payday.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series68/`
+
+### Context
+
+The payday columns count calendar days. A Friday payday and a Tuesday payday both read "payday", but the weekend after them sits at a different distance, and a bank holiday shifts the count. Counting only working days (Monday to Friday, not Scottish bank holidays) makes the Saturday, Sunday and Monday after a Friday payday all one working day after it. Written down beforehand: little or nothing expected, because the model already knows the weekday and the calendar distance.
+
+### Method
+
+Series 54's design (540 fits). Columns added on top of the deployed 38, never replacing them, both true distances to the last-working-day payday (0 on payday; `wd_to` is also 0 on a weekend or bank-holiday day with no working day before the payday): `wd_since`, `wd_to`, and `wd_pair` (both).
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro) |
+|---|---|---|---|---|
+| `wd_since` | +2.79 (−0.5 to +6.3) | +0.08 (−2.9 to +3.1) | 3 / 5 | +0.8 / +0.8 |
+| `wd_to` | +1.98 (−0.7 to +4.9) | −0.18 (−2.9 to +2.6) | 3 / 3 | −0.8 / −0.1 |
+| `wd_pair` | +4.01 (+0.9 to +7.1) | +2.04 (−0.9 to +5.0) | 1 / 3 | +0.4 / +2.7 |
+
+### Conclusion
+
+1. **Working days do not help.** The single columns are level or worse; both together are clearly worse for the post model (interval above zero, 1 of 10 folds better).
+2. **As expected:** the model can already combine the weekday and the calendar distance.
+
+## Series 69 — The 3-Week Forecast Ratio on Fresh Seeds
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series69_forecast_ratio_fresh_seeds.py` · Results: `reports/experiments/series69/`
+
+### Context
+
+`fc_ratio_3wk` was the best of three variants in Series 66, so part of its gain may be seed luck. This refits the deployed pieces and the ratio variant on seeds 300-399, which no earlier series used (the baselines of Series 46-47 and 54 use seeds 200-299 and are not reused), as Series 46 did for the calendar columns. It can rule out seed luck; it cannot rule out luck of the days, because the 585 backtest days and the 56 new days are the same. Reading set beforehand: the gain replicates if it is at least £2.3 better (half of Series 66's) in both models and better in at least 6 folds of 10; it is seed luck if it falls under £1 or the sign flips.
+
+### Method
+
+Series 54's design (360 fits: two variants, six pieces, 100 fresh seeds).
+
+### Results
+
+After the correction, change against the deployed pieces refitted on the same seeds (£, 95% interval; deployed MAE £867.17 post, £859.72 hydro):
+
+| | Series 66 (seeds 200-299) | Series 69 (seeds 300-399) |
+|---|---|---|
+| Post model | −4.49 | −4.39 (−11.9 to +2.5), 7 folds better |
+| Hydro model | −4.96 | −3.34 (−10.8 to +3.7), 7 folds better |
+| New days (post / hydro, before the correction) | +4.6 / +3.7 | +8.3 / +3.0 |
+
+By weekday on the fresh seeds: Monday to Thursday −£8.6, Friday −£24.5, Saturday +£2.5, Sunday +£25.2 (interval +4.3 to +49.1). The shape is the same as in Series 66. A split of the saved predictions by calendar year (made afterwards, no refits; after the correction, 336 days in 2025 and 249 in 2026):
+
+| | 2025 | 2026 |
+|---|---|---|
+| Post model, seeds 200-299 | −7.71 (−19.2 to +1.9) | −0.15 (−11.7 to +15.1) |
+| Post model, seeds 300-399 | −8.02 (−19.8 to +1.8) | +0.51 (−10.4 to +13.5) |
+| Hydro model, seeds 200-299 | −9.00 (−20.5 to +0.8) | +0.50 (−11.6 to +14.8) |
+| Hydro model, seeds 300-399 | −5.65 (−17.0 to +4.2) | −0.21 (−11.7 to +12.9) |
+
+Split instead into the first five and last five folds, the gain is in both halves (about −£2.5 to −£6).
+
+### Conclusion
+
+1. **The gain is not seed luck.** The post model's change is almost identical on 100 fresh seeds and the hydro model's stays well past the bar: the reading set beforehand says "replicates".
+2. **It is not established as an improvement.** The intervals still include zero, the 56 new days are worse in both runs, and by calendar year the gain sits in 2025 and is about zero in 2026, so it may be a period effect.
+3. **Not adopted; on the to-do list.** Rerun on the days after 1 November 2026 once about 120 exist, and keep it only if it helps there in both models. A static split (train on 2024, score 2025-26 with no refit) was considered as a Series 71 and left as an optional extra check; it cannot supply unseen days.
+
+## Series 70 — Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series70_payday_intensity.py` (reports through `run_series54_day_of_month.report`) · Results: `reports/experiments/series70/`
+
+### Context
+
+Series 61 and 64 tried the pay dates (last working day, 25th, 28th, 15th) as flags, windows and a distance to the nearest payday, which ignore the other rules and count every rule equally. Intensity adds the rules up instead: each rule adds a bump on the days around its payday, weighted by the share of payroll teams that use it (CIPP 2023: last working day 0.34, 25th 0.30, 28th 0.30, 15th 0.18; multi-select, rough), and a day gets the total. Written down beforehand: nothing expected, run to close the idea.
+
+### Method
+
+Series 54's design (720 fits, about an hour). Four variants, each ONE column added on top of the deployed 38: `intensity_short` (1.0 on payday, 0.5 the day after, 0 after), `intensity_long` (1.0, 0.75, 0.5, 0.25 for 0 to 3 days after payday), `intensity_sym` (a triangle, 1 − k/4 for the nearest payday at k = 0 to 3 days either side) and `intensity_long_equal` (as `intensity_long` with every rule weighted 1).
+
+### Results
+
+After the correction, change against as deployed (£, 95% interval; post £865.36, hydro £858.78):
+
+| Variant | Post model | Hydro model | Folds better (post / hydro) | New days (post / hydro, before the correction) |
+|---|---|---|---|---|
+| `intensity_short` | −1.47 (−5.3 to +2.4) | −2.42 (−6.4 to +1.6) | 6 / 7 | +0.9 / +4.3 |
+| `intensity_long` | −1.63 (−6.6 to +3.7) | −2.60 (−7.7 to +2.6) | 6 / 8 | +0.9 / +5.8 |
+| `intensity_sym` | −3.34 (−7.7 to +0.9) | −3.80 (−8.3 to +0.4) | 7 / 8 | −2.9 / −1.3 |
+| `intensity_long_equal` | −2.94 (−7.9 to +2.6) | −3.76 (−8.8 to +1.6) | 7 / 8 | +6.5 / +10.5 |
+
+The gain sits in the Saturday piece (post model after the correction −£12.5 to −£20.8; before the correction `intensity_short` −£12.1, interval −20.0 to −3.6, 8 folds better), where the new days are worse (+£11 to +£45).
+
+### Conclusion
+
+1. **A small, consistent, not significant gain.** All four variants are better than the deployed columns in both models (−£1.5 to −£3.8) and in 6 to 8 folds, but every interval includes zero (the triangle's hydro interval only just: −8.3 to +0.4).
+2. **`intensity_sym` is the best and the only one better on the new days in both models** (−£2.9 and −£1.3), so it comes closest to the bar set beforehand (an interval below zero in both models and the new days not worse), and misses it on the interval. It is the same family as the signed distance of Series 61 and 64.
+3. **The survey weights do not clearly matter:** equal weights are no worse in the backtest and clearly worse on the new days.
+4. **Not adopted; kept on the to-do list with signed distance** (rerun both after about 90 more unseen days). Where the gain sits (Saturday) is the payday-Saturday pattern that the new days contradict.
+
+## Series 71 — Amplifying the Triangle Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series71_amplify_intensity.py` · Results: `reports/experiments/series71/`
+
+### Context
+
+Series 70's triangle intensity (`intensity_sym`) was £3.34 (post) and £3.80 (hydro) a day better after the correction, in 7 and 8 folds of 10, better in 94% and 96% of bootstrap resamples, with intervals that include zero and better on the 56 new days. Nearly all of it is the Saturday piece (−£20.8 a day, −£2.99 of the −£3.34), it fades in 2026 (−£1.4 and −£0.4 against −£4.8 and −£6.3 in 2025; Saturdays −£6.1 against −£31.8) and it was the best of four variants after about forty payday variants. This asks whether the signal can be made stronger without overfitting. A tree only asks "above or below a cut", so scaling or squaring the column changes nothing; only a different shape or place can.
+
+### Method
+
+Series 54's design (540 fits). Four fixed variants, each on its own: `sym_saturday_only` (the intensity in the Saturday pieces only, every other piece as deployed; the same fits as Series 70's Saturday pieces, reused), `sym_w2` (the triangle narrowed to reach 1 day either side of payday), `sym_w7` (widened to reach 7 days either side) and `sym_week` (the sum of `intensity_sym` over the 7 days ending on the day). **The rule, written into the script before any result:** choose among these four and Series 70's `intensity_sym` the candidate with the largest gain on the first five folds (285 days) for the post model, one choice for both models; judge it on the last five folds (300 days) and the 56 new days; it is supported if on folds 5-9 it is at least £1.5 a day better than the deployed pieces in both models, better in at least 3 of 5 folds in both, and not worse on the new days; "amplified" means a new variant at least £1 better than `intensity_sym` on folds 5-9.
+
+### Results
+
+After the correction, change against the deployed pieces (£ a day; negative = better; post £865.36, hydro £858.78):
+
+| Variant | Post, all 585 days | Post, folds 0-4 / 5-9 | Post, 2026 | Post new days | Hydro, all 585 days | Hydro, folds 0-4 / 5-9 | Hydro new days |
+|---|---|---|---|---|---|---|---|
+| `intensity_sym` (Series 70) | −3.34 (−7.7 to +0.9) | −5.08 / −1.69 | −1.41 | −2.85 | −3.80 (−8.3 to +0.4) | −5.36 / −2.32 | −1.27 |
+| `sym_saturday_only` | −2.99 (−5.1 to −0.9) | −3.25 / −2.73 | −0.88 | +1.60 | −2.99 (−5.1 to −0.9) | −3.25 / −2.73 | +1.60 |
+| `sym_w2` | −2.35 (−7.4 to +2.5) | −3.41 / −1.34 | −1.05 | −4.05 | −3.30 (−8.4 to +1.6) | −4.44 / −2.22 | −2.08 |
+| `sym_w7` | +0.54 (−4.3 to +5.8) | −0.54 / +1.56 | +1.95 | −10.48 | −0.10 (−5.3 to +5.6) | −1.51 / +1.24 | −7.93 |
+| `sym_week` | +2.39 (−3.1 to +8.2) | +6.99 / −1.98 | −2.63 | −5.45 | +1.70 (−3.7 to +7.4) | +7.47 / −3.78 | −4.70 |
+
+The rule: the choice on folds 0-4 is `intensity_sym` itself (−5.08). On folds 5-9 it is −1.69 (post, 3 of 5 folds better) and −2.32 (hydro, 4 of 5), and −2.85 and −1.27 on the new days: it meets the bar, **supported; not amplified** (no variant is better than it on folds 5-9).
+
+### Conclusion
+
+1. **The original triangle is supported, narrowly, and nothing amplifies it.** It holds on the second half and the new days, but the post-model gain on folds 5-9 (−£1.69) barely clears the £1.5 bar, with 3 of 5 folds better.
+2. **The gain fades:** −£5.1 and −£5.4 on folds 0-4, −£1.7 and −£2.3 on folds 5-9, −£1.4 and −£0.4 in 2026.
+3. **The shape matters only a little.** The narrow triangle is a little weaker (−£2.35 and −£3.30) and about as good on the second half; the wide triangle loses the gain (+£0.54 and −£0.10), because with four pay rules a 7-day triangle covers nearly every day (997 of 1,006); the 7-day sum is worse and unstable (+£7.0 on the first half, −£2.0 on the second). If there is an effect, it is a narrow payday-proximity one.
+4. **`sym_saturday_only` has the narrowest interval (−£5.1 to −£0.9, the only package interval in the payday series that excludes zero), but that is the same Saturday evidence as Series 70** (the Saturday piece alone: −£16.1, interval −30.9 to −1.8) with the noise of the other pieces removed; it is a post-hoc choice made after seeing where the gain sits, and it is £1.6 a day worse on the new days.
+5. **Nothing is adopted.** Two frozen candidates go on the to-do list for a recheck after about 90 more unseen days: `intensity_sym` in every piece and `sym_saturday_only`; keep one only if the backtest and the new days agree in both models.
+6. **Afterwards** (no fits): the Saturday gain is not concentrated on payday-adjacent days (the 23 Saturdays after a Friday payday carry 36% of it, the other 61 Saturdays 64%; several of the biggest gains are at intensity near zero); Series 72 tests whether the column carries payday information at all.
+
+## Series 72 — A Placebo Test for the Triangle Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series72_intensity_placebo.py` · Results: `reports/experiments/series72/`
+
+### Context
+
+Series 70-71's triangle intensity is £3.34 a day better (post model, after the correction), nearly all in the Saturday piece. A look at where the gain sits (no fits) found it is not concentrated on payday-adjacent days: the 23 Saturdays after a Friday payday carry 36% of the Saturday gain and the other 61 Saturdays 64% (£27 a day against £18), and several of the biggest gains are on Saturdays with intensity near zero (4 July 2026 at 0.00, 20 December 2025 at 0.00). With Series 63 (a redundant column moves a seeded fit by about £3) that raised the possibility that the column is a generic nudge to the Saturday model, not a payday signal. Written down beforehand: expected generic, several placebos reaching a gain close to the real one.
+
+### Method
+
+As Series 41 did for the Hydro flag: columns that look like the real one but carry no payday information, fitted in the Saturday piece exactly as the real one (same columns, folds and seeds 200-299; the real column is Series 70's Saturday piece, reused). 12 date-shifted placebos (the real intensity moved by 7, 14, 21, 35, 42 or 49 days either way: the shape is intact and the dates are wrong; 28 days is left out because it nearly lines up with the next payday) and 4 noise placebos (an independent random number between 0 and 0.8 for each day), 480 fits. The rule, written into the script before any result: the real column carries payday information if it beats at least 15 of the 16 placebos on both measures (the Saturday piece's change on the 84 Saturdays before the correction, and the post model's change after the correction); it is a generic effect if at least 4 of the 16 are as good on either.
+
+### Results
+
+Saturday piece changes (£ a day; negative = better), real column against the best placebos:
+
+| Column | Saturday piece, before the correction | Post model, after the correction | Saturdays improved (of 84) |
+|---|---|---|---|
+| **Real `intensity_sym`** | **−16.06** | **−2.99** | 48 |
+| `plc_noise1` (noise) | −12.76 | −1.65 | 50 |
+| `plc_p14` (shifted 14 days) | −6.08 | −1.22 | 42 |
+| `plc_m14` (shifted) | −5.53 | −1.11 | 53 |
+| `plc_p7` (shifted) | −4.50 | −0.98 | 45 |
+| Date-shifted placebos, mean (12) | −1.35 | −0.35 | |
+| Noise placebos, mean (4) | +2.69 (−12.8 to +16.3) | −0.62 | |
+
+The real column is better than all 16 placebos on both measures (0 of 16 as good; the smallest empirical p with 16 placebos is 1/17, 0.06): **the reading set beforehand says payday dates carry something.** Split by period (post model, after the correction):
+
+| | 2025 | 2026 | Folds 0-4 | Folds 5-9 |
+|---|---|---|---|---|
+| Real column | −4.55 | −0.88 | −3.25 | −2.73 |
+| Placebos, mean (standard deviation) | −1.91 (1.3) | +1.59 (1.4) | −1.40 (1.5) | +0.52 (1.0) |
+| Placebos at least as good | 2 of 16 | 0 of 16 | 2 of 16 | 0 of 16 |
+
+### Conclusion
+
+1. **The expectation (generic) was wrong.** The real column beats every placebo, and the shifted placebos, which keep the shape and the weekend rolling, mostly gain little (mean −£1.35 on the Saturday piece against −£16.06).
+2. **The fade is partly generic.** An extra column with no payday information also does better in 2025 (−£1.9) than in 2026 (+£1.6) in this piece; against the placebos the real column is about £2.5 better in both years and in both halves of the folds, so its payday-specific advantage looks stable even though the gain against the deployed model shrinks.
+3. **The Saturdays with low intensity are not a contradiction:** the column describes the whole pay cycle, including the quiet days between paydays, not only the peaks.
+4. **Limits:** 16 placebos give a smallest p of 0.06; the date-shifted placebos are not clean nulls (with four pay rules a shift of 7 or 14 days often lands near another rule's real payday, which makes the test conservative); the real column was itself the best of four shapes, and the best of four placebos would typically reach about −£6 on the Saturday piece against its −£16; the Saturday piece only, the same 585 days and seeds for all columns; the effect is about £2.6 to £3.0 a day on the package (0.3%), and its interval against the deployed model still includes zero.
+5. **Nothing is adopted.** The to-do item stays: recheck `intensity_sym` in the Saturday pieces (and in every piece) on about 90 unseen days; this test raises the odds that a real payday-timing signal is there. Eight more placebos (shifts of 56 to 77 days, about 20 minutes) would take the smallest p under 0.05.
+
+## Series 73 — Three Stress Tests of the Triangle Payday Intensity
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_series73_intensity_stress_tests.py` · Results: `reports/experiments/series73/`
+
+### Context
+
+Series 72's placebos were not clean nulls (a shift of 7 or 14 days often lands near another rule's real payday), 16 placebos give a smallest p of 0.06, and the real column was fitted on the same seeds as its placebos.
+These three tests tighten that, in the Saturday piece (where forecast-log version v1.11 puts the column). Written down beforehand: the real column supports payday dates if it beats at least 15 of 16 placebos on both
+measures; the month-end rules carry it if the three-rule version keeps at least 80% of the gain and the 15th alone gains least; it replicates on fresh seeds if the Saturday piece is at least £8 and the post model at least £1.5
+better. Expected: all three.
+
+### Method
+
+500 fits (backtest only), seeds 200-299 unless stated. **1. Pay rules at the wrong dates:** 16 columns built exactly like the real one (four rules, the same triangle of width 4, the same weights 0.34 / 0.30 / 0.30 /
+0.18, the same rolling back from weekends and Scottish bank holidays) with the four paydays on days of the month drawn (seed 73) from {3, 4, 5, 6, 7, 8, 9, 10, 20}, clear of the real heat; they correlate −0.3 to −0.7 with the
+real column on Saturdays. **2. One rule at a time:** the triangle from the last working day only, the 25th only, the 28th only, the 15th only, and the three month-end rules without the 15th (`month_end3`). **3. Fresh seeds:**
+the deployed Saturday piece and the piece with `intensity_sym`, and the same two for the raw Saturday fallback, on seeds 300-399.
+
+### Results
+
+Part 1 (Saturday piece before the correction on the 84 Saturdays; post model after the correction on 585 days; £ a day, negative = better):
+
+| Column | Saturday piece | Post model |
+|---|---|---|
+| **Real `intensity_sym`** | **−16.06** | **−2.99** |
+| Best wrong-date placebo (`wd_plc3`, days 3/4/10/20) | −8.88 | −2.05 |
+| Next (`wd_plc7`) | −7.11 | −1.25 |
+| Wrong-date placebos, mean (16) | −1.56 | −0.46 |
+
+0 of 16 placebos are as good on either measure (p = 0.059); pooled with Series 72's 16 placebos, 0 of 32 (p = 0.030).
+
+Part 2 (share of the real column's gain in brackets):
+
+| Rule | Saturday piece | Post model |
+|---|---|---|
+| All four rules (real) | −16.06 (1.00) | −2.99 (1.00) |
+| `month_end3` (last working day, 25th, 28th) | −15.79 (0.98) | −3.06 (1.02) |
+| Last working day only | −6.74 (0.42) | −0.64 (0.21) |
+| 28th only | −4.33 (0.27) | −1.03 (0.34) |
+| 25th only | +0.40 (−0.03) | +0.38 (−0.13) |
+| 15th only | +2.37 (−0.15) | +0.15 (−0.05) |
+
+Part 3 (Saturday piece against the deployed piece on the same seeds):
+
+| | Seeds 200-299 | Seeds 300-399 |
+|---|---|---|
+| Saturday piece, before the correction | −16.06 | −18.43 |
+| Post model, after the correction | −2.99 | −3.25 |
+| Folds better (of 10) | 8 | 7 |
+| 2025 / 2026 | −4.55 / −0.88 | −3.65 / −2.70 |
+| Raw Saturday fallback, before the correction | −24.79 | −21.38 |
+
+### Conclusion
+
+1. **Payday dates carry something:** the real column beats all 16 wrong-date placebos on both measures, and with Series 72's all 32 (p = 0.03). The reading set beforehand says "supports payday dates".
+2. **The month-end cluster carries it, not the 15th.** `month_end3` keeps 98% and 102% of the gain; the 15th alone gains nothing and dropping it loses nothing; the single month-end rules are weaker (last working day 42%, 28th 27%, 25th none), so it is the overlapping window at the end of the month that counts, not one date. The script printed "in between" only because its second condition (the 15th alone gains least on both measures) failed narrowly: the 25th alone is a little worse than the 15th on the post-model measure.
+3. **It replicates on fresh seeds** (−£18.43 and −£3.25, 7 folds), and the 2026 gain on fresh seeds is −£2.70 against −£0.88, so part of the 2026 fade in Series 70-71 was seed noise.
+4. **Nothing is changed by this.** Forecast-log v1.11 keeps the four-rule definition it was decided with (tested in Series 72 and Part 1 and 3 here); `month_end3` is as good, but choosing it now would be a new post-hoc choice and can be tried in a later version.
+5. **Limits:** the same 585 days and folds throughout; the effect is about 0.3% of the daily error and its interval against the deployed model, in the Saturday piece, is wide; the 56 days from 7 September were worse on Saturdays in Series 70.
+6. **A check made afterwards (no fits) shows the gain is concentrated in two months.** Over the 84 backtest Saturdays (post model, after the correction, total −£1,747), July carries −£299 in 2025 and −£276 in 2026
+   (four Saturdays each) and December 2025 −£483 (four Saturdays): the 12 Saturdays in July and December carry 61% of the gain, and the other 72 carry −£690 (−£9.6 a day, against −£20.8 over all 84). The placebo comparison
+   of Part 1, redone on subsets of Saturdays (the Saturday piece's change before the correction, the real column against all 32 placebos of Series 72 and 73):
+
+   | Saturdays | n | Real column | Placebos, mean (best) | Placebos as good | p |
+   |---|---|---|---|---|---|
+   | All | 84 | −16.06 | −0.95 (−12.76) | 0 of 32 | 0.03 |
+   | July and December only | 12 | −87.41 | −13.18 (−52.59) | 0 of 32 | 0.03 |
+   | Without July and December | 72 | −4.17 | +1.09 (−10.29) | 3 of 32 | 0.12 |
+   | Without July | 76 | −10.17 | +0.23 (−11.68) | 1 of 32 | 0.06 |
+   | Without December | 80 | −10.96 | −0.24 (−11.56) | 1 of 32 | 0.06 |
+
+   So the real column beats every placebo within July and December (both Julys show it), but outside them its gain is about £4 a day and three placebos match it. The backtest holds two Julys and one December,
+   so Conclusion 1 should be read as "payday dates carry something, mostly in July and December". Disclosed in the forecast log's second amendment of 8 November 2026 (log repository commit 5be3dca), which also has
+   Q4 reported for July and December Saturdays apart from the other Saturdays; the next tests are December 2026 and July 2027.
+
+## Series 74 — The Forecast Ratio in the Monday-to-Friday Pieces Only, on a Third Seed Set
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series74_ratio_weekdays.py` · Results: `reports/experiments/series74/`
+
+### Context
+
+Series 66 and 69 (seeds 200-299 and 300-399): the 3-week forecast ratio `fc_ratio_3wk` was about £4.4 a day better after the correction, better on Monday to Thursday and Friday, flat on Saturday and worse on Sunday (+£19.9 and +£26.2);
+by calendar year its gain sat in 2025 and was about zero in 2026, and the 56 new days were worse, mostly on Friday. This tests the obvious package, the ratio only where it helped. **The catch, written first in the script:** the
+weekdays were chosen after seeing Series 66 and 69 on the same 585 days, so even a good result carries that bias.
+
+### Method
+
+The ratio column in the Monday-to-Thursday, hydro Monday-to-Thursday and Friday pieces; Saturday, Sunday and the rest as deployed. Seeds 200-299 and 300-399 are Series 66's and 69's own fits (not refitted); seeds 400-499, which no earlier
+series used, are fitted here for those three pieces with and without the ratio (180 fits); the three sets are pooled into 300 seeds. Saturday and Sunday use the same deployed bags in the package and its baseline, so they cancel and the
+correction is identical in both. Rule set before any new number: expected about −£7 a day (post, before the correction), weaker in 2026, worse on the new days because of Friday; "replicates" if each model is at least £3.5 better on the third
+seed set; "supported" if, on the pooled 300 seeds in BOTH models, folds 5-9 are at least £2.0 better, at least 3 of those 5 folds are better, 2026 is no worse than 0 and the 56 new days no worse than +£1.0 (before the correction).
+
+### Results
+
+After the correction, change against the deployed pieces on the same seeds (£ a day, 95% interval; new days before the correction):
+
+| Seeds | Post model | Hydro model | New days (post / hydro) |
+|---|---|---|---|
+| 200-299 (Series 66) | −7.13 (−14.8 to −0.3) | −7.59 (−15.3 to −0.6) | +1.48 / +0.55 |
+| 300-399 (Series 69) | −8.38 (−16.6 to −1.2) | −7.32 (−15.3 to −0.3) | +4.33 / −0.89 |
+| 400-499 (new) | −7.68 (−16.1 to −0.0) | −6.41 (−13.8 to +0.5) | +2.81 / +0.35 |
+| **Pooled, 300 seeds** | **−7.76 (−15.8 to −0.7)** | **−7.05 (−14.6 to −0.1)** | **+2.87 / 0.00** |
+
+Pooled, post / hydro: folds 0-4 −5.36 / −5.16, folds 5-9 −10.04 / −8.85 (5 and 4 of 5 folds better), 2026 −0.02 / −0.31, 8 and 7 of 10 folds better over all.
+
+### Conclusion
+
+1. **It replicates on the third seed set** (−7.68 and −6.41 against the bar of −3.5), so the gain is not seed luck; at about −£7 to −£8 a day it is larger than the all-weekday ratio's −£4.4 because Sunday's loss is gone, as expected.
+2. **The pooled intervals exclude zero in both models,** the first time for this idea, but the weekdays were chosen on these same days, so the intervals are optimistic.
+3. **The rule says "not supported", on one condition:** the post model's 56 new days are +£2.87 against the bar of +£1.0 (the hydro model's are 0.00 and pass). Every other condition holds in both models.
+4. **The gain is in the second half of the days, but not in 2026:** −£10.0 and −£8.9 on folds 5-9 yet −£0.02 and −£0.31 in 2026, so it sits in the last months of 2025, as in Series 66 and 69.
+5. **Not adopted; on the watch list, low priority.** With the 56 newest days alone the pooled change is +2.87 (−5.7 to +9.7) for the post model and 0.00 (−6.3 to +6.2) for the hydro model, only 32% and 38% of those days are better, Fridays are +£16 on 8 days and Monday to Thursday +£1.0 (post) and −£4.0 (hydro) on 32; with them added, the 641 days are −£6.8 and −£6.4 with intervals just below zero.
+6. **A check afterwards (no fits) on whether the ratio's information faded.** On Monday-to-Friday days the rank correlation of the ratio with the deployed model's error after the correction is +0.12 in 2025 (by quarter 0.07, 0.30, 0.00, 0.11) and −0.01 in 2026 (−0.06, 0.11, −0.08), while the model's own mean absolute error on those days fell from £836 to £729 and the manager's stayed near £950. So the likelier reading is that the model learned more as its training window grew and left less for the ratio to explain, not necessarily that the relationship drifted; chance in 2025 is also possible (a weak correlation, mostly from one quarter). A recheck on about 120 unseen days with this design is the next test.
+
+## Series 75 — Does the Signed Distance Add Anything on Top of the Triangle Intensity?
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series75_signed_distance_on_intensity.py` · Results: `reports/experiments/series75/`
+
+### Context
+
+The signed distance to payday (negative before, positive after, clipped to −7..+7) was tried alone in Series 61 (`mix_signed_distance`) and 64 (`lwd_signed_distance`): level in the backtest, better on the 56 newest days. The triangle intensity has since taken over most of that ground (Saturday piece −16.06 pounds a day before the correction, post model −2.99 after it, against −1.69 for the lwd signed distance) and forecast-log version v1.11 runs it. The open question: does the signed distance add anything ON TOP of the intensity? The two correlate only −0.26 and −0.10 on Saturdays, so they are not copies (the signed distance knows before from after, the intensity does not). Written down beforehand: expected to add nothing.
+
+### Method
+
+Saturday piece only (the piece v1.11 puts the column in), judged against **A**, the Saturday piece with `intensity_sym` (Series 70's fits on seeds 200-299, Series 73's on seeds 300-399, reused); 320 fits, backtest only. **B1** = A plus `sd_lwd` (signed distance to the nearest last-working-day payday), **B2** = A plus `sd_mix` (nearest of the last working day, 25th and 28th); **12 placebo add-ons** = A plus a signed distance built the same way to paydays at the wrong dates (nine single-day rules, the 3rd to the 10th and the 20th, and three triples of those days, seed 75), to show what adding a signed-distance-shaped column does when it carries no payday information; B1 and B2 again on fresh seeds 300-399. The rule: it adds value only if it beats at least 11 of the 12 placebo add-ons on both measures (the Saturday piece's change on the 84 Saturdays before the correction, and the post model's change after the correction), the post model's change is at most −0.5, and it replicates on fresh seeds at the same sign and at least half the size; it adds nothing if the Saturday-piece change is above −1.0 or 4 or more placebos are as good.
+
+### Results
+
+Change against A (£ a day; negative = better than A):
+
+| Add-on | Saturday piece, before the correction | Post model, after the correction | Placebo add-ons at least as good (Saturday piece / post) | On fresh seeds 300-399 (Saturday piece / post) |
+|---|---|---|---|---|
+| `sd_lwd` | +2.64 | +0.89 | 10 of 12 / 10 of 12 (p = 0.85) | −5.92 / −0.38 |
+| `sd_mix` | −1.02 | +0.21 | 2 of 12 / 0 of 12 (p = 0.23 / 0.08) | −6.39 / −0.48 |
+| Placebo add-ons, mean (range) | +0.80 (−7.62 to +9.22) | +0.74 (+0.29 to +2.66) | | |
+
+The script's reading: `sd_lwd` adds nothing; `sd_mix` is "in between" (its Saturday-piece change of −1.02 just clears the −1.0 line, and 2 of 12 placebos are as good).
+
+### Conclusion
+
+1. **The signed distance adds nothing measurable on top of the intensity.** On seeds 200-299 `sd_lwd` is £0.89 worse for the post model and `sd_mix` £0.21 worse; `sd_mix` is the best of the 13 add-ons on that measure (0 of 12 placebos better, p = 0.08), but still not an improvement on A.
+2. **The fresh seeds go the other way** (−£0.38 and −£0.48), while the Saturday piece's change swings from +2.6 to −5.9 and from −1.0 to −6.4 between seed sets: a swing of about £5 to £6 is seed noise, the size of the placebo spread (−7.6 to +9.2), so neither set shows a signal.
+3. **Adding any such column costs about £0.7 on the post package on these seeds** (placebo mean +0.74), so a real add-on near zero is no worse than noise.
+4. **Signed distance is closed.** It is not in v1.11 and the triangle intensity covers the pay-cycle position; the only payday-family item still waiting is December pay and the December correction.
+5. **Limits:** the same 585 days and folds; Saturday piece only; 12 placebos give a smallest p of 0.08.
+
+## Series 76 — An Early Payday in December: the 20th, Replace or Add
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series76_december_early_pay.py` · Results: `reports/experiments/series76/`
+
+### Context
+
+The triangle intensity pays three of its four rules at the end of the month (the last working day, the 25th and the 28th), which in December puts the pay heat on Christmas Eve and the last days of the month. The sales data show the strong stretch in the third week (19 to 23 December, 2024 and 2025), and payroll surveys put early Christmas pay at about 19 to 23 December. Kevin's December rule (8 November 2026): payday is the end of the third week. Two ways to write it, the 20th moved back to the previous working day (A) and the Friday of the week containing the 20th (B), give the same date in 2024, 2025 and 2026 (Fri 20, Fri 19, Fri 18 December), so one fit covers both; they differ only in midweek Decembers (2021-23, 2027-29).
+
+### Method
+
+Saturday piece only, the intensity column swapped for a December column, against A0 (the piece with `intensity_sym`, Series 70 and 73's fits). **dec_replace**: in December the three month-end rules are paid on the early date (combined share 0.94); **dec_add**: they stay and the early date is added with share 0.34 (an assumption). Eight placebo versions of each, with the early date at the 3rd to the 10th of December. 18 columns x 100 seeds (200-299) plus the two real ones on fresh seeds 300-399 = 400 tasks, backtest only (585 days). The one December in the backtest (2025) has four Saturdays; December 2024 is the only December in training. Reading written beforehand: adds value if at least 7 of 8 placebos are worse on both the December-Saturday and the net measure, net at most -0.3, fresh seeds the same sign.
+
+### Results
+
+Change against A0 (pounds a day; negative = better):
+
+| Column | 4 December 2025 Saturdays | Other 80 Saturdays | Net, post model, 585 days | Placebos at least as good (Saturdays / net) | Fresh seeds (Saturdays / net) |
+|---|---|---|---|---|---|
+| `dec_replace` | -70.17 | -1.69 | -0.86 | 4 of 8 / 2 of 8 | -73.71 / -0.95 |
+| `dec_add` | -32.25 | +2.02 | -0.03 | 0 of 8 / 6 of 8 | -31.62 / -0.36 |
+
+Per Saturday, `dec_replace` moved Saturday 20 December closer by 274 pounds, the best of all 17 versions on that day (the best placebo: 80), and made Saturday 27 December worse by 99; the placebos on the 4th to the 8th gained as much on Saturday 6 December (about 300). Both readings: ADDS NOTHING.
+
+### Conclusion
+
+1. **The 20th is not distinguishable from wrong dates.** Under replace, placebos on the 4th, 6th, 7th and 8th did as well on the four December Saturdays; what every replace version shares is removing the month-end heat from 24 to 31 December.
+2. **The effects are tiny**: 30 to 70 pounds on four Saturdays whose misses were 700 to 2,800 (6 and 13 December, the party weekends, were missed by 1,500 and 2,700 by every version).
+3. **Add** is the cleaner idea (it improved both 20 and 27 December) but its net effect is zero.
+4. **Limits:** one December in the backtest and one in training; A and B cannot be told apart; the deployed payday columns were not changed; the second weekend of December sold strongly in both years, so a placebo near it can look good for reasons that are not pay.
+
+## Series 77 — Series 76 Again, with the Closed Days and Boxing Day Fixed
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series77_christmas_closed_days.py` · Results: `reports/experiments/series77/`
+
+### Context
+
+The data show zero sales on 25 December (2024, 2025) and 1 January (2025, 2026), yet `intensity_sym` gives them 0.26 to 0.60 of pay heat (the 25th and 28th rules roll back onto Christmas Eve). Boxing Day is open but slow (4,321 in 2024, 2,919 in 2025) and gets heat too. The fix: the intensity is 0 on 25 December and 1 January and -0.5 on 26 December (a penalty; the value is an untuned placeholder). The Saturday piece is trained on every day, so these rows reach it even though it is scored on Saturdays only.
+
+### Method
+
+As Series 76, with the fix applied to every column: `xmas_only` (the fix alone), `xmas_replace` and `xmas_add` (the fix plus Series 76's two versions), 16 wrong-date placebos of the last two, 440 tasks. The Christmas fix is judged by what it adds to the column it is built on (xmas_only against A0; xmas_replace against dec_replace; xmas_add against dec_add): helps if the net change is at most -0.3 in at least 2 of 3 with the same sign on fresh seeds.
+
+### Results
+
+Net change of the post model, pounds a day:
+
+| Comparison | Net | Fresh seeds | 4 December Saturdays | Other 80 Saturdays |
+|---|---|---|---|---|
+| `xmas_only` against A0 | **-1.58** | -1.54 | -20.15 | -7.51 |
+| `xmas_replace` against `dec_replace` | +0.12 | +0.61 | +10.85 | +0.92 |
+| `xmas_add` against `dec_add` | -1.48 | -1.06 | -5.43 | -8.96 |
+
+Reading set beforehand: **the Christmas fix HELPS**. The early date on top of the fix: `xmas_replace` (-0.74 net; 3 of 8 placebos as good, 4 of 8 on the December Saturdays) and `xmas_add` (-1.50; 6 of 8 and 4 of 8): ADDS NOTHING. The Saturday piece's forecast on days it is not scored on barely moved: Christmas Day 3,154 to 3,075 (actual 0), Boxing Day 2025 8,313 to 7,980 (actual 2,919), 1 January 2026 2,281 to 2,340 (actual 0).
+
+### Conclusion
+
+1. **The closed-day fix is the one thing that works**: about 1.6 pounds a day net (half again as much as the intensity's own -3.0), mostly on ordinary Saturdays; the explanation (untested) is that closed days with pay heat and zero sales taught the model that moderate heat can mean no sales.
+2. **It does not teach the model Boxing Day**: with two examples a tree cannot learn that the day is slow. A Saturday Boxing Day (26 December 2026) and a Saturday Christmas Day (25 December 2027) are days the data cannot test.
+3. **The early pay date adds nothing once the fix is in.**
+
+## Series 78 — The 15th Removed, a Single Pay Day (the 20th or the 27th), a Larger Boxing Day Penalty
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series78_december_single_day.py` · Results: `reports/experiments/series78/`
+
+### Method
+
+On top of the fix, six columns, each judged against the column it is built on (seeds 200-299 and fresh seeds 300-399, 240 tasks): `dec_base` (the 15th rule switched off in December only, its heat on 10 to 18 December removed), `dec_x20_tri` and `dec_x20_flat` (a pay day on the 20th rolled back, as a triangle or that day only, share 0.34), `dec_x27_tri` and `dec_x27_flat` (the 27th as it stands), `xmas_box4` (the Boxing Day penalty -2.0 instead of -0.5). "27" was said without saying 27th or 20th, so both were run.
+
+### Results
+
+| Column | Net against its base | Fresh seeds | Reading |
+|---|---|---|---|
+| `dec_base` (against the fix alone) | -0.35 | +0.22 | in between |
+| `dec_x20_tri` | +0.64 | +0.12 | worse |
+| `dec_x20_flat` | +0.30 | +0.19 | nothing |
+| `dec_x27_tri` | +1.66 | +0.47 | worse |
+| `dec_x27_flat` | +1.46 | +1.07 | worse |
+| `xmas_box4` | 0.00 | 0.00 | identical (largest forecast difference 0.00 pounds) |
+
+### Conclusion
+
+1. **Nothing beat the fix alone.** The 27th is clearly worse (it raised Saturday 27 December's forecast from 15,154 to 15,516, against an actual 14,358); dropping the 15th in December is within noise.
+2. **The Boxing Day penalty's size is irrelevant**: a tree sees only the order of a column's values, so -2.0 gives the same trees as -0.5. A stronger Boxing Day effect needs a different mechanism (a heavier weight on those rows, a direct flag, or a rule outside the model).
+3. **Outcome**: forecast-log version v1.12 = v1.11 with the closed-day fix in the Saturday pieces, plus the holiday rule (0 on 25 December and 1 January, the earlier Boxing Days' mean on 26 December) issued beside the models (see the CHANGELOG and the log's PREREGISTRATION.md).
+
+## Series 79 — A Penalty on the Payday Intensity for 2 to 15 January
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series79_january_penalty.py` · Results: `reports/experiments/series79/`
+
+### Context
+
+Kevin's reading: after the end-of-year pay the month is lean, so early January should carry a penalty in the intensity rather than a little pay heat (2 January 0.17, 3 January 0.08 from the 31 December payday's triangle; from 12 January the 15th rule's). In 2026 the post package was over-forecast by 504 pounds a day on the 14 open days of 2 to 15 January (the manager by 693), mostly the lean weekdays of 5 to 9 January (over by 1,000 to 2,700); in 2025 the picture was mixed (ours +127, the manager -313), so the case was not definitive. The intensity lives only in the Saturday pieces, so it can reach only the two Saturdays in the window (3 January 2026, over-forecast by 4,383, and 10 January, under-forecast by 1,719).
+
+### Method
+
+On top of the closed-day fix (`xmas_only`, forecast-log version v1.12's column; Series 77's fits as the reference), three columns: `jan_pen_15` (2 to 15 January set to -0.25, a penalty below every heat value and above Boxing Day's -0.5), `jan_pen_8` (2 to 8 January only), `jan_zero_15` (2 to 15 January set to 0, heat removed, no penalty); ten placebos with the same penalty on the 2nd to the 15th of February to November; 320 tasks, seeds 200-299 and fresh seeds 300-399, 585 days. Reading written beforehand: adds value if the net change is at most -0.3, at most 1 of 10 placebos is as good, the fresh-seed net change is below zero and the two January Saturdays improve; nothing if the net change is within 0.3 of zero or 3 or more placebos are as good.
+
+### Results
+
+Change against `xmas_only` (pounds a day; negative = better):
+
+| Column | 2 January Saturdays | Other 82 Saturdays | Net, post model, 585 days | Placebos as good on the net change | Fresh seeds (Saturdays / net) |
+|---|---|---|---|---|---|
+| `jan_pen_15` | -17.0 | -0.4 | -0.03 | 3 of 10 | -39.6 / -0.12 |
+| `jan_pen_8` | -41.1 | +0.7 | +0.01 | 3 of 10 | -60.1 / +0.25 |
+| `jan_zero_15` | -40.5 | -1.1 | -0.20 | 0 of 10 | -48.7 / +0.10 |
+| Placebo penalty windows in other months, mean | -11.5 | | +0.18 | | |
+
+All three readings: NOTHING. The Saturday piece's forecasts for the two Saturdays barely moved (3 January 14,293 to 14,267 against an actual 10,147; 10 January 11,358 to 11,365 against 13,293), and the weekday forecasts of the window cannot change at all.
+
+### Conclusion
+
+1. **A January penalty in the Saturday pieces does nothing measurable**: the net change is within 0.2 of zero, and a penalty window of the same shape placed in any other month gives a similar change on its own two Saturdays.
+2. **The model barely reacts to it**: two training Januaries' worth of 14 days are too few examples for it to learn "lean".
+3. **The over-forecast of the lean January weekdays is out of this column's reach**: the weekday pieces do not use the intensity. Whether a penalty or closed-day column belongs in them is part of the to-do list's final joint feature check (item 4b), to be judged on unseen days.
+4. **Limits:** one January window and two Saturdays in it; the penalty value is untuned (and for a tree only the order matters); the same 585 days.
+
+## Series 80 — Switching Off the Recent-Sales Inputs for 1 to 15 January, and Whether the January Rows Are Special
+
+**Run**: 2026-11-08 · **Script**: `src/experiments/run_series80_january_lags_masked.py` · Results: `reports/experiments/series80/` (100 seeds; the last series run that way)
+
+### Context
+
+After Series 79 (a January penalty in the Saturday pieces: nothing) Kevin's idea: in early January the recent-sales inputs still hold the busy Christmas fortnight, so switch them off from 1 to 15 January and let the model use the calendar, weather and the rest. A check without fits: over the 14 open days of 2 to 15 January the 14-day average input stood about 1,700 to 2,000 pounds (about 30%) above the level the days sold (2025: 8,457 against 6,484; 2026: 7,485 against 5,760); on the 2026 Monday-Thursday days the error followed it (+0.90, 8 days), in 2025 it did not (+0.34).
+
+### Method
+
+All four pieces of the current package (Monday-Thursday with the hydro flag, Friday, Saturday with `intensity_fixed`, Sunday) refitted with ten lag, rolling and recent-same-weekday inputs set to missing on every row dated 1 to 15 January, in the training rows as well as the forecast days (`lag_7_sales`, `rolling_7_sales`, `rolling_14_sales`, `lag_1_fe`, `lag_7_fe`, `rolling_7_fe`, and the Friday and Saturday pieces' `lag_14_sales`, `lag_21_sales`, `same_wd_mean4`, `same_wd_max4`); the manager's forecast is left in. 100 seeds (200-299), 585 days, against the same package unmasked. Stage one's reading (helps: the 14-day change at most -100 and the other days within +-1) gave NOTHING, but the other 571 days improved by 5.7 a day, which it did not anticipate. Stage two, written before it ran: the same masks on the 1st to the 15th of each other month (ten placebos) and the January mask on fresh seeds 300-399; the January rows are special if its net change beats at least 9 of 10 placebos and replicates, refit noise if at least 3 are as good.
+
+### Results
+
+Change in the post package against the unmasked package (pounds a day; negative = better):
+
+| Window masked | Test days in the window | Own window | All other days | Net, 585 days |
+|---|---|---|---|---|
+| **January (1-15)** | 16 | -21.6 | -6.15 | **-6.57** |
+| February | 23 | +356 | +0.84 | +14.80 |
+| March | 30 | +196 | +1.81 | +11.77 |
+| April | 30 | +165 | +8.35 | +16.41 |
+| May | 30 | +6 | +2.47 | +2.66 |
+| June | 30 | +189 | +7.84 | +17.13 |
+| July | 30 | +64 | +4.36 | +7.43 |
+| August | 30 | +245 | -1.59 | +11.07 |
+| September | 21 | -40 | +5.36 | +3.72 |
+| October | 15 | +5 | -2.44 | -2.24 |
+| November | 15 | +153 | -1.11 | +2.84 |
+
+January's net change beats all 10 placebos (placebo mean +8.56, best -2.24, worst +17.13); on fresh seeds it is -7.09 (own window -19.3, all other days -6.74). Stage one's 14 open days of 2 to 15 January 2026: -42 a day (average miss 1,424 to 1,382; bias +498 to +182). Reading set beforehand: **JANUARY ROWS ARE SPECIAL**.
+
+### Conclusion
+
+1. **Masking the recent-sales inputs in early January improves the whole package by 6.6 pounds a day over the 585 days** (fresh seeds 7.1), more than the payday intensity (-3.0) and the closed-day fix (-1.6) put together. Nothing like it appears when any other month's first fortnight is masked: those mostly get worse, both in their own windows (up to +356) and overall.
+2. **The gain is not on the January days** (-42 a day on 14 days, about -1.0 over the 585) **but on the other 571 days** (-5.7): the January rows in the training data teach the model a wrong lesson about its recent-sales inputs (they read high while sales are lean) and it carries that into every month. This is the first of the two explanations in the script's header; the refit-noise explanation is rejected by the placebos.
+3. **The mechanism is not isolated.** Two candidates are mixed in the mask: the Christmas level inflating the averages (+30%), and closed days with zero sales inside the inputs (for example `lag_7_sales` is 0 on 8 January because 1 January is closed, and the rolling averages contain the zero days). The next test separates them: closed days treated as missing in the lag and rolling inputs, against the January mask.
+4. **Limits:** one January in the backtest and two in all, the same 585 days, a smallest p-value of 0.09 from ten placebos, the manager's forecast left in, and it cannot be used without refitting (a new forecast-log version; the decision to retrain is Kevin's).
+
+## Series 81 — Closed Days Inside the Recent-Sales Inputs: the Zeros, or the Christmas Level?
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series81_closed_days_in_lags.py` · Results: `reports/experiments/series81/` (25 seeds, 200-224: the earlier standard, restored on 8 November 2026)
+
+### Context
+
+Series 80's mask (ten recent-sales inputs set to missing on 1 to 15 January) improved the package by 6.6 pounds a day over the 585 days and beat all ten placebo windows, mixing two candidate causes: closed days with zero sales sitting inside the inputs (`lag_7_sales` is 0 on 8 January because 1 January is closed; the rolling averages hold the zeros), and the busy Christmas level inflating the averages (the 14-day input stood about 30% above the level the early-January days sold).
+
+### Method
+
+Five variants refitted in all four pieces of the current package, in the training rows and the forecast days, from the full daily sales series recomputed as the pipeline computes it (checked equal on every row): `base` (unmasked, refitted on the same 25 seeds), `closed_nan` (25 December and 1 January set to missing in the sales and forecast-error series before the lags and rolling averages; averages use the days that exist, from half the window), `closed_fill` (those days replaced by the same weekday a week earlier, chained), `jan_mask` (Series 80's mask) and `both` (fill, then the mask). 100 tasks, 585 days. Reading written beforehand: the closed days explain most of it if a closed variant reaches at least 60% of the January mask's gain; the level (or something else in those rows) if both closed variants stay under 30% and the mask keeps its gain.
+
+### Results
+
+Change in the post package against the unmasked package, same 25 seeds (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 22 days with a closed day in their 14-day window | All other days | 2-15 January 2026 (14 days) |
+|---|---|---|---|---|
+| `closed_nan` | **+3.13** | +10.4 | +2.84 | +80.0 |
+| `closed_fill` | **+8.92** | +94.8 | +5.57 | +142.3 |
+| `jan_mask` | **-6.08** | -5.5 | -6.10 | -39.5 |
+| `both` | -5.99 | +31.5 | -7.45 | -29.9 |
+
+The January mask replicates Series 80 on 25 seeds (-6.08 against -6.57 on 100). Reading set beforehand: **LEVEL: the closed days explain little, the January mask keeps its gain**. Placebo days were not triggered.
+
+### Conclusion
+
+1. **The zero-sales closed days are not the cause.** Repairing them makes the package worse (+3.1 by treating them as missing, +8.9 by filling them), and `both` is no better than the mask alone (-5.99 against -6.08).
+2. **The zeros may even help**: in the Christmas window they pull the averages down, against the inflated level, and filling them removes that (the 14-day input on 5 January goes from 8,423 to 9,834 under the fill).
+3. **What the mask fixes is the transition after Christmas itself**, the rows where the recent level (high) and the sales (lean) disagree, not any one bad value in the inputs. The mask lets the model fall back on the calendar for those rows.
+4. **Next** (not run): where the lesson sits (the mask on 1 to 8, 1 to 22 January and 26 December to 15 January), and a repair that keeps the information: leave the Christmas-break days out of the source series before the averages are taken (a holiday-aware level), which would also apply to Easter and the summer break. Any use needs a refit, a new forecast-log version and Kevin's decision.
+5. **Limits:** 25 seeds (a change of 2 or less is within the noise); one January in the backtest; the same 585 days.
+
+## Series 82 — Where the Recent-Sales Inputs Should Be Switched Off Around the New Year
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series82_mask_windows.py` · Results: `reports/experiments/series82/` (25 seeds, 200-224)
+
+### Context
+
+Series 80 and 81 switched ten recent-sales inputs off for 1 to 15 January (-6.1 pounds a day on 25 seeds) but 1 to 15 January was a guess. The inputs reach back different distances (the 7-day average clears Christmas by about 8 January, the 14-day one by about 15 January, the same-weekday inputs by about 29 January) and the days after Christmas have the same problem.
+
+### Method
+
+Six windows, each refitted in all four pieces of the current package with the ten inputs missing on every row inside the window, training rows and forecast days alike: 1 to 8, 1 to 22 and 1 to 29 January, and 26 December to 8, 15 and 22 January; compared with the unmasked package and with the 1 to 15 January mask (both Series 81's fits on the same seeds). 120 tasks. Reading written beforehand: the best window has the most negative net change over the 585 days, windows within 1.0 of it are tied (25 seeds cannot separate less), starting on 26 December helps only if it is at least 1.0 better than the 1 January twin.
+
+### Results
+
+Change in the post package against the unmasked package (pounds a day; negative = better):
+
+| Window | Test days in it | Net, 585 days | Inside the window | Outside it |
+|---|---|---|---|---|
+| **1 to 8 January** | 8 | **-9.07** | -313 | -4.86 |
+| 1 to 15 January (Series 81) | 16 | -6.08 | -19 | -5.72 |
+| 1 to 22 January | 30 | +9.84 | +175 | +0.93 |
+| 1 to 29 January | 38 | +12.55 | +197 | -0.24 |
+| 26 December to 8 January | 14 | -8.34 | -372 | +0.58 |
+| 26 December to 15 January | 22 | -5.64 | -176 | +1.03 |
+| 26 December to 22 January | 36 | +10.99 | +50 | +8.43 |
+
+Best: 1 to 8 January, tied with 26 December to 8 January (within 1.0). Starting on 26 December: no clear difference at 8 and 15 January (+0.7, +0.4), it costs at 22 January (+1.2).
+
+### Conclusion
+
+1. **The distortion is the first week.** Switching the inputs off for 1 to 8 January gives the largest gain (-9.07 a day over the 585 days, and -313 a day on the eight January days themselves); the gain shrinks at 15 January and **turns into a loss from 22 January** (+9.8, +12.6): once Christmas has left the 7-day average the inputs are informative again, and masking them costs.
+2. **Starting on 26 December adds nothing clear.**
+3. **The size**: about 1% of the average daily miss, the largest single step after the weekend pieces in the staircase (weekend correction -7.7, hydro flag -6.6, payday intensity -3.0, closed-day fix -1.6).
+4. **Limits:** 25 seeds (a difference of 2 or less is noise, so 1 to 8 against 1 to 15 January, 3.0 apart, is only just beyond it); one January in the backtest, two in all; the same 585 days; the window is the best of six tries, so 1 to 8 January is a candidate for a rule written down beforehand and read on January 2027, not a result; using it needs a refit (a new forecast-log version) and Kevin's decision.
+
+## Series 83 — The Two Best Mask Windows on the Rest of the Seeds
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series83_mask_windows_repeat.py` · Results: `reports/experiments/series83/` (seeds 225-299 and fresh seeds 300-399)
+
+### Context
+
+Series 82 (25 seeds) found two windows within 1.0 pounds a day of each other for switching the ten recent-sales inputs off around the new year: 1 to 8 January (-9.07 over the 585 days) and 26 December to 8 January (-8.34), against -6.08 for 1 to 15 January; a difference of 2 or less is within 25-seed noise. Kevin asked for the two to be repeated on the other seeds.
+
+### Method
+
+The same masks, pieces and folds as Series 82, on seeds 225-299 (the other 75 of the old 100-seed set, giving each window all 100 seeds, compared with the existing 100-seed baseline: the unmasked package with Saturday on Series 77's closed-day column) and on fresh seeds 300-399 (against the unmasked package on the same seeds): 280 tasks. Reading written beforehand: replicates if both the 100-seed and the fresh-seed net change are negative and each at least half the size of the 25-seed result; tied if within 1.0 on both.
+
+### Results
+
+Net change in the post package against the unmasked package (pounds a day; negative = better):
+
+| Window | 25 seeds (Series 82) | All 100 seeds | Fresh 300-399 | Own days, 100 seeds / fresh | Outside the window, 100 seeds / fresh |
+|---|---|---|---|---|---|
+| 1 to 8 January | -9.07 | **-8.35** | **-10.09** | -324 / -321 (8 days) | -3.97 / -5.78 |
+| 26 December to 8 January | -8.34 | **-8.57** | **-7.33** | -383 / -375 (14 days) | +0.61 / +1.70 |
+
+Readings set beforehand: both REPLICATE. The two windows differ by 0.22 on the 100 seeds and 2.76 on the fresh seeds, so they are not tied by the rule; 1 to 8 January is ahead on the average of the two (-9.22 against -7.95).
+
+### Conclusion
+
+1. **Both windows replicate on 175 more seeds**: the gain of about 8 to 10 pounds a day over the 585 days is not a 25-seed accident.
+2. **1 to 8 January is the simpler and slightly better window.** It also improves the days outside the window (-4 to -6 a day: the January rows stop teaching the model the wrong lesson), while the window that starts on 26 December gains more on its own 14 days (-383) but slightly worsens the other days (+0.6, +1.7): masking the late-December rows costs elsewhere.
+3. **Limits**: the same 585 days, so this checks the seeds and not the days; the window is the best of six tries; one January in the backtest. The real test is a rule written down beforehand and read on January 2027; using it needs a refit (a new forecast-log version) and Kevin's decision.
+
+## Series 84 — Adding the Six Late-December Days to the 1 to 8 January Mask, Input Group by Input Group
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series84_late_december_subsets.py` · Results: `reports/experiments/series84/` (25 seeds, 200-224)
+
+### Context
+
+Series 83 confirmed two mask windows: 1 to 8 January (-8.35 pounds a day over the 585 days on 100 seeds) and 26 December to 8 January (-8.57). They differ in where the gain is: the six extra late-December days gain about 460 pounds a day each from the mask, but masking those rows in training removes the gain on the other days (+0.6 to +1.7 outside the window, against -4 to -6 for 1 to 8 January alone). Kevin asked whether the six days can be included and the benefit kept.
+
+### Method
+
+Option 1: on 26 to 31 December mask only one group of inputs, keeping the full ten-input mask on 1 to 8 January: `g_levels` (`rolling_7_sales`, `rolling_14_sales`), `g_lags` (`lag_7_sales`, `lag_14_sales`, `lag_21_sales`), `g_fe` (`lag_1_fe`, `lag_7_fe`, `rolling_7_fe`), `g_wd` (`same_wd_mean4`, `same_wd_max4`; only the Friday piece carries them); training rows and forecast days alike; 80 tasks, compared with Series 81/82's fits on the same 25 seeds. Reading written beforehand: a group captures both if its net change is at least 2.0 better than 1 to 8 January's and the change outside 26 December to 8 January is no more than 1.0 above it.
+
+### Results
+
+Change against the unmasked package (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 14 days 26 Dec-8 Jan | All other days |
+|---|---|---|---|
+| 1 to 8 January (all ten) | -9.07 | -206 | -4.23 |
+| 26 Dec to 8 Jan (all ten) | -8.34 | -372 | +0.58 |
+| + `g_levels` on 26-31 Dec | -3.40 | -191 | +1.20 |
+| + `g_lags` | -8.39 | -338 | -0.31 |
+| + `g_fe` | -10.07 | -244 | -4.33 |
+| + `g_wd` | -10.34 | -256 | -4.31 |
+| + `g_fe` and `g_wd` together (added after Kevin's question) | -10.47 | -293 | -3.55 |
+
+Readings set beforehand: `g_levels` COSTS; `g_lags` NO GAIN over 1 to 8 January; `g_fe` and `g_wd` NO GAIN (-0.99 and -1.27 against 1 to 8 January, inside the 2.0 noise); the two together do not add up either (-1.40, with a weaker outside gain, -3.55 against -4.23): NO GAIN.
+
+### Conclusion
+
+1. **The inputs that carry the late-December gain are the ones whose late-December rows are good lessons.** Masking the recent averages or the single lags on 26 to 31 December gains on those days (-338 for the lags) but costs everywhere else (outside -0.31 and +1.20 against -4.23).
+2. **The forecast-error inputs and the same-weekday summaries can be masked on those days for free** (they keep the outside gain, -4.3) **but they gain little** (about 1.0 to 1.3 a day net, inside the noise): only a quarter of the late-December days' gain.
+3. **So option 1 does not capture both.** Next on the working list: option 2b, a companion model trained without the history inputs and used only on 26 to 31 December (the main model keeps its normal training rows), then option 3 (a rule after the model) as a last resort.
+4. **Limits:** 25 seeds; one December and one January in the backtest; the same 585 days; each group is one more try on top of the six windows.
+
+## Series 85 — A Companion Model Without the History Inputs for the Late-December Days
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series85_companion_model.py` · Results: `reports/experiments/series85/` (25 seeds, 200-224)
+
+### Context
+
+Series 83 and 84: switching the ten recent-sales inputs off for 1 to 8 January gains about 8 to 10 pounds a day over the 585 days; the six late-December days (26 to 31 December) would gain about 460 pounds a day each from a mask too, but masking those rows in training costs the gain on every other day, and masking only some inputs there captures little. Option 2b: a companion model, each piece refitted without the ten history inputs on all rows (calendar, weather, hydro flag, closed-day intensity on Saturday and the manager's number), its forecast used only on chosen days while the main model keeps its normal training rows.
+
+### Method
+
+One new fit (20 tasks, 25 seeds); the variants are built from stored forecasts: `comp_dec` (main model = the 1 to 8 January mask of Series 82/83; the companion replaces it on 26 to 31 December), `comp_dec_jan` (the companion replaces it on 26 December to 8 January), `comp_only` (the main model unmasked, the companion on 26 December to 8 January); compared with Series 81/82's fits on the same seeds. Reading written beforehand: `comp_dec` captures both if its net change is at least 2.0 better than the 1 to 8 January mask's (about 195 pounds a day on the six days).
+
+### Results
+
+Change against the unmasked package (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 6 days 26-31 Dec | All other days |
+|---|---|---|---|
+| 1 to 8 January mask alone | -9.07 | -64 | -4.23 |
+| **mask + the companion on 26-31 December** | **-11.30** | **-301** | -4.02 |
+| mask + the companion on 26 December to 8 January | -9.15 | -301 | -3.86 |
+| the companion on 26 December to 8 January, no mask | -5.02 | -305 | +0.43 |
+| the companion on every day | +38.60 | -300 | +45.05 |
+
+Readings set beforehand: `comp_dec` CAPTURES BOTH (-2.22 against the mask alone); `comp_dec_jan` NO GAIN; `comp_only` COSTS. The companion alone on every day has an average miss of 893 against 854 for the unmasked package (+5%). By day, on 26 to 31 December the unmasked, masked and companion errors were: 29 December -3,111 / -2,201 / -912; 30 December -2,380 / -1,656 / -367; 31 December -900 / -343 / +260; but 27 December +1,018 / +1,223 / +2,138 and 28 December -72 / +986 / +2,230.
+
+### Conclusion
+
+1. **The companion is the first approach to capture both**: the late-December days gain while the other days keep the gain of the January mask. It needs the masked main model (without the masked January rows in training the gain elsewhere is lost, `comp_only` +0.43) and it is not a general model (5% worse on every day: no recent-sales information).
+2. **The six days are mixed**: it gains on 29 to 31 December (the days the unmasked model under-forecast by 0.9 to 3.1 thousand) and loses on 27 and 28 December.
+3. **The main caveat**: in the backtest the companion leans on the manager's number for the day, which for 29 to 31 December was almost exact (12,500, 12,500 and 9,700 against 13,035, 12,369 and 9,849 actual); in the live log it is a weekday-and-season median stand-in, so a live companion would probably be weaker and part of this gain is the manager's knowledge (the cost of the missing number: Series 42-43).
+4. **Limits:** one December in the backtest (six days); 25 seeds; the same 585 days; a refit would be a new forecast-log version and Kevin's decision. Next: repeat on seeds 225-299 and fresh seeds 300-399.
+
+## Series 86 — The Companion Model on the Rest of the Seeds
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series86_companion_repeat.py` · Results: `reports/experiments/series86/`
+
+Series 85's companion (each piece refitted without the ten history inputs, used on 26 to 31 December beside the 1 to 8 January mask) repeated on seeds 225-299 (with Series 85's 25 it has all 100) and on fresh seeds 300-399, compared with the 100-seed baseline and the mask alone on the same seeds; 140 tasks. Reading written beforehand: replicates if it beats the mask alone by at least 1.1 (half of 2.22) on both seed sets.
+
+| Seeds | Mask alone, net | Mask + companion on 26-31 Dec, net | Difference | The 6 days (mask alone / with the companion) |
+|---|---|---|---|---|
+| All 100 | -8.35 | -11.35 | **-3.00** | -37 / -363 |
+| Fresh 300-399 | -10.09 | -13.17 | **-3.09** | -60 / -379 |
+
+Reading set beforehand: **REPLICATES** (larger than Series 85's -2.22). The other days keep the mask's gain (-7.7 against -8.1 on the 100 seeds). Limits: the same 585 days and the same one December (six days); the manager's real number is an input throughout (Series 87).
+
+## Series 87 — The Companion Model and the January Mask When the Manager's Number Is Not Available
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series87_companion_without_manager.py` · Results: `reports/experiments/series87/` (25 seeds, 200-224)
+
+### Context
+
+Every backtest so far gave the models the manager's real forecast for the day (`forecast_sales`); the live log cannot (it reaches us after the day, Series 42-43), so each log forecast is served with a stand-in, the weekday-and-season median of the manager's past forecasts (`seasonal_medians`). In late December the manager's number was almost exact (29 to 31 December 2025: 12,500, 12,500 and 9,700 against 13,035, 12,369 and 9,849 sold).
+
+### Method
+
+Each fold's models fitted on the real training rows (the log's deployed set-up, N0 of Series 42) and served with the stand-in on the test days, computed from the training rows only; the weather is still the actual weather. Variants served with the stand-in: unmasked, the 1 to 8 January mask, the companion; 60 tasks. A sanity step reproduces the stored backtest to the penny with the real number put back. Reading written beforehand: the mask holds if at least 4.5 better than unmasked (half of -9.07); the companion survives if at least 1.1 better than the mask alone.
+
+### Results
+
+Change against the unmasked package, all served with the stand-in (pounds a day; negative = better):
+
+| Variant | Net, 585 days | The 6 days 26-31 Dec | All other days |
+|---|---|---|---|
+| unmasked, stand-in | 0.00 | 0.00 | 0.00 |
+| 1 to 8 January mask | **+0.37** | +160 | -1.28 |
+| mask + the companion on 26-31 December | -2.05 | -103 | -1.00 |
+| the companion on every day | +39.56 | -79 | +40.79 |
+
+Serving the stand-in costs the unmasked package 91 pounds a day (average miss 945 against 854; Series 43: about 99). Readings set beforehand: the mask **does not hold** (+0.37 against -9.07 with the real number); the companion against the mask alone SURVIVES (-2.42 against -2.22). On 26 to 31 December 2025 the real manager numbers were 4,700, 15,500, 13,000, 12,500, 12,500 and 9,700 and the stand-ins 9,700, 13,500, 12,500, 11,600, 9,700 and 0 (the fold's history holds the closed Wednesdays, 25 December 2024 and 1 January 2025, so the median for 31 December was 0, and every variant forecast about 10 pounds for a day that sold 9,849).
+
+### Conclusion
+
+1. **The January mask's whole gain depended on the manager's real number.** With the number the model could lean on the manager's knowledge that January is lean once the misleading history inputs were off; with the stand-in, which does not know about January, switching the history off removes the only thing that partly compensated. Series 80-86's January and late-December gains (about 8 to 13 pounds a day) are therefore backtest figures that the live log, which has no real number, should not be expected to reach.
+2. **The companion still beats the mask alone under the stand-in** (-2.42) and takes the six days from +160 to -103, but the combination is only -2.05 against unmasked, and the late-December forecasts stay poor (26 December about 12,700 against 2,919 sold).
+3. **The stand-in itself is weak around the holidays.** The median over the same weekday within 10 days of the same day of the year, from two years of history, is contaminated by closed-day zeros and the quiet days after Christmas. Checked on the live pipeline (a dry run issued 28 December 2026): stand-ins of 11,650, 9,700, 4,600 and 5,200 for Monday 28 to Thursday 31 December 2026 and forecasts of 9,811, 9,164, 4,848 and 5,558 (earlier years sold about 12,500 to 13,000 on 29 and 30 December and 9,800 on New Year's Eve), so late December 2026 will be forecast well below what recent years sold, with or without a companion.
+4. **Next**: tests in the stand-in world, starting with a better stand-in for the holidays (exclude closed days, or use the same date's actual sales a year earlier) and year-ago inputs (idea 3 of the January working list), before any refit. Any change to the stand-in alters an input of the pre-registered log and needs an amendment first.
+5. **Limits:** 25 seeds; one December and one January; the stand-in is computed from the fold's training rows (staler than the live log's); the weather is the real weather; the same 585 days.
+
+### Afterwards: specialist windows (from the stored stand-in forecasts, no new fits)
+
+Splitting the same forecasts by window, served with the stand-in, change against the unmasked package (pounds a day; negative = better):
+
+| Variant | Net | The 6 days 26-31 Dec | The 8 days 1-8 Jan | All other days |
+|---|---|---|---|---|
+| the mask alone (a whole-model mask) | +0.37 | +160 | -298 | +2.88 |
+| the companion on 26-31 Dec, unmasked main | -0.74 | -108 | 0 | +0.38 |
+| the companion on 26 Dec-8 Jan, unmasked main | +0.60 | -108 | +108 | +0.23 |
+| the masked model on 1-8 Jan only, unmasked elsewhere | **-4.60** | 0 | -302 | -0.48 |
+| the masked model on 1-8 Jan + the companion on 26-31 Dec, unmasked elsewhere | **-5.34** | -108 | -302 | -0.10 |
+
+So with the stand-in the whole-model mask is a wash (it helps the eight January days a lot, by 298 pounds a day, and costs +2.9 a day on the rest of the year and +160 on the six December days), and the companion alone gains only -0.74 net; but two **specialist models, each used only on its own window** (the masked model on 1 to 8 January, the companion on 26 to 31 December, the unmasked model everywhere else) give -5.34 with no harm elsewhere. This is a combination chosen after the results, from 14 days of one December and one January, 25 seeds: a candidate to repeat on the other seeds and in a better stand-in world, not a result.
+
+## Series 88 — A Better Stand-In for the Manager's Number Around the Holidays
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series88_better_standin.py` · Results: `reports/experiments/series88/` (25 seeds, 200-224)
+
+### Context
+
+The live forecast log serves every forecast with a stand-in for the manager's number (the weekday-and-season median of the manager's past forecasts: the same weekday within 10 days of the same day of the year). Series 87 showed it costs the unmasked package 91 pounds a day, and that it is weak around the holidays (with two years of history the median is contaminated by closed-day zeros and the quiet days after Christmas: for 24 and 25 December 2025 it gave 0 and 7,100, for 31 December 0).
+
+### Method
+
+The models are fitted on the real training rows (N0 of Series 42) and each fold's test days are predicted once per stand-in, so only the number fed in changes: **S0** the current one (reproduces Series 87, checked to the penny); **S1** the same median with the closed days (manager number 0) left out of the history, and 0 on 25 December and 1 January; **S2** the manager's number 364 days earlier (same weekday a year ago) inside the holiday window 24 December to 15 January, S0 elsewhere; **S3** the number 365 days earlier (same date a year ago) inside the window, S0 elsewhere; **S4** S1 everywhere and S3 inside the window; **S5** S1 everywhere and, inside the window, the number 364 days earlier unless that day was closed; plus the real number as the floor. Three model variants (unmasked, the 1 to 8 January mask, the companion), 60 tasks. Reading written beforehand: a stand-in is better than S0 if it lowers the unmasked package's all-days miss by at least 5 pounds a day and lowers the holiday-window miss.
+
+### Results
+
+Average daily miss of the unmasked package served with each stand-in (pounds; lower is better):
+
+| Stand-in | All 585 days | The 24 holiday-window days | 26-31 Dec (6 days) | 1-8 Jan (8 days) |
+|---|---|---|---|---|
+| S0 current | 945 | 2,739 | 4,623 | 1,886 |
+| **S1 closed-day-aware median** | **902** | 1,687 | 3,621 | **1,275** |
+| S2 same weekday a year ago | 941 | 2,656 | 4,629 | 1,838 |
+| S3 same date a year ago | 903 | 1,712 | **2,190** | 1,502 |
+| S4 S1 + S3 in the window | 903 | 1,712 | 2,190 | 1,502 |
+| S5 S1 + weekday-aligned year-ago | 920 | 2,130 | 3,627 | 1,838 |
+| real manager number (floor) | 854 | 1,393 | 2,016 | 1,484 |
+
+Readings set beforehand: S1, S3, S4 and S5 BETTER than S0 (-43, -42, -41 and -25 pounds a day overall); S2 NO BETTER (-3.4). The model tricks (specialist windows: the masked model on 1 to 8 January and the companion on 26 to 31 December, the unmasked model elsewhere), net change against the unmasked package served with the same stand-in: S0 -5.34, S1 -6.01, S2 -4.64, S3 -8.70, S4 -8.70, S5 -4.82: STILL HELPS with every stand-in (the whole-model mask stays a wash, -1.3 to +0.9).
+
+### Conclusion
+
+1. **A closed-day-aware stand-in is a free win**: it removes about 43 of the 91 pounds a day the stand-in costs (all of it inside the 24-day holiday window, 2,739 to 1,687), with no refit: the models are unchanged and only the number fed in differs. It changes the stand-in only for days whose history window holds a closed day.
+2. **The same date a year ago** is as good overall (-42) and much better on 26 to 31 December (2,190 against 3,621, near the real number's 2,016: it knows the end-of-year pattern and Boxing Day) but worse in early January (1,502 against 1,275): lining up the date puts the wrong weekday on weekends (Sunday 4 January 2026 takes last year's Saturday, 12,100, against a real 4,350). A hybrid (S3 for the Christmas week, S1 from the new year) is plausible but would be tuned on this one window.
+3. **The specialist windows keep their gain with every stand-in**, and most with the date-aligned one (-8.70, the companion gaining 522 pounds a day on the six days).
+4. **Still short of the floor**: S1 902 against 854 with the real number.
+5. **Limits:** one December and one January (the window is 24 test days); 25 seeds; the stand-in is built from the fold's training rows (staler than the live log's); the weather is the real weather; the same 585 days. A different stand-in changes an input of the pre-registered log, so an amendment comes first; no refit.
+
+## Series 89 — The Better Stand-Ins on the Rest of the Seeds, and a Hybrid
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series89_standin_repeat_hybrid.py` · Results: `reports/experiments/series89/` (all 100 seeds 200-299 and fresh seeds 300-399)
+
+### Context
+
+Series 88 (25 seeds) found two stand-ins for the manager's number that cut the live log's average miss by about 43 pounds a day (the closed-day-aware median S1, and the same date a year earlier inside the holiday window S3) with opposite weak spots (S1 weak on 26-31 December, S3 weak in early January where lining up the date puts the wrong weekday on weekends), and the specialist windows kept their gain under every stand-in. Kevin asked for the seeds to be repeated and for a hybrid.
+
+### Method
+
+Stand-ins as Series 88: **S0** the current one, **S1** the closed-day-aware median (closed days left out of the history, 0 on 25 December and 1 January), **S3** the same date a year earlier inside 24 December to 15 January (S0 elsewhere), plus the new **S6 hybrid**: the same date a year earlier (365 days) for the Christmas week, 24 December to 2 January, and S1 everywhere else; and the real number as the floor. Models fitted on the real training rows and served with each stand-in on the fold's test days (history from the training rows only); three model variants (unmasked, the 1 to 8 January mask, the companion); 480 tasks, each predicting every stand-in; a sanity step reproduced Series 88's stored forecasts to the penny. Reading written beforehand: S1 and S3 replicate if at least 5 pounds a day better than S0 on both seed sets; tied if within 5; the hybrid beats both if at least 5 lower than each on both seed sets; the specialist windows still help if at least 2.0 better under that stand-in.
+
+### Results
+
+The unmasked package's average daily miss (pounds), 585 days:
+
+| Stand-in | 100 seeds | Fresh seeds | The 24 holiday-window days (100 seeds) | 26-31 Dec | 1-8 Jan |
+|---|---|---|---|---|---|
+| S0 current | 946 | 946 | 2,755 | 4,657 | 1,895 |
+| S1 closed-day-aware | 903 | 903 | 1,703 | 3,659 | **1,283** |
+| S3 same date a year ago | 904 | 904 | 1,719 | **2,215** | 1,508 |
+| **S6 hybrid** | **892** | **892** | **1,441** | **2,215** | 1,479 |
+| real number (floor) | 854 | 855 | 1,408 | 2,061 | 1,489 |
+
+Readings set beforehand: S1 and S3 REPLICATE (-42.7 and -42.0 on the 100 seeds, -42.7 and -41.5 on the fresh seeds), TIED (S3 minus S1 +0.7 and +1.2), and the hybrid BEATS BOTH (11.2 and 11.3 lower than the better of the two). The specialist windows (the masked model on 1 to 8 January and the companion on 26 to 31 December, the unmasked model elsewhere) STILL HELP with every stand-in: net -5.9 / -6.3 (S0), -6.6 / -6.9 (S1), -9.6 / -9.5 (S3), -11.0 / -10.7 (S6); the whole-model mask stays a wash (-0.9 to -4.3).
+
+The live-like picture (average miss over the 585 days; change against today, the current stand-in with no tricks, 945.7): the specialist windows alone -5.9; S1 -42.7; S1 with the windows -49.3; S3 with the windows -51.6; the hybrid alone **-53.9**; the hybrid with the windows **-64.9**; the real-number floor -91.5 (so the hybrid with the windows closes about 71% of the gap).
+
+### Conclusion
+
+1. **Both better stand-ins replicate on 175 more seeds**, and the hybrid is clearly better than either (about 11 pounds a day), reaching 1,441 over the holiday window against the real number's 1,408.
+2. **A change to the stand-in alone is worth about 54 pounds a day** (the hybrid) with no refit: the models are unchanged and only the number fed in differs; the specialist windows add about 11 on top but need new fitted models (the masked model and the companion, a new forecast-log version).
+3. **Limits:** all of it rests on one December and one January (24 holiday-window days), the same 585 days; the hybrid was designed after seeing where S1 and S3 failed on those same days, so its extra 11 pounds is probably optimistic; the stand-in is built from the fold's training rows (staler than the live log's); the weather is the real weather. The real test is December 2026. A change to the stand-in alters an input of the pre-registered log: an amendment first (no refit), and the log has no version column for it, so the amendment must state the date from which it applies.
+
+## Series 90 — The Untested Year-End Candidates, Served with the Best Stand-In
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series90_year_end_candidates.py` · Results: `reports/experiments/series90/` (25 seeds, 200-224) · Register and reading: `docs/JANUARY_DECEMBER_CANDIDATES_2026_11.md` (committed before the run)
+
+### Context
+
+Before deciding on the hybrid stand-in and specialist windows (Series 89), Kevin asked for the other alternatives that had come up to be tested and registered. Six were untested: B (year-ago sales as an input), C (a days-since-Christmas input), D (the history inputs rebuilt without 24 December-2 January), E (a lean companion that keeps the forecast-error and same-weekday-summary inputs), F (the closed-day intensity column in every piece), H (random training masks, then masks at forecast time on 1-8 January and 26-31 December).
+
+### Method
+
+Each refitted in the four pieces of the current package, 25 seeds, 10 folds, 585 days, the deployed weekend correction, every one served with the S6 stand-in (the models fitted on the real training rows; only the test rows' `forecast_sales` differs), against the unmasked package served with S6 and the specialist windows (M1) served with S6, both Series 89's fits on the same seeds; 120 tasks; a sanity step reproduced Series 89's stored S6 forecast to the penny. Reading written beforehand: helps if the net change is at most -2.0, hurts above +2.0; beats M1 if at least 2.0 below it.
+
+### Results
+
+| Candidate (served with S6; 25 seeds) | Net, 585 days | 26-31 Dec | 1-8 Jan | All other days | Reading set beforehand |
+|---|---|---|---|---|---|
+| M1 specialist windows (the reference) | **-10.11** | -522 | -331 | -0.23 | |
+| B year-ago sales input (`sales_364`) | -3.02 | +81 | -56 | -3.16 | HELPS |
+| C days-since-Christmas input | +5.34 | +86 | +4 | +4.51 | HURTS |
+| D history inputs without the Christmas break | -4.76 | -139 | -322 | +1.09 | HELPS |
+| E specialist windows with the lean companion | -6.22 | -124 | -331 | -0.43 | WORSE than M1 |
+| F closed-day column in every piece | -1.31 | +83 | +41 | -2.78 | NOTHING |
+| H random training masks, masked at forecast time | +9.68 | -228 | -240 | +15.67 | HURTS |
+
+Combinations built afterwards from the stored forecasts (not fitted, not in the reading): D + the companion on 26-31 December -8.62 (26-31 Dec -518, 1-8 Jan -322, other days +1.13); D + the masked model on 1-8 January + the companion -8.77; B + the companion -8.83 (other days -2.91).
+
+### Conclusion
+
+1. **The specialist windows (M1) stay the best** at -10.11 a day; nothing beat them.
+2. **D is the best simple alternative**: leaving the Christmas break out of the history inputs gives -4.76 with one model and no second model, and it captures the whole 1-8 January gain (-322 against M1's -331) as well as part of late December (-139); it costs +1.09 on the other days. Adding the companion for 26-31 December brings it to -8.62, within 1.5 of M1 with the masked model for 1-8 January replaced by an input change.
+3. **B helps modestly and differently** (-3.02): it improves the other days (-3.16) but not late December (+81); with the companion -8.83.
+4. **C and H fail** (+5.34 and +9.68): a days-since-Christmas input teaches the trees nothing with two winters, and training with random masks damages the other days (+15.7). **F does nothing** (-1.31). **The full companion beats the lean one** (M1 -10.11 against E -6.22).
+5. **Limits:** 25 seeds; one December and one January; the same 585 days; a candidate that helps is a candidate to repeat on 100 and fresh seeds, not a result; the combinations were built after the results. Any adoption is Kevin's decision and needs an amendment (and, for a model change, a new forecast-log version) first.
+
+## Series 92 — The Year-End Candidates on the Rest of the Seeds
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series92_year_end_seeds_repeat.py` · Results: `reports/experiments/series92/` (seeds 225-299 and fresh seeds 300-399)
+
+### Context
+
+Series 90 (25 seeds, served with the S6 stand-in) ranked the specialist windows M1 first (-10.11) with the combinations D + the companion (-8.62) and B + the companion (-8.83) within 1.5 of it, inside 25-seed noise. Kevin asked for the seeds to be repeated to see whether the difference was only noise.
+
+### Method
+
+D (the ten history inputs rebuilt without 24 December-2 January) and B (`sales_364`, the sales on the same weekday 364 days earlier, as an input) refitted in the four pieces on seeds 225-299 (with Series 90's 25, all 100 seeds) and on fresh seeds 300-399, served with S6; compared with the unmasked package, the 1 to 8 January masked model and the companion (Series 89's S6-served fits on the same seeds); 280 tasks. Packages: M1, D, D + the companion on 26-31 December, D + the masked model + the companion, B, B + the companion. Reading written beforehand: M1 ahead if better than the candidate by more than 2.0 on both seed sets; tied if within 2.0 on both; the candidate ahead if better by more than 2.0 on both; mixed otherwise.
+
+### Results
+
+Net change against the unmasked package (pounds a day; negative = better):
+
+| Package (served with S6) | 25 seeds (Series 90) | All 100 seeds | Fresh 300-399 | 26-31 Dec (100 / fresh) | 1-8 Jan (100 / fresh) | Other days (100 / fresh) |
+|---|---|---|---|---|---|---|
+| M1 specialist windows | -10.11 | **-10.95** | **-10.65** | -575 / -548 | -349 / -345 | -0.29 / -0.31 |
+| D history inputs without the Christmas break | -4.76 | -6.36 | -5.57 | -147 / -152 | -316 / -322 | -0.53 / +0.39 |
+| D + the companion on 26-31 Dec | -8.62 | -10.69 | -9.59 | -570 / -544 | -316 / -322 | -0.53 / +0.39 |
+| D + the masked model on 1-8 Jan + the companion | -8.77 | -11.43 | -10.17 | -570 / -544 | -349 / -343 | -0.84 / +0.10 |
+| B year-ago sales input | -3.02 | -6.42 | -8.33 | +7 / +43 | -52 / -52 | **-5.93 / -8.26** |
+| B + the companion on 26-31 Dec | -8.83 | **-12.00** | **-14.00** | -560 / -534 | -52 / -52 | -5.68 / -8.01 |
+
+Readings set beforehand: D against M1 **M1 AHEAD** (+4.60, +5.08); D + the companion **TIED** (+0.26, +1.06); D + the masked model + the companion **TIED** (-0.48, +0.49); B against M1 **M1 AHEAD** (+4.53, +2.32); B + the companion **MIXED** (-1.05 on the 100 seeds, -3.35 on the fresh seeds, the candidate ahead on both but by more than 2.0 only on the fresh seeds).
+
+### Conclusion
+
+1. **The specialist windows hold up** (-10.95 and -10.65 on 100 and fresh seeds), and **the 25-seed gap to the simpler alternatives was mostly noise**: D + the companion is tied with M1 (-10.69 and -9.59), so replacing the masked January model by the break-free history inputs loses nothing measurable. D alone does not match M1 (it lacks the late-December gain, -147 against -575).
+2. **B is not a year-end fix, but its gain is uneven rather than general**: year-ago sales as an input improve the days outside the windows by 5.9 and 8.3 pounds a day (100 and fresh seeds; 3.2 on 25 seeds) while doing nothing for late December (+7, +43); the spread below shows the gain sits on Monday to Thursday and Saturday, in December-February and June-August, and that Sundays and early 2025 get worse. B + the companion is the best package numerically (-12.00 and -14.00, 1.1 and 3.4 below M1), but its edge over M1 comes from B's gain on other days, not from the holidays, so it belongs to the general feature question (the joint feature check on the to-do list), not to the year-end fix.
+3. **What each choice would be**: M1 (a masked January model and the companion, two special models); D + the companion (an input change for every piece and the companion, one special model, equal to M1 within noise); either needs a refit and a new forecast-log version; B is an input change for every piece. The stand-in change (Series 89) is separate and needs no refit.
+4. **Limits:** the same 585 days, so this checks the seeds and not the days; one December and one January; the combinations were built after Series 90; B has no value for the first year of training rows (655 of 1,006 have it). Any adoption is Kevin's decision and needs an amendment (and, for a model change, a new forecast-log version) first.
+
+### Afterwards: how B's gain is spread (100 seeds, served with S6, from the stored forecasts)
+
+The package's average miss goes from 892 to 885 pounds a day (-6.42, 0.7%); 56% of the 585 days improve and 44% get worse. By weekday (change in the average miss; negative = better): Monday -12.0, Tuesday -15.1, Wednesday -6.4, Thursday -16.4, Friday -5.9, Saturday -7.9, **Sunday +18.6** (only 46% of Sundays improve). By month it is uneven: the gain is in December 2025 to February 2026 (-39, -40, -44) and June to August (-12 to -20 in both years), while January to March 2025 (+29, +31, +12: the early folds are trained on rows that mostly have no year-ago value, since the data starts in January 2024) and March to May 2026 (+7, +11, +16) get worse; by year 2025 -4.1 and 2026 -9.6. The 30 best days alone sum to -9,010 pounds against a total change of -3,758: single days swing by up to 400 to 560 pounds either way. So the input helps in the winter holiday season and the summer, hurts on Sundays and where the model has little year-ago history, and a version of it for v1.14 should be settled by a test that tries it without the Sunday piece.
+
+## Series 93 — The Form of v1.14 (the Year-Ago Sales Input) Against Its Parent v1.13
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series93_v114_form.py` (no new fits: composed from stored forecasts) · Results: `reports/experiments/series93/` · Chart: `reports/versions/sunday_v13_v14.png`
+
+### Context
+
+The version plan: v1.13 is the hydro arm of v1.12 with the year-end specialist models, v1.14 is v1.13 plus `sales_364` (the sales on the same weekday 364 days earlier). Series 90/92 found a modest, uneven gain with Sunday worse (+18.6 against the unmasked package). Kevin asked to run it for Monday to Saturday and to see the Sunday forecasts of v1.13 against v1.14, read against the parent, which is what the log's Q8 would compare.
+
+### Method
+
+Served with S6, the deployed weekend correction, 585 days, with v1.13's specialist routing in every package (the companion on 26-31 December, the masked model on 1-8 January; they are not refitted with the input). V13 = the unmasked pieces outside the windows; the forms put `sales_364` in all four pieces, in Monday-Thursday, Friday and Saturday, in Monday-Friday, or in Monday-Thursday only (Series 90's 25 seeds plus Series 92's 75, and the fresh seeds). Reading written beforehand: helps if the net change is at most -2.0 on both seed sets; leaving Sunday out is better than all pieces if lower by more than 2.0 on both.
+
+### Results
+
+Net change against v1.13 over the 585 days (pounds a day; negative = better); v1.13's own average miss is 881:
+
+| v1.14 form (against its parent v1.13; served with S6) | All 100 seeds | Fresh 300-399 | Sunday (100 / fresh) |
+|---|---|---|---|
+| the input in all four pieces | -5.95 | -8.18 | **+14.45 / +10.79** |
+| **Monday-Saturday (the Sunday piece stays v1.13's)** | **-8.03** | **-9.73** | 0.00 / 0.00 |
+| Monday-Friday | -7.07 | -6.92 | 0 |
+| Monday-Thursday only | -6.08 | -5.35 | 0 |
+
+Readings set beforehand: every form HELPS (at least 2.0 better on both seed sets); leaving Sunday out is **not clearly better** than all pieces (-2.07 on the 100 seeds, -1.55 on the fresh seeds). By weekday the gain with Monday-Saturday is Monday -7.6/-6.8, Tuesday -12.9/-13.7, Wednesday -6.0/-6.6, Thursday -16.1/-10.4, Friday -7.0/-11.1, Saturday -6.7/-19.5 (100 / fresh seeds). The Sunday chart (84 Sundays, 100 seeds): the average miss is 1,151 for v1.13, 1,166 with the input in the Sunday piece and 1,151 for Monday-Saturday (Sunday forecasts identical to v1.13's, the correction does not carry the other days' changes into them); with the input in the Sunday piece 44 Sundays get worse and 40 better, average +14.4.
+
+### Conclusion
+
+1. **The year-ago input helps v1.13 on Monday to Saturday**: -8.03 and -9.73 pounds a day (about 1% of the average miss), the best form tested, on both seed sets.
+2. **Sunday is a coin flip with a small cost**: +14 and +11 a day when the Sunday piece gets the input (44 of 84 Sundays worse); leaving it out gains 1.6 to 2.1 a day, short of the 2.0 bar on the fresh seeds, so excluding Sunday is a sensible default, not a proven necessity.
+3. **The comparison is the right one for the version**: v1.14 = v1.13 + the input, scored against v1.13; with Sunday left alone its Sunday forecasts equal v1.13's exactly.
+4. **Limits:** the same 585 days (one December, one January); the gain is uneven over the year (winter and summer better, early 2025 and spring 2026 worse); the specialist models are not refitted with the input, which is a registration question; v1.14 needs an amendment, a refit, forecasts back-run from 2 November, and Kevin's go-ahead. The exact form (the same weekday against, say, the average of the days around last year's date) is not yet tested.
+
+## Series 94 — The Exact Form of the Year-Ago Input of v1.14
+
+**Run**: 2026-11-09 · **Script**: `src/experiments/run_series94_year_ago_forms.py` · Results: `reports/experiments/series94/` (25 seeds, 200-224) · Plan and reading: `docs/JANUARY_DECEMBER_CANDIDATES_2026_11.md` (written before the run)
+
+### Context
+
+Series 93: v1.14 (v1.13 plus a year-ago sales input) is best as `sales_364`, the sales on the same weekday 364 days earlier, in the Monday-Thursday (hydro), Friday and Saturday pieces (-8.03 and -9.73 pounds a day on 100 and fresh seeds). Kevin asked for the exact form to be tested, for instance the average around last year's date, with any other candidates.
+
+### Method
+
+Five other forms, each a new input (F two) added to the three pieces, the Sunday piece being v1.13's own: B the same calendar date 365 days earlier; C the average of the same weekday 357, 364 and 371 days earlier; D the average of the 7 days centred on last year's date (361 to 367 days earlier); E `sales_364` over D; F `sales_364` and D together. 75 fits on seeds 200-224, served with S6, read against v1.13 with its specialist routing and against the reference A (Series 90's fits on the same seeds). Reading written beforehand: better than A if at least 2.0 below it, tied within 2.0, worse above.
+
+### Results
+
+| Form (Monday-Saturday; served with S6; 25 seeds) | Net against v1.13 | Against A | Reading |
+|---|---|---|---|
+| **A `sales_364`, the same weekday 364 days earlier (the reference)** | **-5.16** | | |
+| B `sales_365`, the same calendar date | +0.66 | +5.82 | WORSE than A |
+| C `ya_wk3`, the same weekday averaged over three weeks around last year's date | +1.40 | +6.56 | WORSE than A |
+| D `ya_c7`, the 7 days centred on last year's date (Kevin's suggestion) | +1.36 | +6.52 | WORSE than A |
+| E `ya_ratio`, last year's day over its own week | -1.46 | +3.70 | WORSE than A |
+| F `sales_364` and `ya_c7` together | -2.66 | +2.49 | WORSE than A (helps against v1.13) |
+
+Row counts: `sales_364` has a value on 655 of the 1,006 rows, `sales_365` on 654, C, D and E on 646. By weekday (change against v1.13) the forms disagree: D is +27 on Friday and +13 on Wednesday, C +21 on Saturday and +18 on Friday, while A is best on Thursday (-18) and Tuesday (-16) and weakest on Saturday (+5 on these seeds).
+
+### Conclusion
+
+1. **Nothing beat `sales_364`**: every other form is more than 2.0 pounds a day worse than the reference (by 2.5 to 6.6), and four of the five do not help v1.13 at all.
+2. **Smoothing the year-ago value loses the information**: the average around last year's date (D: +1.36) and the three-week same-weekday average (C: +1.40) are both worse than the single same weekday, which keeps last year's weekday pattern and its one-off events; lining up the date and losing the weekday (B: +0.66) is worse too.
+3. **Adding a second input does not help** (F, with both: -2.66 against A's -5.16): at about 650 rows with a value an extra noisy input dilutes the one that works. The ratio form (E: -1.46) is the best of the others and still 3.7 behind.
+4. **So v1.14 keeps `sales_364`** in the Monday-Thursday (hydro), Friday and Saturday pieces. A is -5.16 on these 25 seeds against -8.03 on the 100 seeds (seed noise of about 3); no form was close enough to A to warrant repeating on more seeds.
+5. **Limits:** 25 seeds; the same 585 days; one untested form of a different kind remains, a growth-adjusted year-ago value (last year's day scaled by how this year's recent level compares with last year's at the same time), which was not part of this series; the exact form is then a registration choice, Kevin's, with an amendment and a refit first.
+
+## Descriptive checks around Series 66-70 (no model fits)
+
+**Run**: 2026-11-07 · scripts kept outside the project
+
+1. **Food and Beverage on payday Saturdays.** The raw Rotaready files carry hourly sales and the manager's forecast split into Food and Beverage streams; the model has only ever seen the daily total. The 26 Saturdays after a Friday payday, against the mean of the other Saturdays within five weeks: Food +£388 (2.2 standard errors, higher on 22 of 26), Beverage +£147 (1.1, 17 of 26), total +£534 (1.8, 18 of 26). The beverage share (−0.1 points) and the lunch (−0.1), evening (−0.3) and late (+0.6) shares of the day do not move: payday makes the day bigger, not different. Seven comparisons on 26 days, a neighbour baseline and no model: a lead for forecasting Food and Beverage separately (on the to-do list), not a finding.
+2. **Payday near a long weekend:** 45 days in 15 episodes where a payday (any of the three rules) is within three days of a long weekend; the post model's error on them in the backtest is +£144 against −£83 on other Friday to Monday days, with a spread of about £1,300 a day: noise. No model run.
+3. **December pay brought forward:** early December pay is common (HMRC keeps a permanent reporting easement for it; no typical date or share found), but the manager's miss on 15 to 23 December was +9 to +17% in 2024 and −11 to −16% in 2025 (the backtest holds one December), so nothing can be tested before December 2026.
+4. **Other income dates** (State Pension, Child Benefit, Universal Credit, Scottish Child Payment, SAAS student maintenance, "usually the 7th" on one unverified student site): no day-of-month percentages exist; most are spread by person. A student effect near the 7th would already show in the flat days 1 to 24 of the day-of-month error check.
+
+## Check — Was the Hydro Monday-to-Thursday and Saturday-Fallback Pattern of Series 54-56 a Lucky Baseline?
+
+**Run**: 2026-11-07 · **Script**: `src/experiments/run_baseline_seed_check.py` · Results: `reports/experiments/baseline_seed_check/` · Not a numbered series (the numbers 59-70 were in use in another session)
+
+### Context
+
+Across Series 54-56, the 12 calendar variants were each compared with one "none" fit of the piece (100 seeds, 200-299). The hydro Monday-to-Thursday piece beat that fit in 10 of 12 variants (mean −£0.96 a day), where the plain Monday-to-Thursday piece, which differs from it by one flag, beat it in 1 of 12 (mean +£1.54); the raw Saturday fallback beat it in 10 of 12 in the backtest (mean −£2.83) and lost in 10 of 12 on the 56 new days. If a shared baseline landed a little high by chance, every variant would look better against it.
+
+### Method
+
+The three pieces' "none" fits refitted on 100 fresh seeds (300-399), same columns, folds and data, 585 backtest days and the 56 new days (90 fits); the plain Monday-to-Thursday piece is a control. Written down beforehand: the baselines differ by £1 to £2 on a piece's own weekdays, the hydro pattern shrinks a lot against the average of the two baselines; it is mostly luck if the hydro piece keeps less than half its gain (mean above −£0.5) or fewer than 8 of 12 variants, real if it keeps most of it (mean below −£0.75, 8 or more of 12).
+
+### Results
+
+The baselines on their own weekdays (£; fresh minus old, 95% interval):
+
+| Piece | Seeds 200-299 | Seeds 300-399 | Difference | New days 200-299 / 300-399 |
+|---|---|---|---|---|
+| Monday-Thursday (control) | 716.95 | 718.35 | +1.41 (−1.0 to +3.9) | 810.51 / 812.00 |
+| Monday-Thursday (hydro) | 705.42 | 705.30 | −0.12 (−2.4 to +2.1) | 764.79 / 769.85 |
+| Saturday fallback (raw) | 1,171.69 | 1,173.26 | +1.56 (−3.3 to +6.2) | 1,054.64 / 1,053.30 |
+
+The 12 variants against each baseline (variants beating it out of 12, mean change in £ a day):
+
+| Piece and part | Old baseline | Fresh baseline | Average of both |
+|---|---|---|---|
+| Hydro, backtest | 10, −0.96 | 10, −0.84 | 10, −0.78 |
+| Hydro, 56 new days | 3, +1.70 | 11, −3.36 | 9, −0.83 |
+| Saturday fallback, backtest | 10, −2.83 | 10, −4.40 | 10, −3.61 |
+| Saturday fallback, new days | 2, +11.67 | 1, +13.01 | 2, +12.34 |
+| Plain Monday-Thursday, backtest | 1, +1.54 | 7, +0.13 | 4, +0.85 |
+| Plain Monday-Thursday, new days | 5, +0.93 | 7, −0.56 | 5, +0.18 |
+
+### Conclusion
+
+1. **The hydro backtest pattern is not baseline luck:** its baseline did not move (−£0.12), and against the average baseline the variants keep −£0.78 (81% of the gain) with 10 of 12 beating it, which meets the rule written beforehand (barely). The effect is tiny: about £0.8 a day on Monday to Thursday, about £0.45 on the whole hydro model, spread over every calendar-structure variant of three families rather than tied to one column, and absent from the plain Monday-to-Thursday piece. Not worth a new version.
+2. **The hydro "worse on the new days" result was baseline luck:** its new-days baseline moved £5 on 32 days (764.79 to 769.85); against the fresh or the averaged baseline the variants are better on the new days in 11 and 9 of 12 (−£3.4 and −£0.8), so the backtest and the new days agree in sign.
+3. **The Saturday fallback pattern is not baseline luck either way:** better in 10 of 12 in the backtest (−£2.8 to −£4.4) and worse on the new days in 10 to 11 of 12 (+£11.7 to +£13.0) against every baseline. Unresolved: the new days hold 8 Saturdays, and the piece is used only when Saturday's inputs are not yet known.
+4. **A method caveat for Series 46-58:** a baseline's own seed noise on the 56 new days is about £1.5 to £5 a day per piece, as large as the effects judged there, so "the new days disagree" carries less weight than it was given. The conclusions do not change, because the backtest results were inside the noise on their own.
+5. **The expectation written beforehand was partly wrong:** the hydro baseline did not move, where the other two moved by £1.4 and £1.6.
+6. **Caveats:** the 12 variants share their baseline and are not independent; the variants themselves were not refitted; the post model's four baselines were not refitted.
+
 ## Appendix: full candidate pool reference
 
 **In the original XGBoost production model, and the first 15 of the final
@@ -2137,6 +5138,46 @@ feature set on current evidence. See Series 7's conclusions for an open
 question about whether this consistent pattern reflects real redundancy
 or CatBoost's hyperparameters (fixed since Series 1, tuned for a smaller
 feature space) being unable to exploit any added feature well.
+
+**Calendar and cycle columns re-examined (Series 44-56), all kept:** `month`,
+`month_sin`, `month_cos`, `day_of_week`, `day_of_week_sin`, `day_of_week_cos`,
+`day_of_year`, `day_of_year_sin`, `day_of_year_cos`, `year`, `is_weekend`.
+Day of year carries the seasonality (removing it costs £17 to £31); the three
+month columns add nothing once it is there; `is_weekend` means Friday to Sunday
+(`day_of_week >= 4`) and single-day flags help only the plain log model, not the
+real Friday, Saturday and Sunday pieces; `year` is a wash in the pieces but a
+rollover risk if the model is retrained in January to March, so check it again
+before such a retrain; a leap-year-safe day of year is a tie and a correctness
+fix for 2028. Not engineered: day of month, week of month, week of year, month
+start and end flags; a screen of the post model's errors (see "Screen" after
+Series 53) finds no pattern by day of month or week of month, and all four were
+then tested in the weekly log's models: day of month in Series 54 (no gain), week
+of month in Series 55 (a hair better in the plain form, inside the noise), week of
+year and the month start and end flags in Series 56 (no gain, worse on the new days).
+How the season is represented was tested too: a smooth weekday-specific wave
+baseline with CatBoost learning the leftovers (Series 57) is £99 to £246 a day worse,
+and fitting that baseline across blocks so CatBoost sees realistic leftovers
+(Series 58) changes nothing.
+
+**Payday columns re-examined (Series 59-73), all four kept as deployed:** `days_since_payday`,
+`is_payday_window_pm3`, `is_payday` and `days_to_payday`, all built on the last working day. The two known
+flaws (`days_since_payday` reads 28-33 on payday itself; `days_to_payday` goes negative on the days after
+an early payday) were repaired in Series 59, and the repair is £3 to £5 a day worse; dropping the four
+columns is £5 to £8 worse. Explicit flags for the weekend after an early payday (Series 60), a window and a
+mix of the last working day, 25th and 28th found in the model's own errors (Series 61), symmetric windows,
+a graded distance and the 25th, 28th and 15th as full column sets (Series 64) and a payday-Saturday
+correction instead of a feature (Series 65) all fail to beat them. The deployed `days_since_payday` is the
+day of the month plus 0 to 3 days, but plain day of month is £3 worse and splitting the offset out is worse
+still (Series 62-63), so why the deployed columns work is not explained. A pay-cycle phase (Series 67), working days
+to payday (Series 68) and a payday intensity summed over the pay dates (Series 70) did not help either; the best of
+those, a triangle intensity, is £3.3 to £3.8 better in the backtest with intervals that include zero and better on the
+56 new days, and is on the to-do list with signed distance (Series 71 could not amplify it: a narrower triangle is a little
+weaker, a wider one or a 7-day sum loses it, and the gain fades from £5.1 on the first half of the days to £1.7 on the second; a placebo test, Series 72, found it better than all 16 placebo
+columns in the Saturday piece, and the placebos fade the same way, so part of the fade is generic; Series 73 found it better than 32 of 32 placebos, carried by the month-end rules, and
+replicated on fresh seeds, and forecast-log version v1.11 puts it in the Saturday pieces). The manager's forecast against the mean of the sales 14,
+21 and 28 days earlier (Series 66, 69) is not a payday idea: it replicates on fresh seeds (about £4.4 a day better)
+but sits in 2025 and is worse on the new days. Ideas that wait for more data are in the README's Future Work
+(to-do list and watch list).
 
 **Never a candidate (leakage or non-feature intermediate):**
 `forecast_error`, `payday`, `prev_payday`, `next_payday`.

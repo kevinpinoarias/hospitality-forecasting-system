@@ -186,3 +186,26 @@ def test_served_features_match_the_series_18_construction(client):
         expected[FINAL_FEATURES].to_numpy(dtype=float),
         equal_nan=True,
     )
+
+
+# --- comparisons never use a closed day ------------------------------------------
+
+def test_a_closed_day_is_never_offered_as_a_comparison():
+    from src.api.history import comparison_sales_on
+
+    sales = pd.DataFrame({"date": pd.to_datetime(["2025-12-25", "2025-12-18", "2026-01-01"]), "total_sales": [0.0, 9000.0, 0.0]})
+    assert comparison_sales_on(sales, dt.date(2025, 12, 25)) is None   # Christmas Day
+    assert comparison_sales_on(sales, dt.date(2026, 1, 1)) is None     # New Year's Day
+    assert comparison_sales_on(sales, dt.date(2025, 12, 18)) == 9000.0  # an open day is unchanged
+
+
+def test_christmas_eve_has_no_zero_last_year_comparison(client):
+    # The equivalent Thursday last year for 24 December 2026 is Christmas Day 2025, when the venue was closed.
+    result = client.post("/predict", json={"requests": [{"date": "2026-12-24"}]}).json()["results"][0]
+    assert result["historical_comparison"]["same_day_last_year"] is None
+
+
+def test_the_day_after_new_year_week_has_no_zero_last_week_comparison(client):
+    # 8 January 2026: the same day last week is New Year's Day.
+    result = client.post("/predict", json={"requests": [{"date": "2026-01-08"}]}).json()["results"][0]
+    assert result["historical_comparison"]["same_day_last_week"] is None

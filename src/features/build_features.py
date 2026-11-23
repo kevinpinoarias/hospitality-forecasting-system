@@ -14,7 +14,7 @@ Notes
 -----
 - This public portfolio version uses anonymised local data.
 - The file builds one broad engineered feature set. The narrower sets the
-  models train on (V1_FEATURES, V2_FEATURES below) are selected from it with
+  models train on (FEATURE_LIST_15, FEATURE_LIST_38 below) are selected from it with
   `model_frame` / `features_for`; there is no separate model-ready file.
 """
 
@@ -57,16 +57,21 @@ TARGET_COL = "total_sales"
 # ---------------------------------------------------------------------
 # Feature sets - the ONE definition of which columns each model reads
 # ---------------------------------------------------------------------
-# V1: the original 15 features (XGBoost, the neural models, and the baseline
-#     the experiment log started from).
-# V2: all 38 - V1 plus 23 candidates added in Series 2 - used by the final
-#     CatBoost model. The order is part of the definition: column order
-#     changes CatBoost's seeded fits, so V2 must keep V1 first and the
-#     candidates in this order (tests/test_final_model.py and
-#     tests/test_config.py check it against the experiment framework).
+# FEATURE_LIST_15: the original 15 features (XGBoost, the neural models, and
+#     the baseline the experiment log started from).
+# FEATURE_LIST_38: all 38 - the 15 plus 23 candidates added in Series 2 - used
+#     by the final CatBoost model and the base of every forecast-log piece.
+#     The order is part of the definition: column order changes CatBoost's
+#     seeded fits, so the 38 must keep the 15 first and the candidates in this
+#     order (tests/test_final_model.py and tests/test_config.py check it against
+#     the experiment framework).
+# Both are in use: neither replaced the other. Earlier documents (the experiment
+# log up to Series 22, the Series 20 scripts) call them V1 and V2. That is
+# unrelated to the forecast log's model version "v1" and to the "v1"/"v2"
+# school calendars (SCHOOL_BREAKS_V1).
 # config/config.yaml says which set each model uses (features.use).
 
-V1_FEATURES = [
+FEATURE_LIST_15 = [
     "forecast_sales",
     "month_sin",
     "day_of_week",
@@ -110,16 +115,16 @@ CANDIDATE_FEATURES = [
     "warm_streak_len",
 ]
 
-V2_FEATURES = V1_FEATURES + CANDIDATE_FEATURES
+FEATURE_LIST_38 = FEATURE_LIST_15 + CANDIDATE_FEATURES
 
-FEATURE_SETS = {"v1": V1_FEATURES, "v2": V2_FEATURES}
+FEATURE_SETS = {"feature_list_15": FEATURE_LIST_15, "feature_list_38": FEATURE_LIST_38}
 
 # The anomaly feature's name contains its window (temp_anomaly_14d), so the
-# window in the config and the name in V2_FEATURES must agree.
-if f"temp_anomaly_{CONFIG.weather.anomaly_window}d" not in V2_FEATURES:
+# window in the config and the name in FEATURE_LIST_38 must agree.
+if f"temp_anomaly_{CONFIG.weather.anomaly_window}d" not in FEATURE_LIST_38:
     raise ValueError(
         f"weather.anomaly_window is {CONFIG.weather.anomaly_window}, which builds a column "
-        f"named temp_anomaly_{CONFIG.weather.anomaly_window}d - that is not in V2_FEATURES. "
+        f"named temp_anomaly_{CONFIG.weather.anomaly_window}d - that is not in FEATURE_LIST_38. "
         "Rename the feature there (and everywhere it is used) or change the window back."
     )
 
@@ -319,18 +324,60 @@ def add_bank_holiday_features(
 # School holiday features
 # ---------------------------------------------------------------------
 
+# Glasgow City Council school holidays, verified against independent sources
+# (see docs/SCHOOL_CALENDAR.md for every date, its sources and its confidence).
+#
+# Convention: a break runs from the first day WITHOUT pupils after the last
+# school day (the closing day itself is a school day) to the last day before
+# pupils return, so the weekends on either side of a break are inside it.
+# Staff in-service days that sit next to a break are pupil-free days and are
+# part of it. The October week and the February mid-term (Monday and Tuesday
+# plus the in-service day) are included. Not included: single-day closures and
+# the September and May long weekends. The 2027 rows follow the council's
+# published dates and
+# change no training row; they exist so the API flags school holidays on the
+# dates it forecasts. Dates after the last break here get no flag.
 SCHOOL_BREAKS = pd.DataFrame([
+    {"council": "Glasgow", "break_type": "october",   "start": "2023-10-13", "end": "2023-10-22"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2023-12-23", "end": "2024-01-07"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2024-02-10", "end": "2024-02-14"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2024-03-29", "end": "2024-04-14"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2024-06-27", "end": "2024-08-13"},
+    {"council": "Glasgow", "break_type": "october",   "start": "2024-10-11", "end": "2024-10-20"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2024-12-21", "end": "2025-01-05"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2025-02-15", "end": "2025-02-19"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2025-04-05", "end": "2025-04-21"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2025-06-26", "end": "2025-08-13"},
+    {"council": "Glasgow", "break_type": "october",   "start": "2025-10-10", "end": "2025-10-19"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2025-12-20", "end": "2026-01-04"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2026-02-14", "end": "2026-02-18"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2026-04-03", "end": "2026-04-19"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2026-06-26", "end": "2026-08-11"},
+    {"council": "Glasgow", "break_type": "october",   "start": "2026-10-09", "end": "2026-10-18"},
+    {"council": "Glasgow", "break_type": "christmas", "start": "2026-12-19", "end": "2027-01-04"},
+    {"council": "Glasgow", "break_type": "february",  "start": "2027-02-13", "end": "2027-02-17"},
+    {"council": "Glasgow", "break_type": "easter",    "start": "2027-04-03", "end": "2027-04-18"},
+    {"council": "Glasgow", "break_type": "summer",    "start": "2027-06-26", "end": "2027-08-17"},
+])
+
+# The break types the pipeline, the API and the experiments all flag. The three
+# long holidays came first; the October week and February mid-term were added
+# once the calendar was verified (docs/SCHOOL_CALENDAR.md).
+LONG_BREAK_TYPES = ("christmas", "summer", "easter")
+SCHOOL_BREAK_TYPES = LONG_BREAK_TYPES + ("october", "february")
+
+# The calendar used by Series 1-28 (and the model in production until the
+# calendar was verified): covers only Christmas 2024 onwards, with weekday-only
+# spans and several wrong start and end dates. Kept so those results stay
+# reproducible and so the effect of the correction can be measured
+# (src/experiments/run_series29_school_calendar.py).
+SCHOOL_BREAKS_V1 = pd.DataFrame([
     {"council": "Glasgow", "break_type": "christmas", "start": "2024-12-23", "end": "2025-01-03"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2025-04-07", "end": "2025-04-18"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2025-06-30", "end": "2025-08-15"},
     {"council": "Glasgow", "break_type": "christmas", "start": "2025-12-22", "end": "2026-01-05"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2026-03-30", "end": "2026-04-10"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2026-06-29", "end": "2026-08-14"},
-    # 2026-27, from Glasgow City Council's published term dates. These fall
-    # after the end of the current data, so they change no training row -
-    # they exist so the API flags school holidays on the dates it forecasts.
-    # Dates after the last break here get no school-holiday flag; add each
-    # year's dates as the council publishes them.
     {"council": "Glasgow", "break_type": "christmas", "start": "2026-12-21", "end": "2027-01-04"},
     {"council": "Glasgow", "break_type": "easter",    "start": "2027-04-05", "end": "2027-04-16"},
     {"council": "Glasgow", "break_type": "summer",    "start": "2027-06-28", "end": "2027-08-10"},
@@ -342,7 +389,7 @@ def add_school_holiday_features(
     date_col: str = DATE_COL,
     breaks_df: pd.DataFrame | None = None,
     council: str = CONFIG.project.council,
-    break_types: tuple[str, ...] = ("christmas", "summer", "easter"),
+    break_types: tuple[str, ...] = SCHOOL_BREAK_TYPES,
 ) -> pd.DataFrame:
     """Add school holiday flags from a council-specific break table."""
     if breaks_df is None:
@@ -727,11 +774,11 @@ def add_weather_features(
 # ---------------------------------------------------------------------
 
 def model_frame(df: pd.DataFrame, features: list[str] | None = None) -> pd.DataFrame:
-    """The date, the target and `features` (V1 by default), with the rows the
+    """The date, the target and `features` (FEATURE_LIST_15 by default), with the rows the
     lag/rolling/weather edges leave incomplete dropped - what the XGBoost and
     neural models train on. Replaces the old model_features.csv, which was
     exactly this selection written to disk."""
-    columns = [DATE_COL, TARGET_COL] + list(V1_FEATURES if features is None else features)
+    columns = [DATE_COL, TARGET_COL] + list(FEATURE_LIST_15 if features is None else features)
     missing = [col for col in columns if col not in df.columns]
     if missing:
         raise ValueError(f"Missing required model columns: {missing}")
@@ -751,7 +798,7 @@ def load_model_frame(path: Path | None = None, features: list[str] | None = None
 def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build and save the full engineered feature dataset, and return it together
-    with the V1 model frame (`model_frame`; not written to disk).
+    with the 15-feature model frame (`model_frame`; not written to disk).
     """
     df = load_daily_sales()
 
@@ -763,7 +810,7 @@ def build_feature_dataset() -> tuple[pd.DataFrame, pd.DataFrame]:
         date_col=DATE_COL,
         breaks_df=SCHOOL_BREAKS,
         council=CONFIG.project.council,
-        break_types=("christmas", "summer", "easter"),
+        break_types=SCHOOL_BREAK_TYPES,
     )
     df = add_christmas_period_feature(df, date_col=DATE_COL)  # is_christmas_period: DEPRECATED, see function docstring
     df = add_december_intensity_feature(df, date_col=DATE_COL, target_col=TARGET_COL)  # december_intensity_index: DEPRECATED, see function docstring

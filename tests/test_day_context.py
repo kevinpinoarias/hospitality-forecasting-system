@@ -76,6 +76,7 @@ def test_bank_holidays_are_named(frame):
 def test_school_holidays_follow_the_model_flags(frame):
     assert context(frame, "2026-12-24").school_holiday == "Christmas holidays"
     assert context(frame, "2026-11-12").school_holiday is None
+    assert context(frame, "2026-10-14").school_holiday == "October week"
 
 
 def test_weekend_trading_is_friday_to_sunday(frame):
@@ -126,3 +127,13 @@ def test_forecast_gap_direction_for_both_signs(frame):
 
     negative = _forecast_gap(-150.0)  # actual fell short of the forecast
     assert negative.direction == "over_forecast" and negative.gap_gbp == 150.0
+
+
+def test_the_february_mid_term_is_named():
+    dates = pd.date_range("2027-02-01", "2027-02-28", freq="D")
+    rng = np.random.default_rng(1)
+    daily = pd.DataFrame({"date": dates, "total_sales": rng.uniform(5000, 15000, len(dates)), "forecast_sales": rng.uniform(5000, 15000, len(dates)),
+                          "max_temp": rng.uniform(0, 10, len(dates)), "rain_mm": rng.uniform(0, 8, len(dates)), "sun_hours": rng.uniform(0, 6, len(dates))})
+    february = build_feature_frame(daily).set_index("date", drop=False)
+    assert context(february, "2027-02-16").school_holiday == "February mid-term break"
+    assert context(february, "2027-02-18").school_holiday is None

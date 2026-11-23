@@ -81,12 +81,38 @@ only the size of the difference.
 """
 
 
-def build_agent():
+# Where the agent's tools come from: "direct" (the default, and what the
+# deployed app uses) hands it the Python functions in tools.py; "mcp" loads the
+# same eight tools through the MCP server (src/assistant/mcp_tools.py). Set
+# ASSISTANT_TOOLS=mcp to try it; the system prompt and the agent are the same.
+TOOLS_ENV = "ASSISTANT_TOOLS"
+
+
+def tools_mode() -> str:
+    return "mcp" if os.environ.get(TOOLS_ENV, "").strip().lower() == "mcp" else "direct"
+
+
+def build_agent(mode: str | None = None):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not set - check your .env file.")
 
     llm = ChatGoogleGenerativeAI(model=MODEL, google_api_key=api_key)
+    mode = mode or tools_mode()
+
+    if mode == "mcp":
+        # Imported only here, so the deployed (direct) app needs neither
+        # langchain-mcp-adapters nor the MCP server.
+        from src.assistant.mcp_tools import MCPAgent, shared_session
+
+        session = shared_session()
+        graph = create_agent(
+            model=llm,
+            tools=session.tools,
+            system_prompt=SYSTEM_INSTRUCTION + ACCURACY_CHECK_INSTRUCTION,
+            checkpointer=InMemorySaver(),
+        )
+        return MCPAgent(graph, session)
 
     return create_agent(
         model=llm,

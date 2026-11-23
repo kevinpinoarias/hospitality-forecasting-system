@@ -32,7 +32,9 @@ from src.experiments.splits import generate_rolling_origin_folds
 from src.models.final_model import DATE_COL, FINAL_FEATURES, FINAL_PARAMS, TARGET_COL  # noqa: F401 (FINAL_PARAMS is re-exported to the series scripts)
 from src.models.train_final_model import INITIAL_TRAIN_DAYS, TEST_DAYS, load_final_model_data
 
-OUT_DIR = CONFIG.path("experiments_dir") / "series19_21"
+# Set SERIES_RESULTS_SUFFIX (for example _cal2) to write a whole re-run to its own folders and leave the earlier results untouched.
+SUFFIX = os.environ.get("SERIES_RESULTS_SUFFIX", "")
+OUT_DIR = CONFIG.path("experiments_dir") / f"series19_21{SUFFIX}"
 FINAL_SEEDS_25 = list(range(25))  # the seeds the served model is bagged over
 V1_FEATURES_ORDERED = FINAL_FEATURES[:15]
 

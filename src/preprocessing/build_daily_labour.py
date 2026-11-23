@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
-from src.preprocessing.common import normalise_series, read_file
+from src.preprocessing.common import build_daily_dataset, normalise_series
 
 
 # ---------------------------------------------------------------------
@@ -29,7 +29,6 @@ from src.preprocessing.common import normalise_series, read_file
 
 from src.config import CONFIG
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INPUT_DIR = CONFIG.path("interim_labour_dir")
 OUTPUT_DIR = CONFIG.path("processed_labour_dir")
 PER_FILE_DIR = OUTPUT_DIR / "per_file"
@@ -41,8 +40,6 @@ PER_FILE_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------
-
-PATTERN = "*.csv"
 
 DATE_COL = "Date of business"
 METRIC_COL = "Metric"
@@ -122,56 +119,16 @@ def build_daily_labour(input_dir: Path = INPUT_DIR) -> pd.DataFrame:
     pd.DataFrame
         Master daily labour dataset across all files.
     """
-    all_days: list[pd.DataFrame] = []
-    summary: list[dict] = []
-
-    files = sorted(input_dir.glob(PATTERN))
-    if not files:
-        raise FileNotFoundError(f"No files found in {input_dir}")
-
-    for path in files:
-        if path.name.lower().startswith("daily_") or path.name.lower().endswith("summary.csv"):
-            continue
-
-        try:
-            df = read_file(path)
-            daily = build_daily_from_week(df)
-            daily["source_file"] = path.name
-
-            per_file_out = PER_FILE_DIR / f"{path.stem}_daily_labour.csv"
-            daily.to_csv(per_file_out, index=False)
-
-            all_days.append(daily)
-
-            summary.append(
-                {
-                    "file": path.name,
-                    "days_found": len(daily),
-                    "min_date": str(daily["date"].min()) if len(daily) else "",
-                    "max_date": str(daily["date"].max()) if len(daily) else "",
-                }
-            )
-
-            print(f"[OK] {path.name}: {len(daily)} days -> {per_file_out.name}")
-
-        except Exception as exc:
-            print(f"[ERROR] {path.name}: {exc}")
-            summary.append({"file": path.name, "error": repr(exc)})
-
-    if not all_days:
-        raise ValueError("No daily labour datasets were built successfully.")
-
-    master = pd.concat(all_days, ignore_index=True)
-
-    master_out = OUTPUT_DIR / "daily_labour_totals_master.csv"
-    master.to_csv(master_out, index=False)
-    print(f"\nMaster written to: {master_out}")
-
-    summary_out = OUTPUT_DIR / "daily_labour_build_summary.csv"
-    pd.DataFrame(summary).to_csv(summary_out, index=False)
-    print(f"Summary written to: {summary_out}")
-
-    return master
+    return build_daily_dataset(
+        label="labour",
+        input_dir=input_dir,
+        output_dir=OUTPUT_DIR,
+        per_file_dir=PER_FILE_DIR,
+        per_file_suffix="_daily_labour.csv",
+        master_name="daily_labour_totals_master.csv",
+        summary_name="daily_labour_build_summary.csv",
+        build_week=build_daily_from_week,
+    )
 
 
 if __name__ == "__main__":

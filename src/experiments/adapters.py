@@ -48,7 +48,7 @@ TARGET_COL = "total_sales"
 # use (see src/features/build_features.py's FINAL_MODEL_FEATURES) -
 # now chosen in config/config.yaml (features.use.experiments_baseline) and
 # defined once in build_features.py. Do not change it to another set without
-# re-running the experiment log - every series is measured against V1.
+# re-running the experiment log - every series is measured against the 15 (feature_list_15).
 FEATURES = features_for("experiments_baseline")
 
 PROPHET_REGRESSORS = [
