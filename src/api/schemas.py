@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field, field_validator
 class PredictItem(BaseModel):
     date: date_type
     forecast_sales: float | None = Field(default=None, ge=0)
+    # Which model answers: "standard" (the default, the live model) or a version from GET /versions.
+    model_version: str | None = None
 
 
 class PredictRequest(BaseModel):
@@ -165,10 +167,27 @@ class PredictResult(BaseModel):
     # future dates or genuine gaps). Lets a caller compare a past
     # prediction against what actually happened.
     actual_sales: float | None = None
+    # The model whose figures are in `predictions`: "standard" or the version asked for. When a version
+    # was asked for but cannot answer this date, the standard model answers and the note says why.
+    model_version: str = "standard"
+    model_version_note: str | None = None
 
 
 class PredictResponse(BaseModel):
     results: list[PredictResult]
+
+
+class ModelChoice(BaseModel):
+    id: str
+    label: str
+    legend: str
+    status: str
+    registered: date_type | None = None
+    available: bool
+
+
+class VersionsResponse(BaseModel):
+    choices: list[ModelChoice]
 
 
 class RankedErrorDay(BaseModel):

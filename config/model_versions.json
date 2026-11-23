@@ -1,0 +1,197 @@
+{
+  "source": "forecasting-log models/versions.json",
+  "choices": [
+    {
+      "id": "standard",
+      "label": "Standard model (live)",
+      "legend": "The live model: CatBoost averaged over 25 seeds with 38 inputs, chosen after 18 series of backtests.",
+      "status": "The deployed model."
+    },
+    {
+      "id": "v1-post",
+      "label": "v1-post",
+      "legend": "The weekend package: separate models for Friday, Saturday and Sunday on top of the main model, and a Saturday and Sunday correction from recent errors (Series 23-27).",
+      "status": "Under test in the weekly forecast log since 2026-11-02; formal results after 26 to 52 weeks.",
+      "version": "v1",
+      "arm": "post",
+      "standin": "S0",
+      "registered": "2026-11-02",
+      "pieces": {
+        "fri_A_all": "24d457e3375098d52548c7d28d20b5f7f270722870495d50ce606a6c6d2cf0a8",
+        "log": "c4530b9f0b0b87a645b3dbdfd607b2f7afdd59279c4249bbe6eae4bf1cceb742",
+        "log_hydro_thu": "b1feb1206d233cae690f241162db60855ba6e732bedd9cbd8908d2a6b411d92a",
+        "raw": "e09266db831ee0a8bb75680ea510468773df5161f034f55b56c10c6b2a1bc0bd",
+        "sat_A_lags": "ba6a607b6b0c539f0daaa782880fe6d3ea1ffe7e68c782ce796d188131924761",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1-hydro",
+      "label": "v1-hydro",
+      "legend": "The weekend package plus a flag for Thursdays with a show at the OVO Hydro (Series 36-41).",
+      "status": "Under test in the weekly forecast log since 2026-11-02; formal results after 26 to 52 weeks.",
+      "version": "v1",
+      "arm": "hydro",
+      "standin": "S0",
+      "registered": "2026-11-02",
+      "pieces": {
+        "fri_A_all": "24d457e3375098d52548c7d28d20b5f7f270722870495d50ce606a6c6d2cf0a8",
+        "log": "c4530b9f0b0b87a645b3dbdfd607b2f7afdd59279c4249bbe6eae4bf1cceb742",
+        "log_hydro_thu": "b1feb1206d233cae690f241162db60855ba6e732bedd9cbd8908d2a6b411d92a",
+        "raw": "e09266db831ee0a8bb75680ea510468773df5161f034f55b56c10c6b2a1bc0bd",
+        "sat_A_lags": "ba6a607b6b0c539f0daaa782880fe6d3ea1ffe7e68c782ce796d188131924761",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1.11",
+      "label": "v1.11",
+      "legend": "The Hydro model plus a payday intensity, how close the day is to payday, in the Saturday models (Series 70-73).",
+      "status": "Under test in the weekly forecast log since 2026-11-07; formal results after 26 to 52 weeks.",
+      "version": "v1.11",
+      "arm": "hydro",
+      "standin": "S0",
+      "registered": "2026-11-07",
+      "pieces": {
+        "fri_A_all": "24d457e3375098d52548c7d28d20b5f7f270722870495d50ce606a6c6d2cf0a8",
+        "log_hydro_thu": "b1feb1206d233cae690f241162db60855ba6e732bedd9cbd8908d2a6b411d92a",
+        "raw": "d717ace8466bb54fe37723fe0e8bca9cd94f9592f63198dfd396a70ff16ac374",
+        "sat_A_lags": "504bd04625c22e55d0f196acc2fc7067dc8f907a5642cecec68ae4a333cd4048",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1.12",
+      "label": "v1.12",
+      "legend": "v1.11 with Christmas Day and New Year's Day treated as closed days in the payday intensity (Series 76-78).",
+      "status": "Under test in the weekly forecast log since 2026-11-08; formal results after 26 to 52 weeks.",
+      "version": "v1.12",
+      "arm": "hydro",
+      "standin": "S0",
+      "registered": "2026-11-08",
+      "pieces": {
+        "fri_A_all": "24d457e3375098d52548c7d28d20b5f7f270722870495d50ce606a6c6d2cf0a8",
+        "log_hydro_thu": "b1feb1206d233cae690f241162db60855ba6e732bedd9cbd8908d2a6b411d92a",
+        "raw": "7762374e76e8563de2d433d81c4b2ab0091487da38978ac05555caf2af501edc",
+        "sat_A_lags": "f6e78d400e769e76374f5d22c2ab76406e41fc2901df2cb4fcf528ec7468805d",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1.13",
+      "label": "v1.13",
+      "legend": "v1.12 plus specialist models for 26 December to 8 January, when the usual recent-sales inputs mislead (Series 80-89).",
+      "status": "Under test in the weekly forecast log since 2026-11-14; formal results after 26 to 52 weeks.",
+      "version": "v1.13",
+      "arm": "hydro",
+      "standin": "S0",
+      "registered": "2026-11-14",
+      "pieces": {
+        "comp_fri_A_all": "89e7e71d54d86c777f7bbdd684293cb63294eb38d2d38f180f94b1f20476eee2",
+        "comp_log_hydro_thu": "73fb1531f38f5d34604964182464abee9fa2838ce810e14c90fbf314c788dd30",
+        "comp_raw": "e02f7d5918ea4c1311d65496be8d848c100a9263c4c2782145c5379e3e5c682c",
+        "comp_sat_A_lags": "76d91be3c9f38b2e8e8a93f4db3dc97d9142b49ef83915e6090b5fc4db9b07f6",
+        "comp_sun_B": "fb4c418fef82c662aeee8f92144341480e4dd616f0ae65fe9b4d10592b66d834",
+        "fri_A_all": "24d457e3375098d52548c7d28d20b5f7f270722870495d50ce606a6c6d2cf0a8",
+        "log_hydro_thu": "b1feb1206d233cae690f241162db60855ba6e732bedd9cbd8908d2a6b411d92a",
+        "mask_fri_A_all": "a7d0cfb14d52b964575c94382173c0d4097a6695360d1e7639697faed1e01bac",
+        "mask_log_hydro_thu": "daa43e0e5109e674a27acfa9558480fdd201e5ed7f61299602d67cf31915704c",
+        "mask_raw": "9de21b57ecda0014303f316ed1146dbd345250061e5934e4fb456a00796ee06d",
+        "mask_sat_A_lags": "bbfbcb9eb99d001d35e5fc813cdf4c5525e3eff95e8d1ecd8f797bce57d2a0b2",
+        "mask_sun_B": "81918997d2a63b650f698f64e97748ad490f2e0dd2e99da1d5c40a2bab581d1b",
+        "raw": "7762374e76e8563de2d433d81c4b2ab0091487da38978ac05555caf2af501edc",
+        "sat_A_lags": "f6e78d400e769e76374f5d22c2ab76406e41fc2901df2cb4fcf528ec7468805d",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1.14",
+      "label": "v1.14",
+      "legend": "v1.13 plus last year's sales on the same weekday, Monday to Saturday (Series 92-94).",
+      "status": "Under test in the weekly forecast log since 2026-11-14; formal results after 26 to 52 weeks.",
+      "version": "v1.14",
+      "arm": "hydro",
+      "standin": "S0",
+      "registered": "2026-11-14",
+      "pieces": {
+        "comp_fri_A_all": "89e7e71d54d86c777f7bbdd684293cb63294eb38d2d38f180f94b1f20476eee2",
+        "comp_log_hydro_thu": "73fb1531f38f5d34604964182464abee9fa2838ce810e14c90fbf314c788dd30",
+        "comp_raw": "e02f7d5918ea4c1311d65496be8d848c100a9263c4c2782145c5379e3e5c682c",
+        "comp_sat_A_lags": "76d91be3c9f38b2e8e8a93f4db3dc97d9142b49ef83915e6090b5fc4db9b07f6",
+        "comp_sun_B": "fb4c418fef82c662aeee8f92144341480e4dd616f0ae65fe9b4d10592b66d834",
+        "fri_A_all": "9153939abea46d08984b75d9ceb609cea407a05c0b0aa49e15cfbabb3291085c",
+        "log_hydro_thu": "c0836f0978de639dd327f60ceb095db597dc21c6ceda012ed97773d6465c15d4",
+        "mask_fri_A_all": "a7d0cfb14d52b964575c94382173c0d4097a6695360d1e7639697faed1e01bac",
+        "mask_log_hydro_thu": "daa43e0e5109e674a27acfa9558480fdd201e5ed7f61299602d67cf31915704c",
+        "mask_raw": "9de21b57ecda0014303f316ed1146dbd345250061e5934e4fb456a00796ee06d",
+        "mask_sat_A_lags": "bbfbcb9eb99d001d35e5fc813cdf4c5525e3eff95e8d1ecd8f797bce57d2a0b2",
+        "mask_sun_B": "81918997d2a63b650f698f64e97748ad490f2e0dd2e99da1d5c40a2bab581d1b",
+        "raw": "7762374e76e8563de2d433d81c4b2ab0091487da38978ac05555caf2af501edc",
+        "sat_A_lags": "b4c2735b69ffcba2651de1c2cfec0d8b47637373faac37a005a561db3216c7fd",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1.131",
+      "label": "v1.131",
+      "legend": "v1.13 with a better stand-in for the manager's own forecast around the holidays (Series 88-89).",
+      "status": "Under test in the weekly forecast log since 2026-11-14; formal results after 26 to 52 weeks.",
+      "version": "v1.131",
+      "arm": "hydro",
+      "standin": "S6",
+      "registered": "2026-11-14",
+      "pieces": {
+        "comp_fri_A_all": "89e7e71d54d86c777f7bbdd684293cb63294eb38d2d38f180f94b1f20476eee2",
+        "comp_log_hydro_thu": "73fb1531f38f5d34604964182464abee9fa2838ce810e14c90fbf314c788dd30",
+        "comp_raw": "e02f7d5918ea4c1311d65496be8d848c100a9263c4c2782145c5379e3e5c682c",
+        "comp_sat_A_lags": "76d91be3c9f38b2e8e8a93f4db3dc97d9142b49ef83915e6090b5fc4db9b07f6",
+        "comp_sun_B": "fb4c418fef82c662aeee8f92144341480e4dd616f0ae65fe9b4d10592b66d834",
+        "fri_A_all": "24d457e3375098d52548c7d28d20b5f7f270722870495d50ce606a6c6d2cf0a8",
+        "log_hydro_thu": "b1feb1206d233cae690f241162db60855ba6e732bedd9cbd8908d2a6b411d92a",
+        "mask_fri_A_all": "a7d0cfb14d52b964575c94382173c0d4097a6695360d1e7639697faed1e01bac",
+        "mask_log_hydro_thu": "daa43e0e5109e674a27acfa9558480fdd201e5ed7f61299602d67cf31915704c",
+        "mask_raw": "9de21b57ecda0014303f316ed1146dbd345250061e5934e4fb456a00796ee06d",
+        "mask_sat_A_lags": "bbfbcb9eb99d001d35e5fc813cdf4c5525e3eff95e8d1ecd8f797bce57d2a0b2",
+        "mask_sun_B": "81918997d2a63b650f698f64e97748ad490f2e0dd2e99da1d5c40a2bab581d1b",
+        "raw": "7762374e76e8563de2d433d81c4b2ab0091487da38978ac05555caf2af501edc",
+        "sat_A_lags": "f6e78d400e769e76374f5d22c2ab76406e41fc2901df2cb4fcf528ec7468805d",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    },
+    {
+      "id": "v1.141",
+      "label": "v1.141",
+      "legend": "v1.14 with the same better stand-in for the manager's own forecast (Series 88-89).",
+      "status": "Under test in the weekly forecast log since 2026-11-14; formal results after 26 to 52 weeks.",
+      "version": "v1.141",
+      "arm": "hydro",
+      "standin": "S6",
+      "registered": "2026-11-14",
+      "pieces": {
+        "comp_fri_A_all": "89e7e71d54d86c777f7bbdd684293cb63294eb38d2d38f180f94b1f20476eee2",
+        "comp_log_hydro_thu": "73fb1531f38f5d34604964182464abee9fa2838ce810e14c90fbf314c788dd30",
+        "comp_raw": "e02f7d5918ea4c1311d65496be8d848c100a9263c4c2782145c5379e3e5c682c",
+        "comp_sat_A_lags": "76d91be3c9f38b2e8e8a93f4db3dc97d9142b49ef83915e6090b5fc4db9b07f6",
+        "comp_sun_B": "fb4c418fef82c662aeee8f92144341480e4dd616f0ae65fe9b4d10592b66d834",
+        "fri_A_all": "9153939abea46d08984b75d9ceb609cea407a05c0b0aa49e15cfbabb3291085c",
+        "log_hydro_thu": "c0836f0978de639dd327f60ceb095db597dc21c6ceda012ed97773d6465c15d4",
+        "mask_fri_A_all": "a7d0cfb14d52b964575c94382173c0d4097a6695360d1e7639697faed1e01bac",
+        "mask_log_hydro_thu": "daa43e0e5109e674a27acfa9558480fdd201e5ed7f61299602d67cf31915704c",
+        "mask_raw": "9de21b57ecda0014303f316ed1146dbd345250061e5934e4fb456a00796ee06d",
+        "mask_sat_A_lags": "bbfbcb9eb99d001d35e5fc813cdf4c5525e3eff95e8d1ecd8f797bce57d2a0b2",
+        "mask_sun_B": "81918997d2a63b650f698f64e97748ad490f2e0dd2e99da1d5c40a2bab581d1b",
+        "raw": "7762374e76e8563de2d433d81c4b2ab0091487da38978ac05555caf2af501edc",
+        "sat_A_lags": "b4c2735b69ffcba2651de1c2cfec0d8b47637373faac37a005a561db3216c7fd",
+        "sun_B": "fcb6a6a951d685837f4721e0b536260989dc25ce5a08be5f4ebd0f4cdc077e01"
+      },
+      "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
+    }
+  ]
+}
