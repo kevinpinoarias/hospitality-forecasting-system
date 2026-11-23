@@ -148,6 +148,7 @@ hospitality-forecasting-system/
     │   ├── weather.py            # live Open-Meteo weather
     │   └── inference.py          # feature construction + model inference
     ├── assistant/                # LangChain + Gemini chat assistant (see "Live chat assistant"); its tools in tools.py
+    ├── forecast_log/             # the weekly prospective forecast log: versions, the Monday run, scoring (see "The weekly forecast log")
     └── mcp_server/               # MCP server offering the same tools to Claude Desktop (see "MCP server")
 ```
 
@@ -605,6 +606,14 @@ Restart Claude Desktop; the eight tools appear under the tools menu. Try "What's
 - **Data:** answers in Claude Desktop are written by Anthropic's Claude, so forecast figures go to Anthropic rather than Google. The forecasting API itself has no sign-in (see [Limitations](#limitations)); the server reads only what that API already serves.
 
 ---
+
+## The weekly forecast log: a prospective test
+
+A backtest can only re-score the past, and every experiment in the log has been judged on the same 585 days. So since 2 November 2026 the system also forecasts the future and writes it down before the days happen. Every Monday a scheduled run (`src/forecast_log/`) issues forecasts for the coming two weeks from several registered model versions side by side: the deployed model, the weekend package, the Hydro-show model, and the later versions built from the experiment log (v1.11 to v1.14, and v1.131 and v1.141, which serve v1.13 and v1.14 with a better stand-in for the manager's number), plus a holiday rule. The forecasts are appended to a separate repository and pushed at once, so the push timestamps them; rows are never edited, and a run made too early is withdrawn and re-issued in the open.
+
+The rules were pre-registered before the first forecast: which comparisons are read, when (formally after 26 or 52 weeks), and what counts as a result. Each version's model files are fingerprinted when they are registered and checked before every run. Forecasting is kept apart from retraining: registered versions are never refitted.
+
+**The log repository (`forecasting-log`) is private for now.** This repository holds the code that makes, scores and registers the forecasts (`src/forecast_log/`, with its tests) and the registration notes (`docs/FORECAST_LOG_*.md`); documents here that refer to the log, its amendments or its commits refer to that private repository.
 
 ## CI/CD: checks and automatic deploys
 
