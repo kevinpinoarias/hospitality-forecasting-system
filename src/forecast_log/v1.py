@@ -17,7 +17,7 @@ The portfolio model is not refitted: its files (models/final_model) are verified
 
 Run on Product-branch (the development folder), then copy models/v1 and data/training/v1_correction_history.csv to the runner:
   python -m src.forecast_log.v1 export-history --withdrawn-models <folder of the withdrawn fit's six pieces>
-  python -m src.forecast_log.v1 fit --log-repo D:\\Projectos\\DRG\\forecasting-log
+  python -m src.forecast_log.v1 fit --log-repo <path-to>\\forecasting-log
 """
 
 from __future__ import annotations

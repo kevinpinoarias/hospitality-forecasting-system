@@ -11,7 +11,7 @@ What they are (asked for by Kevin on 14 November 2026, after Series 88 and 89 in
   * registered in `models/versions.json` with `"standin": "S6"`; the rows of the hydro arm have model `hydro_v1.131` / `hydro_v1.141`, and `manager_forecast_used` is the stand-in the version was given.
 
 Real registration (clean checkout; copies the parent's folder into models/<version>):
-  python -m src.forecast_log.v1_131_141 register --version v1.131 --log-repo D:\\Projectos\\DRG\\forecasting-log
+  python -m src.forecast_log.v1_131_141 register --version v1.131 --log-repo <path-to>\\forecasting-log
 """
 
 from __future__ import annotations

@@ -83,7 +83,7 @@ Two decisions inside v1.14 that were not tested as such, to be confirmed or chan
 1. Commit and push this build (the code is the thing the fits record as `code_commit`); update the runner's checkout to that commit.
 2. Copy the correction history: `data/training/v1.12_correction_history.csv` to `v1.13_correction_history.csv` and `v1.14_correction_history.csv` (same cut-off, so the same file; the fit checks the hash). Both the development and the runner `data/training/` folders.
 3. Commit the amendment above (with its date, and Kevin's edits to the Q7 and Q8 readings) to `forecasting-log` `PREREGISTRATION.md` and push.
-4. In the runner folder (clean checkout, the frozen features file there): `python -m src.forecast_log.v1_13 fit --log-repo D:\Projectos\DRG\forecasting-log --training-features <runner>\data\training\v1_engineered_features.csv`,
+4. In the runner folder (clean checkout, the frozen features file there): `python -m src.forecast_log.v1_13 fit --log-repo <path-to>\forecasting-log --training-features <runner>\data\training\v1_engineered_features.csv`,
    commit the log's `models/versions.json`, then the same with `v1_14`. The fit of v1.14 copies v1.13's pieces from `models/v1.13` and checks them against the registered fingerprints.
 5. `config/forecast_log.local.yaml` (untracked): `also_run: [v1.11, v1.12, v1.13, v1.14]`.
 6. `python -m src.forecast_log.replay_run --backfill v1.13 v1.14` without `--write` to see what it would add, then with `--write`.

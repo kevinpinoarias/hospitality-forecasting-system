@@ -43,11 +43,14 @@ STALE_LOCK_SECONDS = 2 * 3600
 
 
 def load_settings() -> dict:
-    settings = {"log_repo": r"D:\Projectos\DRG\forecasting-log", "model_version": v1.VERSION}
+    """The settings, with log_repo as an absolute path: a relative one is read from the project folder (not from wherever the run was started)."""
+    settings = {"log_repo": "../forecasting-log", "model_version": v1.VERSION}
     for name in ("forecast_log.yaml", "forecast_log.local.yaml"):
         path = PROJECT_ROOT / "config" / name
         if path.exists():
             settings.update({k: v for k, v in (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).items() if v is not None})
+    log_repo = Path(str(settings["log_repo"]))
+    settings["log_repo"] = str(log_repo if log_repo.is_absolute() else (PROJECT_ROOT / log_repo).resolve())
     return settings
 
 

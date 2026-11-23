@@ -1,7 +1,7 @@
 <#
 Registers the forecast log's scheduled tasks in Windows Task Scheduler. You review it and run it yourself, once, FROM THE RUNNER FOLDER (the tasks run the code next to this script):
 
-  powershell -ExecutionPolicy Bypass -File D:\Projectos\DRG\forecasting-runner\scripts\register_forecast_log_tasks.ps1 [-Remove]
+  powershell -ExecutionPolicy Bypass -File <runner folder>\scripts\register_forecast_log_tasks.ps1 [-Remove]
 
 Task (it runs only while you are logged on, starts as soon as possible after a missed start, needs the network, and gives up after an hour):
   ForecastLog-Weekly    every Monday 12:30   run_forecast_log.cmd weekly    process any new export in data\raw_private, update the scores, then make the forecasts:

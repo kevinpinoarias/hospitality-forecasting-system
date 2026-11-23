@@ -15,7 +15,7 @@ What it is (decided 8 November 2026, after Series 76-78 in docs/EXPERIMENT_LOG.m
 Dry run (writes only to the folder given):
   python -m src.forecast_log.v1_12 fit-pieces --training-features <frozen v1_engineered_features.csv> --out <folder>
 The real fit and registration (clean checkout; the frozen features file is in the runner folder, not the development folder):
-  python -m src.forecast_log.v1_12 fit --log-repo D:\\Projectos\\DRG\\forecasting-log --training-features <frozen v1_engineered_features.csv>
+  python -m src.forecast_log.v1_12 fit --log-repo <path-to>\\forecasting-log --training-features <frozen v1_engineered_features.csv>
 """
 
 from __future__ import annotations

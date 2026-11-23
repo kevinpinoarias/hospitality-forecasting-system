@@ -76,7 +76,7 @@ and the stand-in is built from the log's history, which is fresher than the back
 1. Commit and push this build to the private remote (the code is what the registrations record as `code_commit`); update the runner's checkout to that commit.
 2. Copy the correction histories in the runner (and here): `v1.13_correction_history.csv` to `v1.131_correction_history.csv` and `v1.14_correction_history.csv` to `v1.141_correction_history.csv` (same cut-off; the registration checks the hash).
 3. Commit the amendment above (with its date) to `forecasting-log` `PREREGISTRATION.md` and push.
-4. In the runner folder (clean checkout): `python -m src.forecast_log.v1_131_141 register --version v1.131 --log-repo D:\Projectos\DRG\forecasting-log`, commit the log's `models/versions.json`, then the same with `--version v1.141`.
+4. In the runner folder (clean checkout): `python -m src.forecast_log.v1_131_141 register --version v1.131 --log-repo <path-to>\forecasting-log`, commit the log's `models/versions.json`, then the same with `--version v1.141`.
 5. `config/forecast_log.local.yaml` (untracked): `also_run: [v1.11, v1.12, v1.13, v1.14, v1.131, v1.141]`.
 6. `python -m src.forecast_log.replay_run --backfill v1.131 v1.141` without `--write` to see what it would add (the standing rule: every registered model runs from Monday 2 November 2026), then with `--write`.
 7. A dry run of the Monday run before the next scheduled one (Monday 16 November, 12:30).

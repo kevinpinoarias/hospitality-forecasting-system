@@ -262,3 +262,36 @@ def test_only_a_withdrawn_run_is_reissued_with_the_weather_it_saved(tmp_path):
     assert weather["max_temp"].tolist() == [3.7, 6.4] and list(weather.columns) == ["date", "max_temp", "rain_mm", "sun_hours"]
     with pytest.raises(RuntimeError, match="only a withdrawn run"):
         run_forecasts.withdrawn_run(tmp_path, "k")
+
+
+# --- where the log repository is ------------------------------------------------
+
+def _settings_in(tmp_path, monkeypatch, tracked: str, local: str | None = None) -> dict:
+    from src.forecast_log import run_forecasts
+
+    project = tmp_path / "project"
+    (project / "config").mkdir(parents=True)
+    (project / "config" / "forecast_log.yaml").write_text(tracked, encoding="utf-8")
+    if local is not None:
+        (project / "config" / "forecast_log.local.yaml").write_text(local, encoding="utf-8")
+    monkeypatch.setattr(run_forecasts, "PROJECT_ROOT", project)
+    monkeypatch.chdir(tmp_path)  # a run started from another folder must not change the answer
+    return run_forecasts.load_settings()
+
+
+def test_a_relative_log_repo_is_read_from_the_project_folder(tmp_path, monkeypatch):
+    settings = _settings_in(tmp_path, monkeypatch, "log_repo: ../forecasting-log\nmodel_version: v1\n")
+    assert settings["log_repo"] == str((tmp_path / "forecasting-log").resolve())
+
+
+def test_the_local_file_overrides_the_log_repo(tmp_path, monkeypatch):
+    elsewhere = (tmp_path / "somewhere" / "forecasting-log").resolve()
+    settings = _settings_in(tmp_path, monkeypatch, "log_repo: ../forecasting-log\n", f"log_repo: {elsewhere.as_posix()}\n")
+    assert settings["log_repo"] == str(elsewhere)
+
+
+def test_the_tracked_settings_name_no_computer_path():
+    from src.config import PROJECT_ROOT as ROOT
+
+    text = (ROOT / "config" / "forecast_log.yaml").read_text(encoding="utf-8")
+    assert ":/" not in text and ":\\" not in text
