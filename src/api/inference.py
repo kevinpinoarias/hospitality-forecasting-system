@@ -32,6 +32,7 @@ from src.api.day_context import build_day_context
 from src.api.history import (
     HistoryCache,
     actual_sales_on,
+    comparison_sales_on,
     days_beyond_training_data,
     equivalent_weekday_last_year,
 )
@@ -241,8 +242,9 @@ class ModelService:
 
         weather = self._weather_details(features) if weather_is_real else None
 
-        last_week = actual_sales_on(history, target_date - dt.timedelta(days=7))
-        last_year = actual_sales_on(history, equivalent_weekday_last_year(target_date))
+        # A closed day (Christmas Day, New Year's Day) is never offered as a comparison.
+        last_week = comparison_sales_on(history, target_date - dt.timedelta(days=7))
+        last_year = comparison_sales_on(history, equivalent_weekday_last_year(target_date))
         actual_sales = actual_sales_on(history, target_date)
 
         return PredictResult(

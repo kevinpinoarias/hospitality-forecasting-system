@@ -24,6 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import CONFIG
+from src.preprocessing.build_daily_sales import KNOWN_CLOSURE_MONTH_DAYS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENGINEERED_FEATURES_PATH = CONFIG.path("engineered_features")
@@ -82,6 +83,22 @@ def equivalent_weekday_last_year(target_date: dt.date) -> dt.date:
         result -= dt.timedelta(weeks=1)
 
     return result
+
+
+def comparison_sales_on(df: pd.DataFrame, comparison_date: dt.date) -> float | None:
+    """
+    Sales on a date offered as a comparison (the same day last week or last
+    year): the real figure, or None when that day was a known closure day.
+    The venue is shut on Christmas Day and New Year's Day, so their 0 is not
+    a comparison - for 24 and 31 December and about 7 January the equivalent
+    weekday last year is one of them, and for 1 and 8 January the same day
+    last week is, and the assistant would otherwise quote a 0 as if it were a
+    real day's sales. None is what the assistant already treats as "no
+    comparison to mention".
+    """
+    if (comparison_date.month, comparison_date.day) in KNOWN_CLOSURE_MONTH_DAYS:
+        return None
+    return actual_sales_on(df, comparison_date)
 
 
 def actual_sales_on(df: pd.DataFrame, target_date: dt.date) -> float | None:
