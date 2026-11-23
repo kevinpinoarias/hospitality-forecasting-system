@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -25,33 +24,18 @@ import pandas as pd
 
 from src.api.weather import fetch_live_weather, live_weather_end
 from src.config import CONFIG
+from src.forecast_core.routing import Models, route_post, with_year_end_specialists  # noqa: F401  (moved there unchanged)
+from src.forecast_core.rows import lags_known, served_rows  # noqa: F401
 from src.experiments import run_series35_holdout as h
 from src.features import year_ago
 from src.features.payday_intensity import add_payday_intensity, add_payday_intensity_fixed
-from src.features.serving_features import WEATHER_COLS, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features
+from src.features.serving_features import seasonal_medians
 from src.forecast_log import standin as standin_module
-from src.forecast_log import v1, v1_13
+from src.forecast_log import v1
 from src.models.final_model import DATE_COL, TARGET_COL, BaggedCatBoost
 
 MODELS = ("portfolio", "post", "hydro")
 STANDIN_SUFFIX = "_manager_input"  # forecast_days adds one column `<arm>_manager_input` per further version
-
-
-@dataclass
-class Models:
-    version: str
-    portfolio: h.Bag | None  # None for a version without a portfolio arm (v1.11 is a hydro arm only)
-    pieces: dict[str, h.Bag]
-    portfolio_fingerprint: str | None
-    piece_fingerprints: dict[str, str]
-    standin: str = "S0"  # the stand-in for the manager's number the version is served with: S0 (the weekday-and-season median, every version up to v1.14) or S6 (the hybrid, v1.131 and v1.141)
-
-    @property
-    def combined_fingerprint(self) -> str:
-        """One hash standing for the six fitted pieces (post and hydro rows); the portfolio row carries its own."""
-        import hashlib
-
-        return hashlib.sha256("".join(self.piece_fingerprints[k] for k in sorted(self.piece_fingerprints)).encode()).hexdigest()
 
 
 def load_models(log_repo: Path, version: str = v1.VERSION, models_root: Path | None = None) -> Models:
@@ -102,65 +86,7 @@ def weather_label(target: dt.date, weather: pd.DataFrame, errored: bool, issue_d
     return "historical_average"
 
 
-def served_rows(full: pd.DataFrame, last_known_day: pd.Timestamp, target_dates, calendar: str, weather: pd.DataFrame) -> pd.DataFrame:
-    """Feature rows for `target_dates`: real history up to `last_known_day`, the days after it filled with weekday-and-season medians (sales, the manager's number, weather), then the
-    live weather laid over those days where Open-Meteo has a figure. Nothing dated after `last_known_day` is read from `full`."""
-    history = full[full[DATE_COL] <= last_known_day]
-    daily = extend_daily_frame(history, max(pd.Timestamp(d) for d in target_dates).date())
-    if len(weather):
-        live = weather.set_index(DATE_COL)
-        later = (daily[DATE_COL] > last_known_day) & daily[DATE_COL].isin(live.index)
-        for col in WEATHER_COLS:
-            daily.loc[later, col] = live.loc[daily.loc[later, DATE_COL], col].to_numpy()
-    frame = h.build_frame(daily, calendar)
-    position = {d: i for i, d in enumerate(frame[DATE_COL])}
-    sales = fill_future_sales_seasonally(frame, len(history), history)
-    return with_history_features(frame, sales, [position[pd.Timestamp(d)] for d in target_dates])
-
-
 # --------------------------------------------------------------------------- the models
-
-
-def lags_known(sales_known: pd.Series, dates: pd.Series, lags: tuple[int, ...]) -> np.ndarray:
-    """True for each date whose sales exactly `lag` days earlier are all known, for every lag given."""
-    ok = pd.Series(True, index=sales_known.index)
-    for k in lags:
-        ok &= sales_known.shift(k).notna()
-    return ok.reindex(pd.DatetimeIndex(dates)).fillna(False).to_numpy()
-
-
-def route_post(models: Models, rows: pd.DataFrame, sales_known: pd.Series, hydro: bool, prefix: str = "", masked: tuple[str, ...] | list[str] = ()) -> np.ndarray:
-    """The post (or hydro) model's raw forecasts for `rows` (before the weekend correction). `rows` must carry the `hydro_thu` column when hydro is True.
-    `prefix` picks a specialist set of the same pieces (v1.13's `comp_` and `mask_`); `masked` lists inputs set to missing before the pieces predict (the routing itself is decided on the unmasked inputs)."""
-    w = h.with_weekend(rows, sales_known)
-    wd = h.weekday_names(rows[DATE_COL])
-    friday_ok = lags_known(sales_known, rows[DATE_COL], (7, 14, 21, 28))
-    sat_ok = w[h.EXTRA["Saturday"]].notna().all(axis=1).to_numpy()
-    if masked:
-        rows, w = rows.copy(), w.copy()
-        for frame in (rows, w):
-            for c in masked:
-                if c in frame.columns:
-                    frame[c] = np.nan
-    piece = lambda name: models.pieces[prefix + name]  # noqa: E731
-    base = piece("log_hydro_thu" if hydro else "log").predict(rows)
-    out = np.where(wd == "Friday", np.where(friday_ok, piece("fri_A_all").predict(w), base), base)
-    saturday = np.where(sat_ok, piece("sat_A_lags").predict(w), piece("raw").predict(rows))
-    out = np.where(wd == "Saturday", saturday, out)
-    return np.where(wd == "Sunday", piece("sun_B").predict(w), out)
-
-
-def with_year_end_specialists(models: Models, rows: pd.DataFrame, sales_known: pd.Series, raw: np.ndarray) -> np.ndarray:
-    """v1.13's rule: on 26 to 31 December the companion pieces (no recent-sales inputs) forecast, on 1 to 8 January the masked pieces with the ten inputs set to missing; every other day keeps `raw`.
-    A version without the specialist pieces is returned unchanged."""
-    if v1_13.COMPANION_PREFIX + "log_hydro_thu" not in models.pieces:
-        return raw
-    out = np.array(raw, dtype=float)
-    for prefix, window, masked in ((v1_13.COMPANION_PREFIX, v1_13.COMPANION_WINDOW, ()), (v1_13.MASK_PREFIX, v1_13.MASK_WINDOW, v1_13.INPUTS)):
-        selected = v1_13.in_window(rows[DATE_COL], *window)
-        if selected.any():
-            out[selected] = route_post(models, rows[selected].reset_index(drop=True), sales_known, hydro=True, prefix=prefix, masked=masked)
-    return out
 
 
 def extra_arm_name(version: str) -> str:

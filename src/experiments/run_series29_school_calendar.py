@@ -32,30 +32,20 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.forecast_core.rows import SCHOOL_COLUMNS, with_calendar  # noqa: F401  (moved there unchanged)
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments import run_series24_weekend_correction as s24
 from src.experiments.run_error_autopsy import school_phase
 from src.experiments.series19_21_common import _STATE, OUT_DIR, load_protocol, run_parallel, test_days
 from src.features.build_features import (
-    LONG_BREAK_TYPES, SCHOOL_BREAK_TYPES, SCHOOL_BREAKS, SCHOOL_BREAKS_V1, add_school_holiday_features,
+    LONG_BREAK_TYPES, SCHOOL_BREAK_TYPES, SCHOOL_BREAKS, SCHOOL_BREAKS_V1,
 )
 
-SCHOOL_COLUMNS = ["is_christmas_break", "is_summer_break", "is_easter_break", "is_school_holiday"]
 SEEDS = {"seeds0_24": list(range(25)), "seeds100_124": list(range(100, 125))}
 VARIANT_TARGETS = ("log1p_final", "raw_same_params")
 STAGE_TYPES = {"stage1": LONG_BREAK_TYPES, "stage2": SCHOOL_BREAK_TYPES}  # stage 2 adds the October week and February mid-term
 LONG_BREAKS = SCHOOL_BREAKS[SCHOOL_BREAKS["break_type"].isin(LONG_BREAK_TYPES)]  # the phase table is about the long holidays
 PHASES = ["last week of term", "first week of a break", "middle of a break", "last week of a break", "other term time"]
-
-
-def with_calendar(frame: pd.DataFrame, breaks: pd.DataFrame = SCHOOL_BREAKS, break_types: tuple[str, ...] = SCHOOL_BREAK_TYPES) -> pd.DataFrame:
-    """The model frame with its four school columns recomputed from `breaks` (only the given break types count);
-    everything else untouched."""
-    out = add_school_holiday_features(frame[["date"]].copy(), breaks_df=breaks, council=CONFIG.project.council, break_types=break_types)
-    new = frame.copy()
-    for col in SCHOOL_COLUMNS:
-        new[col] = out[col].to_numpy()
-    return new
 
 
 def init_worker29(tag: str = "stage2") -> None:

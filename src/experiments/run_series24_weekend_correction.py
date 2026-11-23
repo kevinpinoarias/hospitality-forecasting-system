@@ -42,6 +42,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.forecast_core.correction import MIN_HISTORY, SCOPE, correct  # noqa: F401  (moved there unchanged)
 from src.experiments.series19_21_common import SUFFIX
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments.series19_21_common import OUT_DIR, init_worker, load_protocol, read_done, run_parallel, test_days
@@ -51,37 +52,12 @@ REPORT_DIR = CONFIG.path("experiments_dir") / f"series24_weekend_correction{SUFF
 FRESH_SEEDS = list(range(100, 125))
 HALF_LIVES = [4, 8, 16]
 STRENGTHS = [0.25, 0.5, 0.75]
-SCOPE = ("Friday", "Saturday", "Sunday")
-MIN_HISTORY = 4
 BASE_VARIANTS = ("log1p_final", "raw_same_params")
 
 
 def hybrid(weekday: np.ndarray, log_pred: np.ndarray, raw_pred: np.ndarray) -> np.ndarray:
     """Raw-target forecast on Saturdays, log-target forecast on every other day."""
     return np.where(weekday == "Saturday", raw_pred, log_pred)
-
-
-def correct(days: pd.DataFrame, pred: np.ndarray, half_life_weeks: float, strength: float, scope: tuple[str, ...] = SCOPE) -> np.ndarray:
-    """The adaptive weekday correction. Block k's forecasts for each weekday in `scope` are shifted by
-    -strength x (the recency-weighted mean of forecast minus actual for that weekday in blocks BEFORE k).
-    Block 0, and weekdays outside `scope`, are unchanged."""
-    out = pred.astype(float).copy()
-    fold = days["fold_id"].to_numpy()
-    weekday = days["weekday"].to_numpy()
-    dates = pd.to_datetime(days["date"]).to_numpy()
-    error = pred - days["actual"].to_numpy()
-    for k in sorted(set(fold.tolist()))[1:]:
-        block = fold == k
-        start = dates[block].min()
-        for day in scope:
-            history = (fold < k) & (weekday == day)
-            if history.sum() < MIN_HISTORY:
-                continue
-            age_weeks = (start - dates[history]) / np.timedelta64(7, "D")
-            weights = 0.5 ** (age_weeks / half_life_weeks)
-            bias = float(np.sum(weights * error[history]) / np.sum(weights))
-            out[block & (weekday == day)] = pred[block & (weekday == day)] - strength * bias
-    return out
 
 
 def mae(actual: np.ndarray, pred: np.ndarray, mask: np.ndarray) -> float:

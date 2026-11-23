@@ -14,7 +14,6 @@ import pytest
 
 pytest.importorskip("catboost")
 
-from src.experiments import run_series35_holdout as h  # noqa: E402
 from src.features import year_ago  # noqa: E402
 from src.forecast_log import predict, score_forecasts, v1, v1_12, v1_13, v1_14  # noqa: E402
 from src.models.final_model import FINAL_FEATURES  # noqa: E402
@@ -116,8 +115,10 @@ def test_the_specialists_forecast_only_inside_their_windows_and_the_masked_ones_
     def with_weekend(rows, sales_known):  # the weekend inputs are not what is under test: every lag is known
         return rows.copy()
 
-    monkeypatch.setattr(h, "with_weekend", with_weekend)
-    monkeypatch.setattr(predict, "lags_known", lambda sales_known, dates, lags: np.ones(len(dates), dtype=bool))
+    from src.forecast_core import routing  # where route_post now looks its helpers up
+
+    monkeypatch.setattr(routing, "with_weekend", with_weekend)
+    monkeypatch.setattr(routing, "lags_known", lambda sales_known, dates, lags: np.ones(len(dates), dtype=bool))
     rows = _rows()
     models = _models(True)
     raw = predict.route_post(models, rows, pd.Series(dtype=float), hydro=True)

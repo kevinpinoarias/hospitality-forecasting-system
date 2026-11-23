@@ -31,8 +31,9 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import CONFIG, PROJECT_ROOT
+from src.forecast_core.correction import correction_history_path  # noqa: F401  (moved there unchanged)
+from src.forecast_core.rows import THURSDAY, add_hydro_thu  # noqa: F401
 from src.experiments import run_series35_holdout as h
-from src.features.events import concert_calendar
 from src.models.final_model import DATE_COL, FINAL_FEATURES, TARGET_COL
 
 VERSION = "v1"
@@ -42,14 +43,8 @@ TRAINING_FEATURES = PROJECT_ROOT / "data" / "training" / "v1_engineered_features
 TRAINING_FEATURES_SHA = "c5355ae36638b5180a232f04992276821bc26bb797c6c7833be8c00eb6b5733a"  # data/features/engineered_features.csv as rebuilt on 2 November 2026
 
 
-def correction_history_path(version: str) -> Path:
-    """The Saturday and Sunday correction history a version uses (frozen at its cut-off, kept beside the runner's data)."""
-    return PROJECT_ROOT / "data" / "training" / f"{version}_correction_history.csv"
-
-
 CORRECTION_HISTORY = correction_history_path(VERSION)
 MODELS_DIR = PROJECT_ROOT / "models" / VERSION
-THURSDAY = 3
 WEEKEND_PIECES = {"fri_A_all": "Friday", "sat_A_lags": "Saturday", "sun_B": "Sunday"}
 # name -> (extra inputs on top of the 38 final-model features, target)
 PIECES: dict[str, tuple[list[str], str]] = {
@@ -60,15 +55,6 @@ PIECES: dict[str, tuple[list[str], str]] = {
     "sat_A_lags": (h.EXTRA["Saturday"], "raw"),
     "sun_B": (h.EXTRA["Sunday"], "log1p"),
 }
-
-
-def add_hydro_thu(frame: pd.DataFrame) -> pd.DataFrame:
-    """Add `hydro_thu` (a Hydro show on a Thursday) from the curated concert list. The list must cover the dates asked for."""
-    cal = concert_calendar(str(frame[DATE_COL].min().date()), str(frame[DATE_COL].max().date()))
-    flag = (cal["hydro_show"] * (cal[DATE_COL].dt.dayofweek == THURSDAY)).rename("hydro_thu")
-    out = frame.drop(columns=["hydro_thu"], errors="ignore").merge(pd.concat([cal[DATE_COL], flag], axis=1), on=DATE_COL, how="left")
-    out["hydro_thu"] = out["hydro_thu"].fillna(0).astype(int)
-    return out
 
 
 def training_frames() -> tuple[pd.DataFrame, pd.DataFrame, str]:
