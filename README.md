@@ -10,6 +10,8 @@ The workflow begins with anonymised rota-style operational exports, separates sa
 
 Beyond the modelling pipeline, the trained model is also served through a small API, containerised with Docker, and deployed to a live public endpoint — turning the notebook-style analysis into a running piece of software. Every change is checked, rebuilt and delivered by an automated CI/CD pipeline (see [CI/CD](#cicd-checks-and-automatic-deploys)).
 
+Beyond that pipeline, the project grew into a full experiment programme: [94 pre-registered backtest series](docs/EXPERIMENT_LOG.md) that tested features, model families and corrections, each with its rules written down before it was run. Their best candidates are now tested on the future in a [weekly forecast log](#the-weekly-forecast-log-a-prospective-test), whose forecasts are written down before the days happen (its repository stays private for now). The chat and the API can answer with any of those versions through a [model picker](#the-model-picker-choosing-which-model-answers), and the forecasting tools are also offered to AI clients such as Claude Desktop through an [MCP server](#mcp-server-the-same-tools-for-claude-desktop).
+
 This project is presented as a portfolio system rather than a production deployment. The public version uses anonymised local data and a modular project structure to demonstrate methodology, system design, and analytical reasoning without exposing proprietary business information.
 
 ### 💬 Try the live chat assistant
