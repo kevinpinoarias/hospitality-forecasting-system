@@ -20,16 +20,43 @@ import os
 import uuid
 
 import gradio as gr
+import requests
 
 from src.assistant.agent_forecast import _extract_text, build_agent, invoke_agent
+from src.assistant.tools import API_BASE_URL
 from src.assistant.query_forecast import MODEL_INTRO_MESSAGE
 from src.assistant.theme import CSS, HEAD, HEADER_HTML, INTRO_HTML, PRIVACY_HTML, RESTORE_JS, TOGGLE_JS
 
 agent = build_agent()
 
+STANDARD_CHOICE = {"id": "standard", "label": "Standard model (live)", "legend": "The live model.", "status": "The deployed model.", "available": True}
 
-def chat_fn(message: str, history: list, thread_id: str) -> str:
-    result = invoke_agent(agent, message, thread_id)
+
+def load_model_choices() -> list[dict]:
+    """The model picker's menu from the API's /versions list (only the models it can serve); the standard model alone if the API cannot be reached."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/versions", timeout=30)
+        response.raise_for_status()
+        choices = [c for c in response.json()["choices"] if c.get("available")]
+        return choices or [STANDARD_CHOICE]
+    except Exception:
+        return [STANDARD_CHOICE]
+
+
+MODEL_CHOICES = {c["id"]: c for c in load_model_choices()}
+
+
+def choice_label(choice: dict) -> str:
+    return choice["label"] if choice["id"] == "standard" else f"{choice['id']} (under test)"
+
+
+def legend_markdown(choice_id: str) -> str:
+    c = MODEL_CHOICES.get(choice_id, STANDARD_CHOICE)
+    return f"**{choice_label(c)}:** {c['legend']} *{c['status']}*"
+
+
+def chat_fn(message: str, history: list, thread_id: str, model_version: str) -> str:
+    result = invoke_agent(agent, message, thread_id, model_version)
     return _extract_text(result["messages"][-1].content)
 
 
@@ -40,9 +67,16 @@ with gr.Blocks(title="Hospitality Forecasting Assistant") as demo:
     with gr.Column(elem_id="main"):
         gr.HTML(INTRO_HTML, elem_classes="warm-only")
         with gr.Column(elem_id="chat-card"):
+            # The model picker: the standard model by default; the forecast log's versions are labelled as under test.
+            model_choice = gr.Dropdown(
+                choices=[(choice_label(c), c["id"]) for c in MODEL_CHOICES.values()], value="standard",
+                label="Which model answers", interactive=True, elem_id="model-choice",
+            )
+            model_legend = gr.Markdown(legend_markdown("standard"), elem_id="model-legend")
+            model_choice.change(legend_markdown, inputs=model_choice, outputs=model_legend)
             gr.ChatInterface(
                 fn=chat_fn,
-                additional_inputs=[gr.State(lambda: str(uuid.uuid4()))],
+                additional_inputs=[gr.State(lambda: str(uuid.uuid4())), model_choice],
                 # A real, static greeting (not LLM-generated) so every new conversation
                 # opens with the trained model's actual evaluated accuracy - see
                 # MODEL_INTRO_MESSAGE's own comment for why this is a fixed string
