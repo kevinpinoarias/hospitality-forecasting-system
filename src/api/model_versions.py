@@ -13,9 +13,14 @@ stand-in for the manager's number. Two things are added for the chat, worked out
 them for the standard model: the dry and heavy-rain scenarios (the same rows with the rain swapped), and a
 manager's estimate given by the person asking takes the stand-in's place.
 
-Days the versions do not cover yet:
-- dates up to the end of the data: the versions have no forecast made before the day (their backtests are
-  not run yet), so the standard model answers and says so;
+Past dates come from each version's backtest (src/forecast_log/version_backtest.py): what it would have
+forecast for each day of the live model's backtest (15 January 2025 to 6 September 2026), its models trained
+only on the days before, with the manager's real number - the same footing as the live model's own past
+forecasts. The file is checked against the fingerprint in config/model_versions.json before it is used.
+
+Days the versions do not cover:
+- past dates outside the backtest (before 15 January 2025, or from 7 September 2026 to the end of the data:
+  the versions were trained on the latter), so the standard model answers and says so;
 - Thursdays beyond the Hydro list: whether there is a show is unknown, so a model with the Hydro flag does
   not forecast them (the forecast log's rule), and the standard model answers and says so.
 """
@@ -57,12 +62,16 @@ class VersionUnavailable(RuntimeError):
     """A version whose registered files are missing here or do not match their fingerprints."""
 
 
+BACKTEST_FILE = "version_backtests.csv"  # beside the version folders, made by src/forecast_log/version_backtest.py
+
+
 @dataclass
 class VersionForecast:
     best: float | None
     dry: float | None
     heavy: float | None
     note: str | None = None
+    made_before_the_day: bool = False  # a past date answered from the backtest
 
 
 def load_choices(path: Path = CHOICES_PATH) -> list[dict]:
@@ -86,6 +95,9 @@ class VersionService:
         self._lock = threading.Lock()
         self._bags: dict[str, Bag] = {}  # by fingerprint, so two versions sharing a file share the loaded model
         self._loaded: dict[str, tuple[Models, tuple[pd.DataFrame, np.ndarray]]] = {}
+        self._backtest: pd.DataFrame | None = None
+        # The registered fingerprint of the backtest file (config/model_versions.json), checked before the file is used.
+        self.backtest_sha256 = json.loads(CHOICES_PATH.read_text(encoding="utf-8")).get("backtest_sha256") if choices is None else None
 
     # ----------------------------------------------------------------- the menu
 
@@ -131,6 +143,19 @@ class VersionService:
             self._loaded[choice_id] = loaded
             return loaded
 
+    def backtest(self) -> pd.DataFrame | None:
+        """The versions' backtest forecasts (one column per version, indexed by date), or None if the file is not installed. A file that does not match its fingerprint is refused."""
+        with self._lock:
+            if self._backtest is None:
+                path = self.models_root / BACKTEST_FILE
+                if not path.exists():
+                    return None
+                if self.backtest_sha256 and file_sha256(path) != self.backtest_sha256:
+                    raise VersionUnavailable("the versions' backtest file does not match its registered fingerprint")
+                frame = pd.read_csv(path, parse_dates=[DATE_COL])
+                self._backtest = frame.set_index(frame[DATE_COL].dt.date)
+            return self._backtest
+
     # ----------------------------------------------------------------- forecasting
 
     def _weather(self, last_known: pd.Timestamp, today: dt.date) -> pd.DataFrame:
@@ -147,9 +172,16 @@ class VersionService:
         c = self.choices[choice_id]
         last_known = pd.Timestamp(self.history.max_date)
         out: dict[dt.date, VersionForecast] = {}
-        for d in dates:
-            if pd.Timestamp(d) <= last_known:
-                out[d] = VersionForecast(None, None, None, f"{choice_id} was not running on this date, so the standard model answers (the versions have no forecasts made before past days yet).")
+        past = [d for d in dates if pd.Timestamp(d) <= last_known]
+        backtest = self.backtest() if past else None
+        for d in past:
+            if manager_estimates and d in manager_estimates:
+                out[d] = VersionForecast(None, None, None, f"{choice_id}'s past forecasts were made with the manager's number on record, so a different estimate cannot be applied to them; the standard model answers.")
+            elif backtest is not None and d in backtest.index and choice_id in backtest.columns:
+                value = float(backtest.loc[d, choice_id])  # a past day's weather is known, so there are no alternative scenarios (as for the live model)
+                out[d] = VersionForecast(value, value, value, made_before_the_day=True)
+            else:
+                out[d] = VersionForecast(None, None, None, f"{choice_id} has no forecast made before this day (its backtest covers 15 January 2025 to 6 September 2026), so the standard model answers.")
         hydro = c["arm"] == "hydro"
         if hydro:
             for d in unknown_hydro_thursdays([d for d in dates if d not in out], hydro_list_through()):

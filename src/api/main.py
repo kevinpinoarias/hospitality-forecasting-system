@@ -97,15 +97,22 @@ def predict(payload: PredictRequest) -> PredictResponse:
         ]
         for choice in sorted(asked):
             mine = [i for i, item in enumerate(payload.requests) if item.model_version == choice]
-            estimates = {payload.requests[i].date: payload.requests[i].forecast_sales for i in mine if payload.requests[i].forecast_sales is not None}
-            answers = version_service.forecast(choice, sorted({payload.requests[i].date for i in mine}), manager_estimates=estimates)
+            plain = [i for i in mine if payload.requests[i].forecast_sales is None]
+            by_date = version_service.forecast(choice, sorted({payload.requests[i].date for i in plain})) if plain else {}
+            answers = {i: by_date[payload.requests[i].date] for i in plain}
+            for i in mine:  # a request with its own manager's estimate is forecast on its own, so the estimate reaches no other request
+                if i not in answers:
+                    item = payload.requests[i]
+                    answers[i] = version_service.forecast(choice, [item.date], manager_estimates={item.date: item.forecast_sales})[item.date]
             for i in mine:
-                answer = answers[payload.requests[i].date]
+                answer = answers[i]
                 if answer.best is None:  # the version cannot answer this date: the standard figures stay, with the reason
                     results[i].model_version_note = answer.note
                     continue
                 results[i].predictions = ScenarioPredictions(dry_scenario=answer.dry, heavy_rain_scenario=answer.heavy, best_estimate=answer.best)
                 results[i].model_version = choice
+                if answer.made_before_the_day:  # from the version's backtest: a fair comparison with actual_sales, as for the live model
+                    results[i].prediction_source = "made_before_the_day"
     except VersionUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:

@@ -193,5 +193,6 @@
       },
       "correction_history_sha256": "2f5b9ab3ee12c65ebd69087fe4b9246e847e1d4504b4890b835a38239040b2b1"
     }
-  ]
+  ],
+  "backtest_sha256": "ab04524770b43637594b7cfd9d3489b1831e77fd756c68a97b8bd955cfb0a8e1"
 }

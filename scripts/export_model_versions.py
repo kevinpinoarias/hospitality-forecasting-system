@@ -15,12 +15,14 @@ Run after registering a new version, then add its legend to CHOICES below:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "config" / "model_versions.json"
+BACKTEST = ROOT / "models" / "version_backtests.csv"  # made by src/forecast_log/version_backtest.py; its fingerprint is recorded here
 
 UNDER_TEST = "Under test in the weekly forecast log since {since}; formal results after 26 to 52 weeks."
 
@@ -43,7 +45,7 @@ STANDARD = {
 }
 
 
-def build(registry: dict) -> dict:
+def build(registry: dict, backtest_sha256: str | None = None) -> dict:
     by_version = {v["version"]: v for v in registry["versions"]}
     choices = [STANDARD]
     for choice_id, (version, arm, legend) in CHOICES.items():
@@ -61,7 +63,10 @@ def build(registry: dict) -> dict:
             "pieces": {name: spec["fingerprint"] for name, spec in sorted(entry["pieces"].items())},
             "correction_history_sha256": entry["correction_history_sha256"],
         })
-    return {"source": "forecasting-log models/versions.json", "choices": choices}
+    out = {"source": "forecasting-log models/versions.json", "choices": choices}
+    if backtest_sha256:
+        out["backtest_sha256"] = backtest_sha256
+    return out
 
 
 def main() -> None:
@@ -72,7 +77,8 @@ def main() -> None:
     missing = sorted({v for v, _, _ in CHOICES.values()} - {v["version"] for v in registry["versions"]})
     if missing:
         sys.exit(f"not registered: {missing}")
-    OUT.write_text(json.dumps(build(registry), indent=2) + "\n", encoding="utf-8")
+    backtest = hashlib.sha256(BACKTEST.read_bytes()).hexdigest() if BACKTEST.exists() else None
+    OUT.write_text(json.dumps(build(registry, backtest), indent=2) + "\n", encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}")
 
 

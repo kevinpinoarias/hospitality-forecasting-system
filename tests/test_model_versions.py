@@ -122,7 +122,7 @@ def test_rain_scenarios_and_a_given_manager_estimate(service):
 def test_past_dates_and_uncovered_hydro_thursdays_fall_back_with_a_reason(service, history, monkeypatch):
     past = history.max_date - dt.timedelta(days=10)
     out = service.forecast("v1.14", [past], today=TODAY)
-    assert out[past].best is None and "was not running" in out[past].note
+    assert out[past].best is None and "no forecast made before this day" in out[past].note  # after the backtest's last day
 
     monkeypatch.setattr(mv, "hydro_list_through", lambda: dt.date(2026, 12, 20))
     thursday = dt.date(2026, 12, 24)
@@ -173,6 +173,48 @@ def test_predict_with_a_version_says_which_model_answered(client):
     assert picked["model_version"] == "v1.14" and standard["model_version"] == "standard"
     assert picked["model_version_note"] is None and picked["predictions"]["best_estimate"] != standard["predictions"]["best_estimate"]
     assert picked["day_context"] == standard["day_context"]  # the same day, only the model differs
+
+
+needs_backtest = pytest.mark.skipif(not (mv.MODELS_ROOT / mv.BACKTEST_FILE).exists(), reason="needs the versions' backtest file")
+
+
+@needs_data
+@needs_versions
+@needs_backtest
+def test_a_past_date_comes_from_the_versions_backtest(client):
+    backtest = pd.read_csv(mv.MODELS_ROOT / mv.BACKTEST_FILE, index_col="date")
+    result = client.post("/predict", json={"requests": [{"date": "2025-12-20", "model_version": "v1.13"}]}).json()["results"][0]
+    assert result["model_version"] == "v1.13" and result["prediction_source"] == "made_before_the_day"
+    assert result["predictions"]["best_estimate"] == pytest.approx(backtest.loc["2025-12-20", "v1.13"])
+    assert result["predictions"]["dry_scenario"] == result["predictions"]["heavy_rain_scenario"] == result["predictions"]["best_estimate"]
+
+
+@needs_data
+@needs_versions
+@needs_backtest
+def test_an_estimate_in_one_request_never_reaches_another(client):
+    plain, own = client.post("/predict", json={"requests": [
+        {"date": "2025-12-20", "model_version": "v1.13"},
+        {"date": "2025-12-20", "model_version": "v1.13", "forecast_sales": 9000},
+    ]}).json()["results"]
+    assert plain["model_version"] == "v1.13" and plain["model_version_note"] is None
+    assert own["model_version"] == "standard" and "manager's number on record" in own["model_version_note"]
+
+
+@needs_data
+@needs_versions
+def test_a_past_date_outside_the_backtest_falls_back(client):
+    result = client.post("/predict", json={"requests": [{"date": "2026-10-10", "model_version": "v1.13"}]}).json()["results"][0]
+    assert result["model_version"] == "standard" and "backtest covers" in result["model_version_note"]
+
+
+@needs_backtest
+def test_a_changed_backtest_file_is_refused(tmp_path):
+    original = (mv.MODELS_ROOT / mv.BACKTEST_FILE).read_bytes()
+    (tmp_path / mv.BACKTEST_FILE).write_bytes(original + b" ")  # one extra byte
+    service = mv.VersionService(history=None, models_root=tmp_path)
+    with pytest.raises(mv.VersionUnavailable, match="backtest"):
+        service.backtest()
 
 
 def test_the_picker_uses_no_training_or_plotting_stack():
