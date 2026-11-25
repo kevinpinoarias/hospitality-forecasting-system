@@ -35,7 +35,7 @@ API_BASE_URL = (
 )
 
 
-def get_forecast(date: str, forecast_sales: float | None = None) -> dict:
+def get_forecast(date: str, forecast_sales: float | None = None, model_version: str | None = None) -> dict:
     """Get the hospitality sales forecast for one specific date.
 
     Args:
@@ -44,10 +44,17 @@ def get_forecast(date: str, forecast_sales: float | None = None) -> dict:
             if the user asking the question actually provided one. Omit
             this argument entirely if they didn't - the forecasting system
             will use a sensible historical estimate automatically.
+        model_version: which model answers, only if the person asked for a
+            specific one by name (for example "v1.14" or "the weekend
+            package"); the choices and their names come from the API's
+            /versions list. Omit it otherwise - the standard model, or the
+            model chosen in the app, is used automatically.
     """
     payload: dict = {"date": date}
     if forecast_sales is not None:
         payload["forecast_sales"] = forecast_sales
+    if model_version:
+        payload["model_version"] = model_version
 
     response = requests.post(
         f"{API_BASE_URL}/predict",
@@ -64,7 +71,7 @@ def get_forecast(date: str, forecast_sales: float | None = None) -> dict:
 MAX_RANGE_DAYS = 31
 
 
-def get_forecast_range(start_date: str, end_date: str) -> dict:
+def get_forecast_range(start_date: str, end_date: str, model_version: str | None = None) -> dict:
     """Get the hospitality sales forecast for every day in a period, in one
     call - use this instead of repeated get_forecast calls when a question
     covers several dates (a weekend, a week, a holiday period).
@@ -73,6 +80,11 @@ def get_forecast_range(start_date: str, end_date: str) -> dict:
         start_date: the first date, in YYYY-MM-DD format.
         end_date: the last date (inclusive), in YYYY-MM-DD format, at most
             31 days after start_date.
+        model_version: which model answers, only if the person asked for a
+            specific one by name (for example "v1.14" or "the weekend
+            package"); the choices and their names come from the API's
+            /versions list. Omit it otherwise - the standard model, or the
+            model chosen in the app, is used automatically.
     """
     start, end = dt.date.fromisoformat(start_date), dt.date.fromisoformat(end_date)
     days = (end - start).days + 1
@@ -82,7 +94,7 @@ def get_forecast_range(start_date: str, end_date: str) -> dict:
     dates = [(start + dt.timedelta(days=i)).isoformat() for i in range(days)]
     response = requests.post(
         f"{API_BASE_URL}/predict",
-        json={"requests": [{"date": d} for d in dates]},
+        json={"requests": [{"date": d, **({"model_version": model_version} if model_version else {})} for d in dates]},
         timeout=90,  # same cold-start allowance as get_forecast, for a larger batch
     )
     response.raise_for_status()

@@ -15,6 +15,8 @@ The workflow begins with anonymised rota-style operational exports, separates sa
 
 Beyond the modelling pipeline, the trained model is also served through a small API, containerised with Docker, and deployed to a live public endpoint — turning the notebook-style analysis into a running piece of software. Every change is checked, rebuilt and delivered by an automated CI/CD pipeline (see [CI/CD](#cicd-checks-and-automatic-deploys)).
 
+Beyond that pipeline, the project grew into a full experiment programme: [94 pre-registered backtest series](docs/EXPERIMENT_LOG.md) that tested features, model families and corrections, each with its rules written down before it was run. Their best candidates are now tested on the future in a [weekly forecast log](#the-weekly-forecast-log-a-prospective-test), whose forecasts are written down before the days happen (its repository stays private for now). The chat and the API can answer with any of those versions through a [model picker](#the-model-picker-choosing-which-model-answers), and the forecasting tools are also offered to AI clients such as Claude Desktop through an [MCP server](#mcp-server-the-same-tools-for-claude-desktop).
+
 This project is presented as a portfolio system rather than a production deployment. The public version uses anonymised local data and a modular project structure to demonstrate methodology, system design, and analytical reasoning without exposing proprietary business information.
 
 ### 💬 Try the live chat assistant
@@ -520,7 +522,9 @@ curl -X POST https://hospitality-forecasting-api-56220375160.us-central1.run.app
   - `prediction_source` says where the best estimate comes from. For a past date covered by the pipeline's backtest it is `made_before_the_day`: the out-of-sample prediction the model made *before* it saw that day, so comparing it with `actual_sales` is a fair test. A past date the served model was trained on is `model_had_seen_the_day`, and a future date `forecast`.
   - When a real weather outlook is available (not the historical-average fallback), the response also includes the actual `weather` figures used - rain, maximum temperature, sunshine, whether it counts as hot for Scotland, how it compares with the previous fortnight, and any warm spell - `null` otherwise, since there's no single real figure to report that far out.
   - `day_context` spells out, as plain facts, what the model took into account about the date: the last and next payday and how many days away they are, the previous and next Scottish bank holiday by name and whether it's a long weekend, any Glasgow school break, whether it's a Friday-to-Sunday weekend trading day, and - for past dates only - the real average daily sales over the week and fortnight before, plus how far actual sales ran from the manager's own forecast yesterday, the same day last week, and on average over the past week. It is built from the same feature row the prediction used (`src/api/day_context.py`).
-  - `historical_comparison` returns the real realised sales for the same day the previous week and the same day the previous year, when those exact dates exist in the historical data - `null` for whichever isn't available, never estimated.
+  - `historical_comparison` returns the real realised sales for the same day the previous week and the same day the previous year, when those exact dates exist in the historical data - `null` for whichever isn't available, never estimated, and never a day the venue was closed (Christmas Day, New Year's Day), whose £0 is not a comparison.
+  - `model_version` (optional) chooses which model answers: `standard` (the default, the live model) or one of the versions listed by `/versions` - see [The model picker](#the-model-picker-choosing-which-model-answers). Each result says which model's figures it holds (`model_version`), and `model_version_note` explains when the version asked for cannot answer that date and the standard model answers instead.
+- **`GET /versions`** — the models a forecast can come from: the standard model and the forecast log's versions, each with a one-line legend, its status ("under test since ...") and whether it is installed on the server.
 - **`GET /errors/ranking?kind=worst|over|under|best&forecast=model|manager&limit=10`** — the days a forecast missed by the most: the biggest misses in either direction (`worst`), the days it was too high (`over`) or too low (`under`) - or, with `best`, the days it came closest (smallest gaps in pounds; a quiet day can rank high simply because there was less to miss). `forecast` chooses whose forecast is judged, the model's or the manager's own manual estimate, and `limit` is capped at 20.
   - Only days that have a forecast made before the day was known (the backtest period) are ranked, for both forecasts, so they are judged on the same days; the response states the period it covers.
   - Christmas Day and New Year's Day (the venue is closed, so £0 sales is not a miss) and days with no recorded sales are left out, and the response counts what was excluded.
@@ -570,6 +574,28 @@ You can also run the CLI version yourself instead of using the live chat - it ta
 pip install -r requirements.txt -r requirements-dev.txt
 python -m src.assistant.query_forecast "How is the forecast for next Saturday looking?"
 ```
+
+### The model picker: choosing which model answers
+
+The live model is not the only one: the [weekly forecast log](#the-weekly-forecast-log-a-prospective-test) tests further versions built from the experiment log, side by side, every Monday. The model picker lets anyone ask any of them - a dropdown above the chat ("Which model answers", the standard model by default, a legend under it), `model_version` on `/predict`, and the same option on the MCP tools. A model named in the chat ("use v1.14") wins over the dropdown. Every version is labelled as **under test**: its formal results come from the log after 26 to 52 weeks, not from this page.
+
+| Choice | What it adds | Average miss, 585 backtest days |
+|---|---|---|
+| standard (live) | CatBoost, 25 seeds, 38 inputs | £909.57 |
+| v1-post | the weekend package: own models for Friday, Saturday and Sunday, and a Saturday and Sunday correction | £864.05 |
+| v1-hydro | + a flag for Thursdays with an OVO Hydro show | £858.32 |
+| v1.11 | + a payday intensity in the Saturday models | £856.62 |
+| v1.12 | + Christmas Day and New Year's Day as closed days in it | £855.62 |
+| v1.13 | + specialist models for 26 December to 8 January | £846.75 |
+| v1.14 | + last year's sales on the same weekday, Monday to Saturday | £845.82 |
+| v1.131, v1.141 | v1.13 and v1.14 with a better stand-in for the manager's number (identical to them here, where the real number is used) | £846.75, £845.82 |
+
+How a version answers:
+- **Future dates** - exactly as the forecast log forecasts them: the same code (`src/forecast_core/`, shared by the log, the experiments and the API), the same stand-in for the manager's number, plus the dry and heavy-rain scenarios worked out as for the standard model. Tests check the API's answer equals the log's to the penny.
+- **Past dates** - from the version's **backtest** (`src/forecast_log/version_backtest.py`): every registered piece refitted fold by fold on the live model's own protocol (10 folds, 15 January 2025 to 6 September 2026, each fold trained only on the days before it, the manager's real number as the input), so a version's past forecast is "made before the day" on the same footing as the live model's. Before the backtest runs, every distinct piece is refitted at the registered cut-off and must give the registered model's predictions exactly (all 23 do). The versions were chosen by looking at these same 585 days, so their backtest flatters them a little; the forecast log is the clean test.
+- **When a version cannot answer**, the standard model does and `model_version_note` says why: a past date outside the backtest, a manager's estimate given for a past date (the backtest used the number on record), or a Thursday beyond the Hydro show list for a model with the Hydro flag (the log's own rule).
+
+Where the files live: the versions' model files (about 205 MB, never changed after registration) and the backtest are assets of the GitHub release [`model-versions-1`](https://github.com/kevinpinoarias/hospitality-forecasting-system/releases/tag/model-versions-1). CI fetches them and checks every file against the fingerprints in `config/model_versions.json` before building the API image - any difference stops the build (`scripts/model_version_files.py fetch|verify`). The API loads a version only when someone first picks it (files shared between versions load once), so the standard model's start-up is unchanged; the service has 1 GB of memory for the versions.
 
 ### MCP server: the same tools for Claude Desktop
 

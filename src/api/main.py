@@ -17,7 +17,10 @@ from fastapi import FastAPI, HTTPException, Query
 from src.api.error_ranking import DEFAULT_RANKING_DAYS, MAX_RANKING_DAYS, rank_errors
 from src.api.history import HistoryCache
 from src.api.inference import ModelService
-from src.api.schemas import ErrorRankingResponse, HealthResponse, PredictRequest, PredictResponse
+from src.api.model_versions import STANDARD, VersionService, VersionUnavailable
+from src.api.schemas import (
+    ErrorRankingResponse, HealthResponse, PredictRequest, PredictResponse, ScenarioPredictions, VersionsResponse,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hospitality_api")
@@ -26,6 +29,7 @@ REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
 
 history_cache = HistoryCache()
 model_service: ModelService | None = None
+version_service: VersionService | None = None  # the model picker; versions load the first time they are picked
 
 
 async def _refresh_loop() -> None:
@@ -42,10 +46,11 @@ async def _refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model_service
+    global model_service, version_service
 
     history_cache.refresh()
     model_service = ModelService(history_cache)
+    version_service = VersionService(history_cache)
     logger.info(
         "Startup complete: model loaded, %d historical rows cached",
         len(history_cache.df),
@@ -78,14 +83,50 @@ def predict(payload: PredictRequest) -> PredictResponse:
     if model_service is None:
         raise HTTPException(status_code=503, detail="Model not yet loaded")
 
+    asked = {item.model_version for item in payload.requests if item.model_version not in (None, STANDARD)}
+    for choice in sorted(asked):
+        if version_service is None or not version_service.is_known(choice):
+            raise HTTPException(status_code=422, detail=f"unknown model_version {choice!r}; GET /versions lists the choices")
+        if not version_service.is_available(choice):
+            raise HTTPException(status_code=422, detail=f"model_version {choice!r} is not installed on this server")
+
     try:
         results = [
             model_service.predict_one(item.date, item.forecast_sales)
             for item in payload.requests
         ]
+        for choice in sorted(asked):
+            mine = [i for i, item in enumerate(payload.requests) if item.model_version == choice]
+            plain = [i for i in mine if payload.requests[i].forecast_sales is None]
+            by_date = version_service.forecast(choice, sorted({payload.requests[i].date for i in plain})) if plain else {}
+            answers = {i: by_date[payload.requests[i].date] for i in plain}
+            for i in mine:  # a request with its own manager's estimate is forecast on its own, so the estimate reaches no other request
+                if i not in answers:
+                    item = payload.requests[i]
+                    answers[i] = version_service.forecast(choice, [item.date], manager_estimates={item.date: item.forecast_sales})[item.date]
+            for i in mine:
+                answer = answers[i]
+                if answer.best is None:  # the version cannot answer this date: the standard figures stay, with the reason
+                    results[i].model_version_note = answer.note
+                    continue
+                results[i].predictions = ScenarioPredictions(dry_scenario=answer.dry, heavy_rain_scenario=answer.heavy, best_estimate=answer.best)
+                results[i].model_version = choice
+                if answer.made_before_the_day:  # from the version's backtest: a fair comparison with actual_sales, as for the live model
+                    results[i].prediction_source = "made_before_the_day"
+    except VersionUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PredictResponse(results=results)
+
+
+@app.get("/versions", response_model=VersionsResponse)
+def versions() -> VersionsResponse:
+    """The models a forecast can come from: the standard (live) model and the forecast log's versions,
+    each with a one-line legend and whether it is installed on this server."""
+    if version_service is None:
+        raise HTTPException(status_code=503, detail="Model not yet loaded")
+    return VersionsResponse(choices=version_service.menu())
 
 
 @app.get("/errors/ranking", response_model=ErrorRankingResponse)

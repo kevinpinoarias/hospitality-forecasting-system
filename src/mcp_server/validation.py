@@ -12,10 +12,27 @@ its own message is passed on (see server.py).
 from __future__ import annotations
 
 import datetime as dt
+import json
+from pathlib import Path
 
 from mcp.server.fastmcp.exceptions import ToolError
 
 from src.assistant.tools import MAX_RANGE_DAYS
+
+MODEL_CHOICES_FILE = Path(__file__).resolve().parents[2] / "config" / "model_versions.json"
+
+
+def model_choice_ids() -> list[str]:
+    """The model picker's choices (the standard model and the forecast log's versions), as the API lists them."""
+    return [c["id"] for c in json.loads(MODEL_CHOICES_FILE.read_text(encoding="utf-8"))["choices"]]
+
+
+def check_model_version(value: str | None) -> None:
+    if value is None:
+        return
+    choices = model_choice_ids()
+    if value not in choices:
+        raise ToolError(f"model_version must be one of {', '.join(choices)}; got {value!r}. Leave it out for the standard (live) model.")
 
 
 def check_date(value: str, field: str = "date") -> dt.date:

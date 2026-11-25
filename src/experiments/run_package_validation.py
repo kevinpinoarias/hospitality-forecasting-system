@@ -26,12 +26,12 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.forecast_core.correction import CORRECTION  # noqa: F401  (moved there unchanged)
 from src.experiments import run_series24_weekend_correction as s24
 from src.experiments import run_series25_weekend_training as s25
 from src.experiments import run_series27_weekend_per_weekday as s27
 from src.experiments.series19_21_common import load_protocol, read_done, test_days
 
-CORRECTION = {"half_life_weeks": 8, "strength": 0.5, "scope": ("Saturday", "Sunday")}
 STEPS = ["final model (log everywhere)", "+ raw Saturday (hybrid)", "+ weekend features per weekday", "+ Saturday and Sunday correction"]
 
 

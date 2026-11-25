@@ -49,6 +49,8 @@ import numpy as np
 import pandas as pd
 
 from src.config import CONFIG
+from src.forecast_core.rows import FAMILY_A, FAMILY_B, add_weekend_features  # noqa: F401  (moved there unchanged)
+from src.forecast_core.rows import WEEKEND_VARIANTS as VARIANTS
 from src.experiments.series19_21_common import SUFFIX
 from src.experiments import run_series23_log_vs_raw_peaks as s23
 from src.experiments import run_series24_weekend_correction as s24
@@ -62,39 +64,10 @@ RESULTS = OUT_DIR / "series26_weekend_features.jsonl"
 RESULTS_FRESH = OUT_DIR / "series26_fresh_seeds.jsonl"
 REPORT_DIR = CONFIG.path("experiments_dir") / f"series26_weekend_features{SUFFIX}"
 FRESH_SEEDS = list(range(100, 125))
-FAMILY_A = ["lag_14_sales", "lag_21_sales", "same_wd_mean4", "same_wd_max4"]
-FAMILY_B = ["wk_payday", "wk_dry", "wk_temp", "wk_bh_near"]
-VARIANTS = {
-    "A_all": {"extra": FAMILY_A, "label": "A: same-weekday memory (4)"},
-    "A_summary": {"extra": ["same_wd_mean4", "same_wd_max4"], "label": "A: mean and max of last 4 (2)"},
-    "A_lags": {"extra": ["lag_14_sales", "lag_21_sales"], "label": "A: sales 2 and 3 weeks ago (2)"},
-    "B": {"extra": FAMILY_B, "label": "B: weekend interactions (4)"},
-    "AB": {"extra": FAMILY_A + FAMILY_B, "label": "A + B (8)"},
-}
 TARGETS = ("log1p", "raw")
 
 
 # --------------------------------------------------------------------------- the features
-
-
-def add_weekend_features(frame: pd.DataFrame, daily_sales: pd.Series) -> pd.DataFrame:
-    """Append the family A and B columns to `frame` (one row per day). `daily_sales` is the sales series
-    indexed by calendar date over ALL days of the data (including the warm-up rows the model frame drops), so
-    a lag is the sales on that calendar date, never a neighbouring row, and uses only days before the row."""
-    s = daily_sales.asfreq("D")
-    lags = pd.DataFrame({k: s.shift(k) for k in (7, 14, 21, 28)})
-    extra = pd.DataFrame({"lag_14_sales": lags[14], "lag_21_sales": lags[21],
-                          "same_wd_mean4": lags.mean(axis=1), "same_wd_max4": lags.max(axis=1)})
-    out = frame.copy()
-    for col in FAMILY_A:
-        out[col] = extra[col].reindex(pd.DatetimeIndex(out[DATE_COL])).to_numpy()
-    fri_sun = (out[DATE_COL].dt.dayofweek >= 4).astype(float)
-    near_bank_holiday = (np.minimum(out["days_to_bank_holiday"], out["days_since_bank_holiday"]) <= 3).astype(float)
-    out["wk_payday"] = fri_sun * out["is_payday_window_pm3"]
-    out["wk_dry"] = fri_sun * out["is_dry_day"]
-    out["wk_temp"] = fri_sun * out["max_temp"]
-    out["wk_bh_near"] = fri_sun * near_bank_holiday
-    return out
 
 
 def load_frame() -> tuple[pd.DataFrame, list]:

@@ -23,8 +23,14 @@ gcloud_run() { gcloud run "$@" --project "$project" --region "$region" --quiet; 
 # Whatever happens, do not leave the temporary "candidate" address behind.
 trap 'gcloud_run services update-traffic "$service" --remove-tags candidate >/dev/null 2>&1 || true' EXIT
 
+# The API holds the model picker's versions in memory once someone picks them: about 223 MB with the
+# standard model alone, about 645 MB with every version loaded (measured 23 November 2026), above Cloud
+# Run's default 512 MB. The page keeps the default.
+memory=()
+[ "$check" = "api" ] && memory=(--memory 1Gi)
+
 echo "Deploying $image to $service with no traffic..."
-gcloud_run deploy "$service" --image "$image" --no-traffic --tag candidate
+gcloud_run deploy "$service" --image "$image" --no-traffic --tag candidate "${memory[@]}"
 
 url=$(gcloud_run services describe "$service" --format=json |
   jq -r '.status.traffic[] | select(.tag == "candidate") | .url')

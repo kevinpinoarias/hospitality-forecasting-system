@@ -29,9 +29,37 @@ import os
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 
+from src.assistant import tools as tool_functions
 from src.assistant.query_forecast import MODEL, SYSTEM_INSTRUCTION, TOOL_FUNCTIONS
+
+# The model chosen in the chat's dropdown travels with each message as a per-call setting
+# (config["configurable"]["model_version"]); the two forecast tools read it from there, so the
+# LLM never has to remember or pass it. A model the person names in the chat (the tools'
+# model_version input) wins over the dropdown.
+MODEL_VERSION_KEY = "model_version"
+
+
+def selected_model(config: RunnableConfig | None) -> str | None:
+    value = ((config or {}).get("configurable") or {}).get(MODEL_VERSION_KEY)
+    return None if value in (None, "", "standard") else value
+
+
+def get_forecast(date: str, forecast_sales: float | None = None, model_version: str | None = None, config: RunnableConfig = None) -> dict:
+    return tool_functions.get_forecast(date, forecast_sales, model_version or selected_model(config))
+
+
+def get_forecast_range(start_date: str, end_date: str, model_version: str | None = None, config: RunnableConfig = None) -> dict:
+    return tool_functions.get_forecast_range(start_date, end_date, model_version or selected_model(config))
+
+
+# The same descriptions the LLM has always seen (the config parameter is hidden from it by LangChain).
+get_forecast.__doc__ = tool_functions.get_forecast.__doc__
+get_forecast_range.__doc__ = tool_functions.get_forecast_range.__doc__
+_WITH_SELECTION = {tool_functions.get_forecast: get_forecast, tool_functions.get_forecast_range: get_forecast_range}
+DIRECT_TOOLS = [_WITH_SELECTION.get(fn, fn) for fn in TOOL_FUNCTIONS]
 
 
 def _extract_text(content) -> str:
@@ -116,13 +144,13 @@ def build_agent(mode: str | None = None):
 
     return create_agent(
         model=llm,
-        tools=TOOL_FUNCTIONS,
+        tools=DIRECT_TOOLS,
         system_prompt=SYSTEM_INSTRUCTION + ACCURACY_CHECK_INSTRUCTION,
         checkpointer=InMemorySaver(),
     )
 
 
-def invoke_agent(agent, question: str, thread_id: str):
+def invoke_agent(agent, question: str, thread_id: str, model_version: str | None = None):
     """
     Runs one question through the agent, always with a fresh statement of
     today's real date attached.
@@ -134,6 +162,10 @@ def invoke_agent(agent, question: str, thread_id: str):
     than baked into the system prompt once at startup, since this runs as a
     long-lived deployed service - a "today" fixed at startup would silently
     go stale after the first day.
+
+    `model_version` is the model chosen in the app (None or "standard" for
+    the live model). With ASSISTANT_TOOLS=mcp the tools come from the MCP
+    server and only a model named in the chat is used.
     """
     today = dt.datetime.now(dt.timezone.utc).date()
     date_context = f"For reference, today's real date is {today.isoformat()} ({today.strftime('%A')})."
@@ -145,7 +177,7 @@ def invoke_agent(agent, question: str, thread_id: str):
                 {"role": "user", "content": question},
             ]
         },
-        config={"configurable": {"thread_id": thread_id}},
+        config={"configurable": {"thread_id": thread_id, MODEL_VERSION_KEY: model_version or "standard"}},
     )
 
 

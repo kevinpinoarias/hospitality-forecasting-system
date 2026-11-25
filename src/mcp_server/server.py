@@ -28,7 +28,7 @@ from pydantic import Field
 
 from src.assistant import tools
 from src.mcp_server.call_log import configure_stderr_logging, logged_tool
-from src.mcp_server.validation import check_date, check_range, check_sales_estimate
+from src.mcp_server.validation import check_date, check_model_version, check_range, check_sales_estimate
 
 SERVER_NAME = "hospitality-forecasting"
 
@@ -55,6 +55,12 @@ DateText = Annotated[str, Field(description="A date written as YYYY-MM-DD, e.g. 
 Forecast = Annotated[
     Literal["model", "manager"],
     Field(description='Whose forecast to judge: "model" (this system\'s forecast) or "manager" (the venue manager\'s own manual estimate).'),
+]
+ModelVersion = Annotated[
+    str | None,
+    Field(description='Which model answers: leave it out for the standard (live) model; only if the person names one, one of the versions '
+                      'under test in the forecast log ("v1-post", "v1-hydro", "v1.11", "v1.12", "v1.13", "v1.14", "v1.131", "v1.141"). '
+                      'Say that a version is still under test; if the result has model_version_note, the standard model answered instead.'),
 ]
 Days = Annotated[int, Field(description="How many days to return, 1 to 20. More than 20 is capped at 20 and the result says so.")]
 
@@ -128,10 +134,12 @@ def get_forecast(
         float | None,
         Field(description="The manager's own sales estimate for that day in pounds, ONLY if the person asking gave one. Leave it out otherwise."),
     ] = None,
+    model_version: ModelVersion = None,
 ) -> dict:
     check_date(date)
     check_sales_estimate(forecast_sales)
-    return _call_api(tools.get_forecast, date, forecast_sales)
+    check_model_version(model_version)
+    return _call_api(tools.get_forecast, date, forecast_sales, model_version)
 
 
 @mcp.tool(annotations=READ_ONLY, description=_describe(tools.get_forecast_range, FORECAST_READING_RULES, lead=VENUE_SALES))
@@ -139,9 +147,11 @@ def get_forecast(
 def get_forecast_range(
     start_date: Annotated[str, Field(description="The first date, YYYY-MM-DD.")],
     end_date: Annotated[str, Field(description="The last date (inclusive), YYYY-MM-DD; at most 31 days from start_date.")],
+    model_version: ModelVersion = None,
 ) -> dict:
     check_range(start_date, end_date)
-    return _call_api(tools.get_forecast_range, start_date, end_date)
+    check_model_version(model_version)
+    return _call_api(tools.get_forecast_range, start_date, end_date, model_version)
 
 
 @mcp.tool(annotations=READ_ONLY_LOCAL, description=_describe(tools.get_model_comparison))

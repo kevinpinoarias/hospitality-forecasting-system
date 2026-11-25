@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from src.experiments import run_series35_holdout as h
+from src.forecast_core.routing import COMPANION_PREFIX, COMPANION_WINDOW, INPUTS, MASK_PREFIX, MASK_WINDOW, in_window  # noqa: F401  (moved there unchanged)
 from src.forecast_log import v1, v1_12
 from src.models.final_model import DATE_COL, FINAL_FEATURES
 
@@ -37,10 +38,6 @@ VERSION = "v1.13"
 PARENT = v1_12.VERSION
 ARM = "hydro_v1.13"
 MAIN_PIECES = v1_12.HYDRO_ARM_PIECES
-COMPANION_PREFIX, MASK_PREFIX = "comp_", "mask_"
-COMPANION_WINDOW = ((12, 26), (12, 31))  # (month, day) first and last, inclusive
-MASK_WINDOW = ((1, 1), (1, 8))
-INPUTS = ["lag_7_sales", "rolling_7_sales", "rolling_14_sales", "lag_1_fe", "lag_7_fe", "rolling_7_fe", "lag_14_sales", "lag_21_sales", "same_wd_mean4", "same_wd_max4"]
 MODELS_DIR = v1.MODELS_DIR.parent / VERSION
 
 
@@ -58,14 +55,6 @@ def piece_features(kind: str, name: str) -> list[str]:
 def specialist_names() -> dict[str, tuple[str, str]]:
     """Every fitted specialist piece: file name -> (kind, main piece it is the specialist of)."""
     return {**{COMPANION_PREFIX + n: ("companion", n) for n in MAIN_PIECES}, **{MASK_PREFIX + n: ("masked", n) for n in MAIN_PIECES}}
-
-
-def in_window(dates, first: tuple[int, int], last: tuple[int, int]) -> np.ndarray:
-    """True for the dates inside a window given as (month, day) first and last, inclusive; a window that starts in December wraps over the new year."""
-    d = pd.to_datetime(pd.Series(list(dates)))
-    md = (d.dt.month * 100 + d.dt.day).to_numpy()
-    a, b = first[0] * 100 + first[1], last[0] * 100 + last[1]
-    return (md >= a) | (md <= b) if a > b else (md >= a) & (md <= b)
 
 
 def masked_copy(frame: pd.DataFrame) -> pd.DataFrame:

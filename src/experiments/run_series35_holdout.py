@@ -26,7 +26,6 @@ Run:  python -m src.experiments.run_series35_holdout prepare
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import subprocess
@@ -38,17 +37,16 @@ import pandas as pd
 import yaml
 
 from src.config import CONFIG, PROJECT_ROOT
+from src.forecast_core.bags import Bag, file_sha256, fingerprint, load_engineered  # noqa: F401  (moved there unchanged)
+from src.forecast_core.correction import CORRECTION, correct_new_block  # noqa: F401
+from src.forecast_core.rows import EXTRA, build_frame, sales_known_series, v1_calendar, weekday_names, with_weekend  # noqa: F401
 from src.experiments import run_package_validation as pv
 from src.experiments import run_series23_log_vs_raw_peaks as s23
-from src.experiments import run_series24_weekend_correction as s24
-from src.experiments import run_series26_weekend_features as s26
-from src.experiments import run_series29_school_calendar as s29
 from src.experiments.series19_21_common import load_protocol, test_days
-from src.features.build_features import LONG_BREAK_TYPES, SCHOOL_BREAKS_V1
 from src.features.serving_features import (
     WEATHER_COLS, build_feature_frame, extend_daily_frame, fill_future_sales_seasonally, seasonal_medians, with_history_features,
 )
-from src.models.final_model import FINAL_FEATURES, FINAL_PARAMS, BaggedCatBoost
+from src.models.final_model import FINAL_FEATURES, BaggedCatBoost
 
 DATE_COL, TARGET_COL = "date", "total_sales"
 REAL_CUTOFF = pd.Timestamp("2026-09-07")  # the first holdout day; everything before it is the frozen past
@@ -58,9 +56,7 @@ HOLDOUT_CONFIG = PROJECT_ROOT / "config" / "holdout.yaml"
 LOG_DIR = PROJECT_ROOT / "docs" / "holdout_log"
 FROZEN_PORTFOLIO_SHA = "b7d347460573956e55fb7f655d5e4d60a17cda5a327ba2c4ec8ec7b4bbbb924c"  # models/final_model, see the pre-registration
 FROZEN_FEATURES_SHA = "ad16ffd7aad53f09fb66a22ec62fbc0d3562d1127e9ac0ab69476daf4d9c64b0"
-CORRECTION = pv.CORRECTION
 CHOSEN = {"Friday": "A_all", "Saturday": "A_lags", "Sunday": "B"}  # Series 27 / 31 on the verified calendar, fixed in the pre-registration
-EXTRA = {"Friday": s26.VARIANTS["A_all"]["extra"], "Saturday": s26.VARIANTS["A_lags"]["extra"], "Sunday": s26.VARIANTS["B"]["extra"]}
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 VARIANTS = ("with_manager", "no_manager")
 ARM_LABELS = {"M": "Manager's forecast", "S": "Seasonal baseline", "P": "Portfolio model (deployed)",
@@ -70,86 +66,10 @@ ARM_LABELS = {"M": "Manager's forecast", "S": "Seasonal baseline", "P": "Portfol
 # --------------------------------------------------------------------------- helpers: bags, files
 
 
-class Bag:
-    """A CatBoost bag over seeds on one target (log1p or raw pounds); the final model's own recipe."""
-
-    def __init__(self, models: list, features: list[str], target: str) -> None:
-        self.models, self.features, self.target = models, list(features), target
-
-    @classmethod
-    def fit(cls, train: pd.DataFrame, features: list[str], target: str, seeds: list[int] = SEEDS, thread_count: int = 4) -> "Bag":
-        from catboost import CatBoostRegressor
-
-        y = np.log1p(train[TARGET_COL]) if target == "log1p" else train[TARGET_COL]
-        models = []
-        for seed in seeds:
-            model = CatBoostRegressor(random_state=seed, verbose=False, allow_writing_files=False, thread_count=thread_count, **FINAL_PARAMS)
-            model.fit(train[list(features)], y)
-            models.append(model)
-        return cls(models, features, target)
-
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
-        preds = [m.predict(X[self.features]) for m in self.models]
-        if self.target == "log1p":
-            preds = [np.expm1(p) for p in preds]
-        return np.mean(preds, axis=0)
-
-    def save(self, directory: Path) -> None:
-        directory.mkdir(parents=True, exist_ok=True)
-        for old in directory.glob("seed_*.cbm"):
-            old.unlink()
-        for i, m in enumerate(self.models):
-            m.save_model(str(directory / f"seed_{i:02d}.cbm"))
-        (directory / "meta.json").write_text(json.dumps({"features": self.features, "target": self.target, "seeds": len(self.models)}), encoding="utf-8")
-
-    @classmethod
-    def load(cls, directory: Path) -> "Bag":
-        from catboost import CatBoostRegressor
-
-        meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
-        models = []
-        for i in range(meta["seeds"]):
-            m = CatBoostRegressor()
-            m.load_model(str(directory / f"seed_{i:02d}.cbm"))
-            models.append(m)
-        return cls(models, meta["features"], meta["target"])
-
-
-def fingerprint(directory: Path) -> str:
-    """sha256 of every file in a folder, sorted by name and concatenated (the pre-registration's convention)."""
-    h = hashlib.sha256()
-    for f in sorted(p for p in directory.iterdir() if p.is_file()):
-        h.update(f.read_bytes())
-    return h.hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def load_engineered(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    df[DATE_COL] = pd.to_datetime(df[DATE_COL])
-    return df.sort_values(DATE_COL).reset_index(drop=True)
-
-
 def complete_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Rows with every final-model feature and the target present (the protocol's model frame)."""
     required = sorted(set(FINAL_FEATURES) | {DATE_COL, TARGET_COL})
     return df.dropna(subset=required).reset_index(drop=True)
-
-
-def with_weekend(rows: pd.DataFrame, sales_by_date: pd.Series) -> pd.DataFrame:
-    return s26.add_weekend_features(rows, sales_by_date)
-
-
-def v1_calendar(frame: pd.DataFrame) -> pd.DataFrame:
-    """The frame with its four school columns recomputed from the ORIGINAL school table (what the deployed model was trained on)."""
-    return s29.with_calendar(frame, SCHOOL_BREAKS_V1, LONG_BREAK_TYPES)
-
-
-def weekday_names(dates) -> np.ndarray:
-    return pd.to_datetime(pd.Series(list(dates))).dt.day_name().to_numpy()
 
 
 def stand_in_manager(history: pd.DataFrame, dates) -> np.ndarray:
@@ -322,16 +242,6 @@ def package_history(cutoff: pd.Timestamp) -> tuple[pd.DataFrame, np.ndarray]:
     return days[keep].reset_index(drop=True), weekend[keep]
 
 
-def correct_new_block(hist_days: pd.DataFrame, hist_pred: np.ndarray, new_dates, new_pred: np.ndarray) -> np.ndarray:
-    """The Series 24 correction for a new test block: shift each Saturday and Sunday forecast by -strength x the recency-weighted bias of the
-    package's errors in the history, exactly as the protocol does for a block after the history."""
-    new_days = pd.DataFrame({"date": [pd.Timestamp(d).strftime("%Y-%m-%d") for d in new_dates],
-                             "fold_id": int(hist_days["fold_id"].max()) + 1, "actual": np.nan, "weekday": weekday_names(new_dates)})
-    days = pd.concat([hist_days[["date", "fold_id", "actual", "weekday"]], new_days], ignore_index=True)
-    pred = np.concatenate([hist_pred, new_pred])
-    return s24.correct(days, pred, CORRECTION["half_life_weeks"], CORRECTION["strength"], scope=CORRECTION["scope"])[len(hist_days):]
-
-
 def package_mode_a(arms: dict[str, Bag], rows: pd.DataFrame, sales: pd.Series) -> np.ndarray:
     """The package as validated: every weekend day with its chosen option, Monday to Thursday the log model."""
     w = with_weekend(rows, sales)
@@ -355,11 +265,6 @@ def package_served(arms: dict[str, Bag], rows: pd.DataFrame, sales_known: pd.Ser
 
 
 # --------------------------------------------------------------------------- stage 3: score - the three modes
-
-
-def build_frame(daily: pd.DataFrame, calendar: str) -> pd.DataFrame:
-    frame = build_feature_frame(daily)
-    return v1_calendar(frame) if calendar == "v1" else frame
 
 
 def served_rows(full: pd.DataFrame, last_known_day: pd.Timestamp, target_dates, calendar: str = "v2",
@@ -386,11 +291,6 @@ def served_rows(full: pd.DataFrame, last_known_day: pd.Timestamp, target_dates, 
     if manager is not None:
         rows["forecast_sales"] = manager
     return rows
-
-
-def sales_known_series(full: pd.DataFrame, last_known_day: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
-    s = full[full[DATE_COL] <= last_known_day].set_index(DATE_COL)[TARGET_COL]
-    return s.reindex(pd.date_range(s.index.min(), end, freq="D"))
 
 
 def predictions_mode_a(arms: dict[str, Bag], full: pd.DataFrame, cutoff: pd.Timestamp, hist_days, hist_pred) -> pd.DataFrame:
