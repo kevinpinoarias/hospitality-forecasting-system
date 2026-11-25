@@ -67,16 +67,11 @@ with gr.Blocks(title="Hospitality Forecasting Assistant") as demo:
     with gr.Column(elem_id="main"):
         gr.HTML(INTRO_HTML, elem_classes="warm-only")
         with gr.Column(elem_id="chat-card"):
-            # The model picker: the standard model by default; the forecast log's versions are labelled as under test.
-            model_choice = gr.Dropdown(
-                choices=[(choice_label(c), c["id"]) for c in MODEL_CHOICES.values()], value="standard",
-                label="Which model answers", interactive=True, elem_id="model-choice",
-            )
-            model_legend = gr.Markdown(legend_markdown("standard"), elem_id="model-legend")
-            model_choice.change(legend_markdown, inputs=model_choice, outputs=model_legend)
+            # The model chosen below the chat, kept per visitor; the chat reads it with every message.
+            selected_model = gr.State("standard")
             gr.ChatInterface(
                 fn=chat_fn,
-                additional_inputs=[gr.State(lambda: str(uuid.uuid4())), model_choice],
+                additional_inputs=[gr.State(lambda: str(uuid.uuid4())), selected_model],
                 # A real, static greeting (not LLM-generated) so every new conversation
                 # opens with the trained model's actual evaluated accuracy - see
                 # MODEL_INTRO_MESSAGE's own comment for why this is a fixed string
@@ -99,6 +94,13 @@ with gr.Blocks(title="Hospitality Forecasting Assistant") as demo:
                     ["How accurate was our forecast for last month?"],
                 ],
             )
+            # The model picker, under the chat: the standard model by default; the forecast log's versions are labelled as under test.
+            model_choice = gr.Dropdown(
+                choices=[(choice_label(c), c["id"]) for c in MODEL_CHOICES.values()], value="standard",
+                label="Which model answers", interactive=True, elem_id="model-choice",
+            )
+            model_legend = gr.Markdown(legend_markdown("standard"), elem_id="model-legend")
+            model_choice.change(lambda choice: (choice, legend_markdown(choice)), inputs=model_choice, outputs=[selected_model, model_legend])
     gr.HTML(PRIVACY_HTML, elem_classes="warm-only")
     # Both run in the browser: the button flips the look, the load event restores the visitor's last choice.
     style_toggle.click(fn=None, js=TOGGLE_JS)
