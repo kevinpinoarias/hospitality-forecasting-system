@@ -1,7 +1,4 @@
-
-
-### SERVICE IS DOWN DUE GEMINI TAPOUTS(503), PLEASE HOLD ON A COUPLE OF DAYS UNTIL I MANAGE TO COME BACK AROUND TO THIS ISSUE ### 
-
+> **Note:** the live chat assistant may be down at times. Google's Gemini service, which writes its answers, has been returning "503 - high demand" errors on and off since 23 November 2026. The forecasting API is not affected. If the chat does not answer, please try again later.
 
 # Hospitality Forecasting System
 
