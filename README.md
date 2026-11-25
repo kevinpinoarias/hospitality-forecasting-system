@@ -1,3 +1,8 @@
+
+
+### SERVICE IS DOWN DUE GEMINI TAPOUTS(503), PLEASE HOLD ON A COUPLE OF DAYS UNTIL I MANAGE TO COME BACK AROUND TO THIS ISSUE ### 
+
+
 # Hospitality Forecasting System
 
 [![CI](https://github.com/kevinpinoarias/hospitality-forecasting-system/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinpinoarias/hospitality-forecasting-system/actions/workflows/ci.yml)
